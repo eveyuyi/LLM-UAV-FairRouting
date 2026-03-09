@@ -1,0 +1,7 @@
+openai
+numpy
+pandas
+pyomo
+matplotlib
+openpyxl
+pytest
