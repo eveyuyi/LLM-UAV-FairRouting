@@ -22,6 +22,13 @@ dev = [
   "pytest",
 ]
 
+[project.scripts]
+drone-module1 = "drone_pipeline.scripts.module1_generate_dialogues:main"
+drone-module2 = "drone_pipeline.scripts.module2_extract_demands:main"
+drone-module3a = "drone_pipeline.scripts.module3_adjust_weights:main"
+drone-module3b = "drone_pipeline.scripts.module3_solve:main"
+drone-pipeline = "drone_pipeline.scripts.run_pipeline:main"
+
 [tool.setuptools]
 package-dir = {"" = "src"}
 

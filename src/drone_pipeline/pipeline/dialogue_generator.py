@@ -353,6 +353,13 @@ def _pick_tier_template(tier: str, material: str, rng: random.Random) -> str:
     return rng.choice(templates)
 
 
+def _pick_template(priority: int, material: str) -> str:
+    """兼容旧测试/调用方的模板选择入口。"""
+    tier = _map_priority_to_tier(priority)
+    rng = random.Random(hash((priority, material)))
+    return _pick_tier_template(tier, material, rng)
+
+
 # ============================================================================
 # 数据加载
 # ============================================================================
@@ -643,10 +650,12 @@ def _generate_rule_conversation(
     material: str,
     qty_kg: float,
     priority: int,
-    tier: str,
+    tier: Optional[str] = None,
     ts_hhmm: str = "09:00",
 ) -> str:
     """Generate a multi-turn English dialogue from tier × material templates."""
+    if tier is None:
+        tier = _map_priority_to_tier(priority)
     mat_en = MATERIAL_EN.get(material, material)
     deadline = PRIORITY_DEADLINE.get(priority, 60)
 
@@ -674,8 +683,10 @@ def _generate_rule_conversation(
     )
 
 
-def _infer_poi(material: str, priority: int, tier: str) -> List[str]:
+def _infer_poi(material: str, priority: int, tier: Optional[str] = None) -> List[str]:
     """根据物资类型和需求层级推断附近兴趣点。"""
+    if tier is None:
+        tier = _map_priority_to_tier(priority)
     poi_map = {
         "aed":              ["public_space", "residential", "community_center"],
         "cardiac_drug":     ["hospital", "emergency_room", "icu_unit"],
