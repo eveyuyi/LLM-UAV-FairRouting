@@ -63,9 +63,15 @@ class GlobalWeights:
 # ============================================================================
 
 class ParameterizedDroneSolver(CplexDroneSolver):
-    """扩展 CplexDroneSolver，支持 LLM 驱动的多目标优化。"""
+    """扩展 CplexDroneSolver，支持 LLM 驱动的多目标优化。
 
-    DEFAULT_SPEED_MS = 15.0  # 默认巡航速度 m/s
+    新增噪声优先级支持（参考 cplex_with_priority_noise.py）：
+    - noise_cost_matrix: 节点间噪声影响矩阵（受影响建筑数量）
+    - noise_weight: 噪声成本全局权重
+    - 目标函数中噪声项按 1/priority 加权：高优先级需求的噪声成本权重更大
+    """
+
+    DEFAULT_SPEED_MS = 15.0
 
     def __init__(
         self,
@@ -80,13 +86,14 @@ class ParameterizedDroneSolver(CplexDroneSolver):
         global_weights: Optional[GlobalWeights] = None,
         supplementary_constraints: Optional[List[SupplementaryConstraint]] = None,
         cruise_speed: float = 15.0,
+        noise_cost_matrix: Optional[np.ndarray] = None,
+        noise_weight: float = 0.0,
     ):
         super().__init__(
             supply_points, demand_points, station_points,
             demand_weights, drones, dist_info,
         )
 
-        # 默认值：如果没传 demand_configs，所有需求使用 alpha=1, beta=1, priority=3
         if demand_configs is None:
             demand_configs = [
                 DemandConfig(demand_id=f"D{i+1}", alpha=1.0, beta=1.0, priority=3)
@@ -97,8 +104,9 @@ class ParameterizedDroneSolver(CplexDroneSolver):
         self.global_weights = global_weights or GlobalWeights()
         self.supplementary_constraints = supplementary_constraints or []
         self.cruise_speed = cruise_speed
+        self.noise_cost_matrix = noise_cost_matrix
+        self.noise_weight = noise_weight
 
-        # 构建需求索引 → config 映射
         self._demand_cfg_map: Dict[int, DemandConfig] = {}
         demand_indices = self.indices["demand"]
         for idx, node_idx in enumerate(demand_indices):
@@ -110,6 +118,8 @@ class ParameterizedDroneSolver(CplexDroneSolver):
               f"w_t={self.global_weights.w_time}, w_r={self.global_weights.w_risk}")
         print(f"    - 巡航速度: {self.cruise_speed} m/s")
         print(f"    - 补充约束: {len(self.supplementary_constraints)} 条")
+        if self.noise_cost_matrix is not None:
+            print(f"    - 噪声矩阵: {self.noise_cost_matrix.shape}, 权重={self.noise_weight}")
 
     # ------------------------------------------------------------------
     # 风险评估
@@ -157,8 +167,14 @@ class ParameterizedDroneSolver(CplexDroneSolver):
     # ------------------------------------------------------------------
 
     def build_model(self):
-        """构建带有多目标和补充约束的 MILP 模型。"""
-        # 先调用父类构建基础模型
+        """构建带有多目标和补充约束的 MILP 模型。
+
+        目标函数:
+            U = w_d·D + w_t·(alpha·T) + w_r·(beta·R) + noise_weight·N·(1/priority)
+
+        噪声项按 1/priority 加权（参考 cplex_with_priority_noise.py）：
+        高优先级需求的噪声成本权重更大，使求解器为重要需求选择低噪声路径。
+        """
         super().build_model()
         model = self.model
 
@@ -166,15 +182,14 @@ class ParameterizedDroneSolver(CplexDroneSolver):
         risk_matrix = self._compute_risk_matrix()
         speed = self.cruise_speed
 
-        # ---- 删除父类的纯距离目标 ----
         model.del_component(model.obj)
 
-        # ---- 新参数: 风险矩阵 ----
+        # ---- 风险矩阵 ----
         def risk_init(m, i, j):
             return float(risk_matrix[i, j])
         model.risk = Param(model.N, model.N, initialize=risk_init)
 
-        # ---- alpha/beta per demand ----
+        # ---- alpha/beta/priority per demand ----
         def alpha_init(m, d):
             cfg = self._demand_cfg_map.get(d)
             return cfg.alpha if cfg else 1.0
@@ -190,17 +205,16 @@ class ParameterizedDroneSolver(CplexDroneSolver):
             return float(cfg.priority if cfg else 3)
         model.priority_w = Param(model.D, initialize=priority_init)
 
-        # ---- 多目标函数 ----
-        # U = Σ_u Σ_{i,j} x[u,i,j] · (
-        #       w_d · dist[i,j]
-        #     + w_t · (dist[i,j]/speed) · Σ_d (alpha_d · y[u,d] / |D|)
-        #     + w_r · risk[i,j] · Σ_d (beta_d · y[u,d] / |D|)
-        # )
-        # 简化: 对每条使用的边，用该无人机所服务需求的平均 alpha/beta 来加权。
-        # 由于 alpha/beta 与 y 耦合是非线性的，这里采用近似线性化：
-        # 按 priority 加权的目标。
+        # ---- 噪声成本矩阵 ----
+        has_noise = self.noise_cost_matrix is not None and self.noise_weight > 0
+        if has_noise:
+            ncm = self.noise_cost_matrix
+            def noise_init(m, i, j):
+                return float(ncm[i, j])
+            model.noise_cost = Param(model.N, model.N, initialize=noise_init)
 
         n_demand = self.n_demand
+        nw = self.noise_weight
 
         def multi_obj_rule(m):
             dist_term = gw.w_distance * sum(
@@ -224,11 +238,24 @@ class ParameterizedDroneSolver(CplexDroneSolver):
                 for u in m.U for i in m.N for j in m.N
             )
 
-            return dist_term + time_term + risk_term
+            # Noise term: weighted by 1/priority (higher priority → larger weight)
+            # Follows cplex_with_priority_noise.py pattern:
+            #   cost = (dist + noise_weight * noise) * (1/priority)
+            if has_noise:
+                noise_term = nw * sum(
+                    m.noise_cost[i, j]
+                    * m.x[u, i, j]
+                    * (1.0 / max(n_demand, 1))
+                    * sum((1.0 / m.priority_w[d]) * m.y[u, d] for d in m.D)
+                    for u in m.U for i in m.N for j in m.N
+                )
+            else:
+                noise_term = 0
+
+            return dist_term + time_term + risk_term + noise_term
 
         model.obj = Objective(rule=multi_obj_rule, sense=minimize)
 
-        # ---- 补充约束: 禁飞区 ----
         self._add_supplementary_constraints(model)
 
         self.model = model
@@ -279,11 +306,14 @@ class ParameterizedDroneSolver(CplexDroneSolver):
         print(f"\n【参数化扩展信息】")
         print(f"  全局权重: w_d={self.global_weights.w_distance}, "
               f"w_t={self.global_weights.w_time}, w_r={self.global_weights.w_risk}")
+        if self.noise_cost_matrix is not None:
+            print(f"  噪声权重: {self.noise_weight}")
         print(f"  补充约束: {len(self.supplementary_constraints)} 条")
         print(f"\n  需求配置:")
         for cfg in self.demand_configs:
             print(f"    {cfg.demand_id}: alpha={cfg.alpha}, beta={cfg.beta}, "
-                  f"priority={cfg.priority} | {cfg.reasoning}")
+                  f"priority={cfg.priority}, priority_weight={1.0/max(cfg.priority,1):.2f} "
+                  f"| {cfg.reasoning}")
 
 
 # ============================================================================
@@ -300,8 +330,18 @@ def build_solver_from_pipeline(
     drones: List[Drone],
     dist_info: Dict,
     cruise_speed: float = 15.0,
+    noise_cost_matrix: Optional[np.ndarray] = None,
+    noise_weight: float = 0.0,
 ) -> ParameterizedDroneSolver:
-    """从 pipeline 的 JSON 数据构建 ParameterizedDroneSolver。"""
+    """从 pipeline 的 JSON 数据构建 ParameterizedDroneSolver。
+
+    Parameters
+    ----------
+    noise_cost_matrix : np.ndarray, optional
+        节点间噪声影响矩阵（受影响建筑数量）。
+    noise_weight : float
+        噪声成本全局权重，按 1/priority 缩放（参考 cplex_with_priority_noise.py）。
+    """
 
     gw_data = weight_config.get("global_weights", {})
     global_weights = GlobalWeights(
@@ -341,4 +381,6 @@ def build_solver_from_pipeline(
         global_weights=global_weights,
         supplementary_constraints=supp_constraints,
         cruise_speed=cruise_speed,
+        noise_cost_matrix=noise_cost_matrix,
+        noise_weight=noise_weight,
     )

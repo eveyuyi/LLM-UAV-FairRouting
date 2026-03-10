@@ -14,6 +14,7 @@ import argparse
 import json
 import os
 import time
+from datetime import datetime
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -25,6 +26,17 @@ from drone_pipeline.pipeline.context_extractor import (
     group_by_time_window,
 )
 from drone_pipeline.pipeline.weight_adjuster import adjust_weights, adjust_weights_offline
+
+
+def _build_run_dir(base_dir: Path, model: str, noise_weight: float) -> Path:
+    """Create a timestamped run directory under *base_dir*.
+
+    Format: ``<base_dir>/run_<YYYYMMDD_HHMMSS>_<model>_noise<w>/``
+    """
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    tag = model.replace("/", "-")
+    run_name = f"run_{ts}_{tag}_noise{noise_weight}"
+    return base_dir / run_name
 
 
 # ============================================================================
@@ -115,10 +127,40 @@ def run_pipeline(
     max_payload: float = 25.0,
     max_range: float = 40000.0,
     skip_solver: bool = False,
+    # Noise 参数
+    noise_weight: float = 0.0,
 ):
     """端到端运行 pipeline（Module 1 → Module 2 → Module 3）。"""
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    base_dir = Path(output_dir)
+    run_dir = _build_run_dir(base_dir, model, noise_weight)
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    weight_configs_dir = run_dir / "weight_configs"
+    weight_configs_dir.mkdir(exist_ok=True)
+
+    # Save run metadata for reproducibility
+    run_meta = {
+        "created_at": datetime.now().isoformat(),
+        "model": model,
+        "offline": offline,
+        "noise_weight": noise_weight,
+        "temperature": temperature,
+        "window_minutes": window_minutes,
+        "time_limit": time_limit,
+        "max_drones_per_station": max_drones_per_station,
+        "max_payload": max_payload,
+        "max_range": max_range,
+        "csv_path": csv_path,
+        "stations_path": stations_path,
+        "dialogue_path": dialogue_path,
+        "time_slots": time_slots,
+        "base_date": base_date,
+        "skip_solver": skip_solver,
+    }
+    with open(run_dir / "run_meta.json", "w", encoding="utf-8") as f:
+        json.dump(run_meta, f, ensure_ascii=False, indent=2)
+    print(f"Run directory: {run_dir}")
+
     client = None
 
     if not offline:
@@ -136,8 +178,8 @@ def run_pipeline(
     print("Step 1: 对话生成 (Module 1)")
     print("=" * 60)
 
-    if csv_path and stations_path:
-        # 新路径：从 demand_events_5min.csv 生成对话
+    if csv_path:
+        # 从 CSV 生成对话（stations_path 可选）
         from drone_pipeline.pipeline.dialogue_generator import generate_dialogues
         dialogues = generate_dialogues(
             csv_path=csv_path,
@@ -151,8 +193,7 @@ def run_pipeline(
             temperature=temperature,
             batch_size=dialogue_batch_size,
         )
-        # 保存生成的对话（方便复用）
-        dlg_out = output_dir / "generated_dialogues.jsonl"
+        dlg_out = run_dir / "generated_dialogues.jsonl"
         from drone_pipeline.pipeline.dialogue_generator import save_dialogues
         save_dialogues(dialogues, str(dlg_out))
     elif dialogue_path:
@@ -162,7 +203,7 @@ def run_pipeline(
         print(f"  加载 {len(dialogues)} 条对话（来自文件: {dialogue_path}）")
     else:
         raise ValueError(
-            "必须提供 csv_path + stations_path（从 CSV 生成对话）"
+            "必须提供 csv_path（从 CSV 生成对话）"
             " 或 dialogue_path（直接加载 JSONL 文件）"
         )
 
@@ -182,7 +223,7 @@ def run_pipeline(
             dialogues, client, model, window_minutes, temperature,
         )
 
-    demands_path = output_dir / "extracted_demands.json"
+    demands_path = run_dir / "extracted_demands.json"
     with open(demands_path, "w", encoding="utf-8") as f:
         json.dump(window_results, f, ensure_ascii=False, indent=2)
     print(f"  需求保存至 {demands_path}")
@@ -217,8 +258,7 @@ def run_pipeline(
 
         weight_config["time_window"] = tw
 
-        # 保存权重配置
-        wc_path = output_dir / f"weight_config_{w_idx}.json"
+        wc_path = weight_configs_dir / f"weight_config_window{w_idx}.json"
         with open(wc_path, "w", encoding="utf-8") as f:
             json.dump(weight_config, f, ensure_ascii=False, indent=2)
 
@@ -294,6 +334,7 @@ def run_pipeline(
             demand_weights=d_weights,
             drones=drones,
             dist_info=dist_info,
+            noise_weight=noise_weight,
         )
 
         solver.build_model()
@@ -318,7 +359,7 @@ def run_pipeline(
     # ----------------------------------------------------------------
     # 保存汇总结果（含完整 eval 字段）
     # ----------------------------------------------------------------
-    summary_path = output_dir / "pipeline_results.json"
+    summary_path = run_dir / "pipeline_results.json"
     serializable = []
     for s in all_solutions:
         wc = s["weight_config"]
@@ -458,7 +499,10 @@ def run_pipeline(
         json.dump(serializable, f, ensure_ascii=False, indent=2)
 
     print(f"\n{'=' * 60}")
-    print(f"Pipeline 完成！结果保存至 {output_dir}")
+    print(f"Pipeline 完成！结果保存至:")
+    print(f"  Run directory   : {run_dir}")
+    print(f"  Weight configs  : {weight_configs_dir}")
+    print(f"  Pipeline results: {summary_path}")
     print(f"{'=' * 60}")
 
     return all_solutions
@@ -488,13 +532,13 @@ def main():
     src_group = parser.add_argument_group("Module 1 数据来源")
     src_group.add_argument(
         "--csv", type=str,
-        default=str(PROJECT_ROOT / "data" / "seed" / "demand_events_5min.csv"),
-        help="demand_events_5min.csv 路径（与 --stations 一起使用）",
+        default=str(PROJECT_ROOT / "data" / "seed" / "daily_demands_with_noise_constrain.csv"),
+        help="需求事件 CSV 路径（支持 daily_demands_with_noise_constrain.csv）",
     )
     src_group.add_argument(
         "--stations", type=str,
-        default=str(PROJECT_ROOT / "data" / "seed" / "latest_location.xlsx"),
-        help="latest_location.xlsx 站点数据路径",
+        default=None,
+        help="latest_location.xlsx 站点数据路径（CSV 含供给点信息时可省略）",
     )
     src_group.add_argument(
         "--dialogues", type=str, default=None,
@@ -503,8 +547,8 @@ def main():
 
     parser.add_argument(
         "--output-dir", type=str,
-        default=str(PROJECT_ROOT / "data" / "drone" / "pipeline_output"),
-        help="输出目录",
+        default=str(PROJECT_ROOT / "results"),
+        help="输出根目录（每次运行自动创建带时间戳的子目录）",
     )
     parser.add_argument("--offline", action="store_true", help="离线模式，不调用 LLM")
     parser.add_argument("--skip-solver", action="store_true", help="跳过 CPLEX 求解")
@@ -520,6 +564,8 @@ def main():
     parser.add_argument("--base-date", type=str, default="2024-03-15", help="基准日期")
     parser.add_argument("--dialogue-batch-size", type=int, default=5,
                         help="LLM 对话生成批大小")
+    parser.add_argument("--noise-weight", type=float, default=0.0,
+                        help="噪声成本权重（>0 启用噪声优先级，按 1/priority 加权）")
     args = parser.parse_args()
 
     # 确定 Module 1 数据来源
@@ -529,9 +575,9 @@ def main():
         # 显式指定了旧格式文件
         dialogue_path = args.dialogues
     else:
-        # 默认从 CSV 生成
+        # 默认从 CSV 生成（stations 可选）
         csv_path = args.csv
-        stations_path = args.stations
+        stations_path = args.stations  # may be None
         dialogue_path = None
 
     run_pipeline(
@@ -551,6 +597,7 @@ def main():
         window_minutes=args.window,
         time_limit=args.time_limit,
         skip_solver=args.skip_solver,
+        noise_weight=args.noise_weight,
     )
 
 

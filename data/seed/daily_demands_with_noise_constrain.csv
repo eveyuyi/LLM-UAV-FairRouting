@@ -1,4 +1,4 @@
-﻿time,demand_fid,demand_lon,demand_lat,priority,supply_fid,supply_lon,supply_lat,supply_type,weight,unique_id
+﻿time,demand_fid,demand_lon,demand_lat,priority,supply_fid,supply_lon,supply_lat,supply_type,material_weight,unique_id
 0.0,DEM_18923,113.9242881953422,22.67367018232593,1,COM_40310,113.837754458995,22.6925051618662,商业,21.8,DEM_000_00
 0.0,DEM_30395,113.9354485229523,22.6859468047709,2,COM_41856,113.8121013756636,22.66967562883977,商业,28.8,DEM_000_01
 0.0,DEM_19787,113.9354675323228,22.68921496078488,1,COM_34577,113.9450014986804,22.68071208990915,商业,30.0,DEM_000_02
