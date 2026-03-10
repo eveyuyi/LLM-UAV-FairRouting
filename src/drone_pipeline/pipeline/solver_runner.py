@@ -4,8 +4,7 @@ Module 3b: Solver Runner
 负责将 Module 2 的结构化需求和 Module 3a 的权重配置送入求解器。
 该模块既可被 run_pipeline 复用，也可作为独立脚本运行。
 
-统一使用 ``cplex_with_priority_noise.CplexSolver`` 作为求解后端，
-使 LLM pipeline 和 solver-only baseline 共享同一求解引擎。
+统一使用 ``cplex_with_priority_noise.CplexSolver`` 作为求解后端。
 
 求解模型特性（对齐 cplex_with_priority_noise）：
 - 目标函数: ``(distance + noise_weight * noise) * (1/priority)``
