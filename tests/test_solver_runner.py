@@ -25,11 +25,14 @@ def _sample_demands():
 
 
 def test_demands_to_solver_inputs_deduplicates_supply_points():
-    supply_points, demand_points, demand_weights = demands_to_solver_inputs(_sample_demands())
+    supply_points, demand_points, demand_weights, required_supply = demands_to_solver_inputs(
+        _sample_demands()
+    )
 
     assert len(supply_points) == 1
     assert len(demand_points) == 2
     assert demand_weights == [5.0, 3.5]
+    assert required_supply == [0, 0]
 
 
 def test_select_station_dicts_prefers_nearest_active_coords():

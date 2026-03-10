@@ -3,6 +3,15 @@ Module 3b: Solver Runner
 
 负责将 Module 2 的结构化需求和 Module 3a 的权重配置送入求解器。
 该模块既可被 run_pipeline 复用，也可作为独立脚本运行。
+
+统一使用 ``cplex_with_priority_noise.CplexSolver`` 作为求解后端，
+使 LLM pipeline 和 solver-only baseline 共享同一求解引擎。
+
+求解模型特性（对齐 cplex_with_priority_noise）：
+- 目标函数: ``(distance + noise_weight * noise) * (1/priority)``
+- 允许部分需求不被服务（unassigned 变量 + 大罚项 1e9）
+- 每架无人机单次求解最多接 1 个需求（single_task_per_drone）
+- 需求必须从指定供给点取货（supply_demand_matching）
 """
 
 from __future__ import annotations
@@ -11,11 +20,18 @@ import argparse
 import copy
 import json
 import math
+import os
+import time as _time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
+
+# Ensure CPLEX binary is on PATH (previously handled by drone_cplex_real_data import)
+_CPLEX_BIN = "/Applications/CPLEX_Studio2211/cplex/bin/x86-64_osx"
+if os.path.isdir(_CPLEX_BIN) and _CPLEX_BIN not in os.environ.get("PATH", ""):
+    os.environ["PATH"] = _CPLEX_BIN + ":" + os.environ.get("PATH", "")
 
 from drone_pipeline.pipeline.dialogue_generator import load_stations
 
@@ -41,17 +57,31 @@ class SolverPoint:
         self.z = self.alt - ref_alt
 
 
-def demands_to_solver_inputs(demands: List[Dict]) -> tuple[list[SolverPoint], list[SolverPoint], list[float]]:
-    """从结构化需求构建 supply_points, demand_points, demand_weights。"""
+def demands_to_solver_inputs(
+    demands: List[Dict],
+) -> tuple[list[SolverPoint], list[SolverPoint], list[float], list[int]]:
+    """从结构化需求构建 supply_points, demand_points, demand_weights, demand_required_supply。
+
+    Returns
+    -------
+    supply_points : list[SolverPoint]
+    demand_points : list[SolverPoint]
+    demand_weights : list[float]
+    demand_required_supply : list[int]
+        Index into supply_points for each demand's required pickup origin.
+    """
     supply_set: Dict[str, SolverPoint] = {}
+    supply_order: Dict[str, int] = {}
     demand_points: List[SolverPoint] = []
     demand_weights: List[float] = []
+    demand_required_supply: List[int] = []
 
     for demand in demands:
         origin = demand.get("origin", {})
         origin_fid = str(origin.get("fid", "")).strip()
         origin_coords = origin.get("coords", [0.0, 0.0])
         if origin_fid and origin_fid not in supply_set:
+            supply_order[origin_fid] = len(supply_set)
             supply_set[origin_fid] = SolverPoint(
                 id=f"S_{origin_fid}",
                 lon=float(origin_coords[0]),
@@ -74,7 +104,12 @@ def demands_to_solver_inputs(demands: List[Dict]) -> tuple[list[SolverPoint], li
         cargo = demand.get("cargo", {})
         demand_weights.append(float(cargo.get("weight_kg", 2.0)))
 
-    return list(supply_set.values()), demand_points, demand_weights
+        if origin_fid and origin_fid in supply_order:
+            demand_required_supply.append(supply_order[origin_fid])
+        else:
+            demand_required_supply.append(0)
+
+    return list(supply_set.values()), demand_points, demand_weights, demand_required_supply
 
 
 def create_mock_stations(n: int = 3) -> list[SolverPoint]:
@@ -177,6 +212,109 @@ def load_solver_station_points(
     ]
 
 
+def _build_simplified_noise_matrix(dist_matrix):
+    """Build a simplified noise cost matrix when detailed building data is unavailable.
+
+    Approximates the number of affected residential buildings per flight segment
+    as proportional to path length (~1 building per 200 m of urban flight).
+    This serves as a lightweight stand-in for the full RRT+building noise
+    pipeline in ``cplex_with_priority_noise.build_realistic_distance_and_noise_matrices``.
+    """
+    import numpy as np
+
+    n = dist_matrix.shape[0]
+    noise = np.zeros((n, n), dtype=int)
+    scale = 200.0
+    for i in range(n):
+        for j in range(i + 1, n):
+            d = dist_matrix[i, j]
+            if d > 0:
+                noise[i, j] = max(1, int(d / scale))
+                noise[j, i] = noise[i, j]
+    return noise
+
+
+def _build_solution_from_assignments(
+    assignments: List[Dict],
+    demand_events: list,
+    dist_matrix,
+    cplex_points: list,
+    station_indices: List[int],
+    n_supply: int,
+    cruise_speed: float,
+    solve_time: float,
+) -> Dict:
+    """Convert CplexSolver assignment list to the solution dict expected by
+    ``serialize_pipeline_results``.
+
+    Each assignment maps one drone to one demand (single-task-per-drone model).
+    Path per drone: station -> supply -> demand -> station.
+    """
+    if not assignments:
+        return {
+            "drones_used": 0,
+            "total_distance": 0.0,
+            "objective_value": 0.0,
+            "solve_time_s": round(solve_time, 3),
+            "solve_status": "feasible",
+            "assignments": [],
+            "paths": [],
+        }
+
+    sol_assignments: List[Dict] = []
+    sol_paths: List[list] = []
+    total_distance = 0.0
+    used_drones: set = set()
+
+    for assign in assignments:
+        ds = assign["drone"]
+        demand = assign["demand"]
+        supply_node = assign["supply_node"]
+        demand_node = demand.node_idx
+        station_node = station_indices[ds.station_id]
+
+        used_drones.add(ds.drone_id)
+
+        path = [station_node, supply_node, demand_node, station_node]
+        path_labels = [cplex_points[node].id for node in path]
+
+        delivery_times: Dict[int, float] = {}
+        cumulative = 0.0
+        for k in range(len(path) - 1):
+            seg = float(dist_matrix[path[k], path[k + 1]])
+            cumulative += seg / cruise_speed
+            delivery_times[path[k + 1]] = round(cumulative, 1)
+
+        drone_dist = sum(
+            float(dist_matrix[path[k], path[k + 1]])
+            for k in range(len(path) - 1)
+        )
+        total_distance += drone_dist
+
+        sol_assignments.append({
+            "drone_id": ds.drone_id,
+            "station_id": ds.station_id,
+            "station_name": cplex_points[station_node].id,
+            "supply_idx": assign["supply_idx"],
+            "demand_indices": [demand_node],
+            "path_labels": path_labels,
+            "path_str": " -> ".join(path_labels),
+            "demand_delivery_times_s": delivery_times,
+            "total_mission_time_s": round(cumulative, 1),
+        })
+        sol_paths.append(path)
+
+    return {
+        "drones_used": len(used_drones),
+        "total_distance": total_distance,
+        "objective_value": total_distance,
+        "solve_time_s": round(solve_time, 3),
+        "solve_status": "optimal",
+        "assignments": sol_assignments,
+        "paths": sol_paths,
+    }
+
+
 def solve_window_demands(
     *,
     time_window: str,
@@ -190,7 +328,17 @@ def solve_window_demands(
     max_range: float,
     noise_weight: float,
 ) -> Dict:
-    """求解单个时间窗口。"""
+    """求解单个时间窗口。
+
+    统一使用 ``cplex_with_priority_noise.CplexSolver`` 作为求解后端，
+    使 LLM pipeline 和 solver-only baseline 共享同一求解引擎。
+
+    模型特性（对齐 cplex_with_priority_noise）：
+    - 目标函数: ``(distance + noise_weight * noise) * (1/priority)``
+    - 允许部分需求不被服务（unassigned + 大罚项）
+    - 每架无人机单次求解最多接 1 个需求（single_task_per_drone）
+    - 需求必须从指定供给点取货（supply_demand_matching）
+    """
     window_weight_config = copy.deepcopy(weight_config)
 
     feasible_demands = [
@@ -219,7 +367,9 @@ def solve_window_demands(
         if config["demand_id"] in feasible_ids
     ]
 
-    supply_points, demand_points, demand_weights = demands_to_solver_inputs(feasible_demands)
+    supply_points, demand_points, demand_weights, demand_required_supply = (
+        demands_to_solver_inputs(feasible_demands)
+    )
     station_points = load_solver_station_points(
         stations_path=stations_path,
         demands=feasible_demands,
@@ -238,14 +388,28 @@ def solve_window_demands(
             "n_supply": len(supply_points),
         }
 
+    # Defer heavy imports until after early-return checks
+    import numpy as np
+
+    n_supply = len(supply_points)
+    n_demand = len(demand_points)
+    n_station = len(station_points)
+
     print(
-        f"  供给点 {len(supply_points)}, 需求点 {len(demand_points)}, "
-        f"站点 {len(station_points)}"
+        f"  供给点 {n_supply}, 需求点 {n_demand}, "
+        f"站点 {n_station}"
     )
 
+    # ----- Import shared solver backend (cplex_with_priority_noise) -----
     try:
-        from drone_pipeline.utils.drone_cplex_real_data import calculate_distance_matrix, create_drones
-        from drone_pipeline.utils.drone_solver import build_solver_from_pipeline
+        from drone_pipeline.utils.cplex_with_priority_noise import (
+            CplexSolver as _CplexSolver,
+            Point as _CplexPoint,
+            Drone as _CplexDrone,
+            DroneState as _DroneState,
+            DroneStatus as _DroneStatus,
+            DemandEvent as _DemandEvent,
+        )
     except Exception as exc:
         print(f"  求解依赖加载失败: {exc}")
         return {
@@ -255,33 +419,125 @@ def solve_window_demands(
             "n_demands_total": len(demands),
             "n_demands_filtered": skipped,
             "solution": None,
-            "n_supply": len(supply_points),
+            "n_supply": n_supply,
         }
 
-    drones = create_drones(
-        station_points,
-        drones_per_station=max_drones_per_station,
-        max_payload=max_payload,
-        max_range=max_range,
-    )
-    dist_info = calculate_distance_matrix(supply_points, demand_points, station_points)
+    # ----- Convert SolverPoints → CplexPoints with ENU coordinates -----
+    all_solver_pts = supply_points + demand_points + station_points
+    ref_lat = float(np.mean([p.lat for p in all_solver_pts]))
+    ref_lon = float(np.mean([p.lon for p in all_solver_pts]))
 
-    solver = build_solver_from_pipeline(
-        demands=feasible_demands,
-        weight_config=window_weight_config,
-        supply_points=supply_points,
-        demand_points=demand_points,
-        station_points=station_points,
-        demand_weights=demand_weights,
-        drones=drones,
-        dist_info=dist_info,
+    cplex_points: List = []
+    for sp in all_solver_pts:
+        cp = _CplexPoint(id=sp.id, lon=sp.lon, lat=sp.lat, alt=sp.alt, type=sp.type)
+        cp.to_enu(ref_lat, ref_lon, 0.0)
+        cplex_points.append(cp)
+
+    # ----- Euclidean distance matrix -----
+    n_pts = len(cplex_points)
+    dist_matrix = np.zeros((n_pts, n_pts))
+    for i in range(n_pts):
+        for j in range(i + 1, n_pts):
+            dx = cplex_points[i].x - cplex_points[j].x
+            dy = cplex_points[i].y - cplex_points[j].y
+            dz = cplex_points[i].z - cplex_points[j].z
+            d = math.sqrt(dx * dx + dy * dy + dz * dz)
+            dist_matrix[i, j] = d
+            dist_matrix[j, i] = d
+
+    # ----- Noise cost matrix (simplified when building data unavailable) -----
+    noise_cost_matrix = None
+    if noise_weight > 0:
+        noise_cost_matrix = _build_simplified_noise_matrix(dist_matrix)
+        print(f"  噪声矩阵: {noise_cost_matrix.shape}, 权重={noise_weight}")
+
+    # ----- Index lists (same layout as cplex_with_priority_noise) -----
+    supply_indices = list(range(n_supply))
+    station_indices = list(range(n_supply + n_demand, n_supply + n_demand + n_station))
+
+    # ----- Create drones (all idle at their stations) -----
+    cruise_speed = 15.0
+    cplex_drones: List = []
+    for s_idx in range(n_station):
+        for d_idx in range(max_drones_per_station):
+            cplex_drones.append(_CplexDrone(
+                id=f"U{s_idx + 1}{d_idx + 1}",
+                station_id=s_idx,
+                station_name=station_points[s_idx].id,
+                max_payload=max_payload,
+                max_range=max_range,
+                speed=cruise_speed,
+            ))
+
+    drone_states: List = []
+    for drone in cplex_drones:
+        station_node = station_indices[drone.station_id]
+        drone_states.append(_DroneState(
+            drone_id=drone.id,
+            station_id=drone.station_id,
+            current_node=station_node,
+            remaining_range=drone.max_range,
+            remaining_payload=drone.max_payload,
+            status=_DroneStatus.IDLE,
+            position_x=cplex_points[station_node].x,
+            position_y=cplex_points[station_node].y,
+        ))
+
+    # ----- Create DemandEvents with LLM priority + required_supply_idx -----
+    demand_cfg_map = {
+        dc["demand_id"]: dc
+        for dc in window_weight_config.get("demand_configs", [])
+    }
+    demand_events: List = []
+    for idx, demand in enumerate(feasible_demands):
+        demand_id = demand.get("demand_id", f"D{idx + 1}")
+        cfg = demand_cfg_map.get(demand_id, {})
+        priority = cfg.get("priority", 3)
+        demand_events.append(_DemandEvent(
+            time=0.0,
+            node_idx=n_supply + idx,
+            weight=demand_weights[idx],
+            unique_id=demand_id,
+            priority=priority,
+            required_supply_idx=demand_required_supply[idx],
+            demand_point_id=demand_points[idx].id,
+        ))
+
+    # ----- Solve via shared CplexSolver backend -----
+    solver = _CplexSolver(
+        drones=cplex_drones,
+        supply_indices=supply_indices,
+        station_indices=station_indices,
+        dist_matrix=dist_matrix,
+        all_points=cplex_points,
+        noise_cost_matrix=noise_cost_matrix,
         noise_weight=noise_weight,
+        time_limit=time_limit,
     )
-    solver.build_model()
 
+    t0 = _time.time()
     try:
-        solution = solver.solve(time_limit=time_limit)
-        solver.print_solution()
+        assignments = solver.solve_assignment(
+            drone_states, demand_events, current_time=0.0,
+        )
+        solve_time = _time.time() - t0
+        solution = _build_solution_from_assignments(
+            assignments=assignments,
+            demand_events=demand_events,
+            dist_matrix=dist_matrix,
+            cplex_points=cplex_points,
+            station_indices=station_indices,
+            n_supply=n_supply,
+            cruise_speed=cruise_speed,
+            solve_time=solve_time,
+        )
+
+        n_served = len(assignments)
+        n_unserved = n_demand - n_served
+        print(
+            f"  求解完成: {n_served}/{n_demand} 需求已分配, "
+            f"{n_unserved} 未分配, 耗时 {solve_time:.2f}s"
+        )
     except Exception as exc:
         print(f"  求解失败: {exc}")
         solution = None
@@ -293,7 +549,7 @@ def solve_window_demands(
         "n_demands_total": len(demands),
         "n_demands_filtered": skipped,
         "solution": solution,
-        "n_supply": len(supply_points),
+        "n_supply": n_supply,
     }
 
 
