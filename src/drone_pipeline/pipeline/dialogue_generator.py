@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from openai import OpenAI
 
 from drone_pipeline.seed_data import DEMAND_EVENTS_FILENAME, DEMAND_EVENTS_PATH, STATION_DATA_FILENAME
+from drone_pipeline.utils.station_data import load_station_data
 
 
 # ============================================================================
@@ -366,44 +367,21 @@ def _pick_template(priority: int, material: str) -> str:
 # 数据加载
 # ============================================================================
 
-def load_stations(xlsx_path: str) -> List[Dict]:
-    """从 drone_station_locations.xlsx 读取站点数据，返回深圳站点列表。
+def load_stations(station_path: str) -> List[Dict]:
+    """从规范化站点数据读取深圳站点列表。
 
     每个站点格式::
 
         {"station_id": "ST001", "name": "丰翼无人机燕罗航站",
          "lon": 113.879911, "lat": 22.799354}
     """
-    try:
-        import pandas as pd
-    except ImportError:
-        raise ImportError("需要 pandas 和 openpyxl: pip install pandas openpyxl")
-
-    df = pd.read_excel(xlsx_path)
-
-    rename_map = {}
-    for col in df.columns:
-        col_lower = col.lower().strip()
-        if "纬" in col or col_lower in ("lat", "latitude"):
-            rename_map[col] = "lat"
-        elif "经" in col or col_lower in ("lon", "lng", "longitude"):
-            rename_map[col] = "lon"
-        elif "站点名" in col or col_lower in ("name", "station_name", "站点"):
-            rename_map[col] = "name"
-        elif "城市" in col or col_lower in ("city", "城市"):
-            rename_map[col] = "city"
-    df = df.rename(columns=rename_map)
-
-    if "city" in df.columns:
-        df = df[df["city"].astype(str).str.contains("深圳", na=False)]
-
-    if "lat" not in df.columns or "lon" not in df.columns:
-        raise ValueError(f"xlsx 缺少纬度/经度列，现有列：{df.columns.tolist()}")
+    df = load_station_data(station_path)
+    df = df[df["city"].astype(str).str.contains("Shenzhen", na=False)]
 
     stations = []
     for i, (_, row) in enumerate(df.iterrows()):
-        lat_val = row["lat"]
-        lon_val = row["lon"]
+        lat_val = row["latitude"]
+        lon_val = row["longitude"]
         try:
             lat = float(lat_val)
             lon = float(lon_val)
@@ -411,7 +389,7 @@ def load_stations(xlsx_path: str) -> List[Dict]:
             continue
         if math.isnan(lat) or math.isnan(lon):
             continue
-        name_val = row["name"] if "name" in row.index else f"S{i+1}"
+        name_val = row["station_name"] if "station_name" in row.index else f"S{i+1}"
         name = str(name_val).strip()
         stations.append({
             "station_id": f"ST{i+1:03d}",
@@ -871,7 +849,7 @@ def generate_dialogues(
         需求事件 CSV 路径（支持旧 demand_events_5min.csv 和新
         daily_demand_events.csv 格式）。
     xlsx_path : str, optional
-        drone_station_locations.xlsx（站点数据）路径。当 CSV 内含供给点信息时可省略。
+        drone_station_locations.csv（站点数据）路径。当 CSV 内含供给点信息时可省略。
     offline : bool
         True=规则模式，False=调用 LLM。
     client : OpenAI, optional

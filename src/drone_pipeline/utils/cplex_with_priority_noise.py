@@ -22,6 +22,7 @@ from drone_pipeline.utils.building_data import (
     RESIDENTIAL_LAND_USE,
     load_building_data,
 )
+from drone_pipeline.utils.station_data import load_station_data
 
 # 尝试导入诊断工具（可选）
 try:
@@ -406,7 +407,7 @@ def read_station_data(file_path: str) -> pd.DataFrame:
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"站点数据文件不存在: {file_path}")
     print(f"读取站点数据文件: {file_path}")
-    df = pd.read_excel(file_path)
+    df = load_station_data(file_path)
     print(f"站点数量: {len(df)}")
     return df
 
@@ -454,8 +455,8 @@ def create_points(hospitals: pd.DataFrame,
     for idx, (_, row) in enumerate(selected_stations.iterrows()):
         point = Point(
             id=f"L{idx + 1}",
-            lon=float(row['经度']),
-            lat=float(row['纬度']),
+            lon=float(row["longitude"]),
+            lat=float(row["latitude"]),
             alt=flight_height,
             type='station'
         )

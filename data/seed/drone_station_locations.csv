@@ -1,0 +1,90 @@
+source_sheet,latitude,longitude,station_name,city,platform,notes,additional_notes,service_start_date,service_end_date,service_start_date_is_estimated,service_end_date_is_estimated
+sf_express,22.818233,113.858608,Yan Luo Da Zu Ju Test,Shenzhen,SF Express Fengyi,test_site,,,,False,False
+sf_express,22.817988,113.858199,Yan Luo Test Field,Shenzhen,SF Express Fengyi,test_site,,,,False,False
+sf_express,22.799354,113.879911,Fengyi Drone Yan Luo Air Station,Shenzhen,SF Express Fengyi,,,2020-11-24,2025-10-24,False,False
+sf_express,22.786042,113.88526,Fengyi Drone Tie Jia Air Station,Shenzhen,SF Express Fengyi,,,2020-11-24,2025-10-24,False,False
+sf_express,22.771279,114.104337,Dong Wan 796DN Outlet Air Station,Dongguan,SF Express Fengyi,new_site,,2025-06-17,2025-10-24,True,False
+sf_express,22.778025,113.820252,Fengyi Drone Sha Pu Wei Air Station,Shenzhen,SF Express Fengyi,,,2020-11-24,2025-10-24,False,False
+sf_express,22.770465,113.834327,Fengyi Drone Shen Xiang Industrial Park Air Station,Shenzhen,SF Express Fengyi,,,2020-11-24,2025-10-24,False,False
+sf_express,22.760138,113.870181,Fengyi Drone Da Tian Yang Air Station,Shenzhen,SF Express Fengyi,,,2022-10-07,2025-10-24,False,False
+sf_express,22.762901,113.896166,Fengyi Drone Guang Ming Feng Hui Air Station,Shenzhen,SF Express Fengyi,,,2022-08-01,2025-10-24,False,False
+sf_express,22.741762,114.024485,Fengyi Drone Fu Cheng Air Station,Shenzhen,SF Express Fengyi,,,2024-01-16,2025-10-24,False,False
+sf_express,22.719388,114.047289,Fengyi Drone De Run Air Station,Shenzhen,SF Express Fengyi,,,2023-12-08,2025-10-24,False,False
+sf_express,22.651282,114.153917,Jin Dao Tian Hai Ji Xing Air Station,Shenzhen,SF Express Fengyi,,,2023-12-08,2025-10-24,False,False
+sf_express,22.695892,114.053989,Fengyi Drone Yi Shi Da Air Station,Shenzhen,SF Express Fengyi,,,2023-12-08,2025-10-24,False,False
+sf_express,22.730125,113.797202,Fengyi Drone Jin Cheng Lu Air Station,Shenzhen,SF Express Fengyi,,,2022-04-03,2025-10-24,False,False
+sf_express,22.744423,113.820117,Fengyi Drone Zhong Ya Huo Gu Air Station,Shenzhen,SF Express Fengyi,,,2022-04-03,2025-10-24,False,False
+sf_express,22.713694,114.10189,Long Hua District - He Ji Transfer Hub,Shenzhen,SF Express Fengyi,new_site,,2025-06-17,2025-10-24,False,False
+sf_express,22.727805,113.840365,Fengyi Drone Shang Xing Industrial Area Air Station,Shenzhen,SF Express Fengyi,,,2022-04-03,2025-10-24,False,False
+sf_express,22.721709,113.860163,Xin Fa,Shenzhen,SF Express Fengyi,test_site,,,,False,False
+sf_express,22.714125,113.971375,Fengyi Drone Shui Tian Air Station,Shenzhen,SF Express Fengyi,new_site,,,2025-10-24,False,False
+sf_express,22.721581,113.860365,Fengyi Drone Xin Fa Industrial Area Air Station,Shenzhen,SF Express Fengyi,,,2022-08-01,2025-10-24,False,False
+sf_express,22.734323,113.899633,Fengyi Drone Yu Tang Air Station,Shenzhen,SF Express Fengyi,,,2022-04-03,2025-10-24,False,False
+sf_express,22.748597,113.952784,Nan Yue Guang Ming Ru Ge (Hong Qiao Park Store),Shenzhen,SF Express Fengyi,,,2024-10-10,2025-10-24,False,False
+sf_express,22.718165,113.92394,Fengyi Drone Chang Zhen Air Station,Shenzhen,SF Express Fengyi,,,2024-10-10,2025-10-24,False,False
+sf_express,22.693313,113.923712,Fengyi Delivery Hua Feng Zhen Bao Air Station,Shenzhen,SF Express Fengyi,,,2024-01-16,2025-10-24,False,False
+sf_express,22.675725,113.916031,Fengyi Drone Jun Xing Long Industrial Area Air Station,Shenzhen,SF Express Fengyi,,,2024-01-16,2025-10-24,False,False
+sf_express,22.663632,113.894768,Fengyi Drone Shi Yan Distribution Center Air Station,Shenzhen,SF Express Fengyi,,,2024-08-27,2025-10-24,False,False
+sf_express,22.636627,113.931412,Fengyi Drone Nan Gang Industrial Park Air Station,Shenzhen,SF Express Fengyi,,,2024-01-16,2025-10-24,False,False
+sf_express,22.581341,113.911469,Xin An Fengchao Test Air Station A,Shenzhen,SF Express Fengyi,test_site,,,,False,False
+sf_express,22.580965,113.911625,Fengyi Drone Xin An Chuang Ye Lu Air Station,Shenzhen,SF Express Fengyi,,,2024-08-27,2025-10-24,False,False
+sf_express,22.54456,113.893766,Xie Zhan Basketball Court Air Station,Shenzhen,SF Express Fengyi,,,2024-08-27,2025-10-24,False,False
+sf_express,22.544373,113.893629,Xie Zhan Fengchao Ju Air Station,Shenzhen,SF Express Fengyi,,,2024-08-27,2025-10-24,False,False
+sf_express,22.472706,113.904825,Fengyi Drone She Kou Air Station,Shenzhen,SF Express Fengyi,,,2022-10-07,2025-10-24,False,False
+sf_express,22.712443,114.070132,Fengyi Drone Huan Guan Zhong Lu Air Station,Shenzhen,SF Express Fengyi,,,2023-12-08,2025-10-24,False,False
+sf_express,22.679827,113.986113,Fengyi Drone Da Lang Commercial Center Air Station,Shenzhen,SF Express Fengyi,,,2024-01-16,2025-10-24,False,False
+sf_express,22.685883,113.999753,Fengyi Drone Da Lang Subdistrict Office Air Station,Shenzhen,SF Express Fengyi,,,2024-01-16,2025-10-24,False,False
+sf_express,22.686955,114.02882,Long Hua District - Qian Keng Distribution Hub,Shenzhen,SF Express Fengyi,,,2024-01-16,2025-10-24,False,False
+sf_express,22.672436,114.039368,Fengyi Drone Qing Xiang Lu Air Station,Shenzhen,SF Express Fengyi,,,2024-01-16,2025-10-24,False,False
+sf_express,22.67483,114.032784,Fengyi Drone Hua Lian Community Air Station,Shenzhen,SF Express Fengyi,,,2023-12-08,2025-10-24,False,False
+sf_express,22.666522,114.016399,Fengyi Drone Lao Wei Air Station,Shenzhen,SF Express Fengyi,,,2024-01-16,2025-10-24,False,False
+sf_express,22.660103,113.999547,Fengyi Drone Long Hua Zhi Hui Yun Gu Air Station,Shenzhen,SF Express Fengyi,,,2024-01-16,2025-10-24,False,False
+sf_express,22.644633,114.049026,Fengyi Drone Zhong Jia Chuang Air Station,Shenzhen,SF Express Fengyi,,,2023-12-08,2025-10-24,False,False
+sf_express,22.866958,113.618282,Fengyi Drone Sha Tian Air Station,Dongguan,SF Express Fengyi,,,2024-09-05,2025-10-24,False,False
+sf_express,22.608461,113.317565,Fengyi Drone Xiao Lan Dong Sheng Air Station,Zhongshan,SF Express Fengyi,,,2024-04-12,2025-10-24,False,False
+sf_express,22.311066,113.485559,Fengyi Drone Jie Yong Air Station,Zhuhai,SF Express Fengyi,,,2022-10-21,2025-10-24,False,False
+sf_express,20.354231,110.150142,Xu Wen Outlet Air Station,Zhanjiang,SF Express Fengyi,,,2024-04-03,2025-10-23,False,False
+sf_express,19.976652,110.163347,Hai Kou Transfer Hub Air Station,Haikou,SF Express Fengyi,,,2024-04-03,2025-10-24,False,False
+sf_express,30.037827,114.800292,Shi Long R&D Test B Air Station,Huangshi,SF Express Fengyi,test_site,,,,False,False
+sf_express,30.046971,114.789467,Shi Long R&D Test A Air Station,Huangshi,SF Express Fengyi,test_site,,,,False,False
+sf_express,31.868007,118.830072,Nan Jing Jiang Zhu District Sha Zhi Chuan Mall,Nanjing,SF Express Fengyi,possibly_closed,not_found_when_checked_on_oct_24,2024-06-18,2025-05-01,False,False
+sf_express,31.872339,118.820212,Jiang Su Nan Jing Jiang Zhu District Zi Jin Shan Concrete Pad,Nanjing,SF Express Fengyi,possibly_closed,,2024-06-18,2025-05-01,False,False
+sf_express,31.872074,118.820545,Jiang Su Nan Jing Zi Jin Shan Fengchao Ju,Nanjing,SF Express Fengyi,possibly_closed,,2024-06-18,2025-05-01,False,False
+sf_express,41.098454,111.460805,Fengyi Production Test - 1,Hohhot,SF Express Fengyi,test_site,,,,False,False
+sf_express,41.139634,111.313718,Fengyi Production Test - 2,Hohhot,SF Express Fengyi,test_site,,,,False,False
+meituan,22.549842,114.054661,Meituan Lian Hua Shan Park Drone Drop Cabinet,Shenzhen,Meituan,,,2024-07-24,,False,False
+meituan,22.558199,114.075252,Meituan Bi Jia Shan Sports Park Drone Drop Cabinet,Shenzhen,Meituan,,,2024-09-29,,False,False
+meituan,22.511237,113.946406,Meituan Ren Cai Park Drone Drop Cabinet,Shenzhen,Meituan,,,2023-09-04,,False,False
+meituan,22.518938,113.962585,Meituan Shen Zhen Wan Bei Wan Lu Gang Drone Drop Cabinet,Shenzhen,Meituan,,,2024-06-01,,False,False
+meituan,22.486244,113.945672,Meituan Hai Feng Sports Park Drone Drop Cabinet,Shenzhen,Meituan,,,2022-10-07,2024-05-15,False,False
+meituan,22.542048,114.078383,Meituan Shen Zhen Central Park C2 District Drone Drop Cabinet,Shenzhen,Meituan,,,2024-04-30,,False,False
+meituan,22.547925,114.10164,Meituan Li Zhi Park Drone Drop Cabinet,Shenzhen,Meituan,,,2023-03-10,2024-10-31,False,False
+meituan,22.515935,114.068939,Meituan Fu Tian Port Front Plaza Drone Drop Cabinet,Shenzhen,Meituan,,,2024-10-23,,False,False
+meituan,22.533823,113.970349,Meituan Shi Jie Zhi Chuang Drone Drop Cabinet,Shenzhen,Meituan,,,2023-04-27,,False,False
+meituan,22.531752,113.988423,Meituan Jin Xiu Zhong Hua Drone Drop Cabinet,Shenzhen,Meituan,,,2022-08-01,2024-08-27,False,False
+meituan,22.542121,113.981552,Meituan Huan Le Gu Drone Drop Cabinet,Shenzhen,Meituan,,,2023-09-22,,False,False
+meituan,22.62491,114.022994,Meituan Shen Zhen Library North Branch Drone Drop Cabinet,Shenzhen,Meituan,,,2024-05-27,,False,False
+meituan,22.606574,114.023984,Meituan Bei Zhan Central Park Drone Drop Cabinet,Shenzhen,Meituan,,,2024-08-06,,False,False
+meituan,22.596661,114.037523,Meituan Bai Shi Long Yin Le Zhu Ti Park Drone Drop Cabinet,Shenzhen,Meituan,,,2024-05-27,,False,False
+meituan,22.715567,114.231654,Meituan Long Cheng Park Drone Drop Cabinet,Shenzhen,Meituan,,,2022-03-02,2025-03-04,False,False
+meituan,22.543051,114.022477,Meituan Xiang Mi Park Drone Drop Cabinet,Shenzhen,Meituan,,,2024-12-02,,False,False
+meituan,22.546329,114.057886,Meituan Shen Zhen Library Central Branch Drone Drop Cabinet,Shenzhen,Meituan,,,2025-01-16,,False,False
+meituan,22.557316,113.961324,Meituan Da Sha He Park Drone Drop Cabinet,Shenzhen,Meituan,,,2021-02-01,2024-08-27,False,False
+meituan,22.519846,114.056941,Meituan Huang Gang Park Drone Drop Cabinet,Shenzhen,Meituan,,,2025-04-03,,False,False
+meituan,22.585668,113.899212,Meituan Bao An Park Drone Drop Cabinet,Shenzhen,Meituan,,,2024-10-31,2025-05-01,False,False
+meituan,22.657783,114.017077,Meituan Long Hua Park Drone Drop Cabinet,Shenzhen,Meituan,,,2024-01-06,2024-10-31,False,False
+meituan,22.605279,114.063393,Meituan Xing He Yin Hu Gu Drone Drop Cabinet,Shenzhen,Meituan,,,2021-12-17,,False,False
+meituan,22.618091,114.031385,Meituan Hong Rong Yuan Tian Jun Drone Drop Cabinet,Shenzhen,Meituan,,,2024-01-16,2024-10-31,False,False
+meituan,22.611095,114.032841,Meituan Hui Long Shang Wu Zhong Xin Bei Ta Drone Drop Cabinet,Shenzhen,Meituan,,,2023-05-22,,False,False
+meituan,22.587916,113.992636,Meituan Nan Shan Zhi Yuan Chong Wen Campus Drone Drop Cabinet,Shenzhen,Meituan,,,2024-11-15,,False,False
+meituan,22.596159,114.006668,Meituan Nan Shan Zhi Yuan Phase 2 Drone Drop Cabinet,Shenzhen,Meituan,,,2024-11-15,,False,False
+meituan,22.595597,113.991027,Meituan CAS Shen Zhen Institute of Advanced Technology Drone Drop Cabinet,Shenzhen,Meituan,,,2022-08-24,2024-10-31,False,False
+meituan,22.593034,113.967624,Meituan Qing Hua Shen Zhen Guo Ji Yuan He Yuan Drone Drop Cabinet,Shenzhen,Meituan,,,2022-08-27,2024-10-31,False,False
+meituan,22.59178,113.978315,Meituan Peking University Shen Zhen Graduate School Drone Drop Cabinet,Shenzhen,Meituan,,,2024-03-01,,False,False
+meituan,22.586291,113.982216,Meituan Tsinghua University Shen Zhen International Graduate School Drone Drop Cabinet,Shenzhen,Meituan,,,2023-12-19,,False,False
+meituan,22.54145,114.051568,Meituan Yan Dian Jin Rong Zhong Xin Drone Drop Cabinet,Shenzhen,Meituan,,,2023-03-10,2024-10-31,False,False
+meituan,22.535007,114.056657,Meituan Jie Ri Avenue Jia Li Jian She Plaza Drone Drop Cabinet,Shenzhen,Meituan,,,2024-11-18,,False,False
+meituan,31.293481,121.529594,Meituan Huang Xing Park Drone Drop Cabinet,Shanghai,Meituan,,,2024-07-10,,False,False
+meituan,31.27153,121.528883,Meituan Hu Lian Bao Di Drone Drop Cabinet,Shanghai,Meituan,,,2024-05-16,2025-05-01,False,False
+meituan,31.301158,121.508665,Meituan Fudan University Han Dan Campus East Area Dormitories Drone Drop Cabinet,Shanghai,Meituan,,,2025-02-20,,False,False
+meituan,40.350284,116.00948,Meituan Ba Da Ling Great Wall Nan Wu Lou Drone Meal Pickup Point,Beijing,Meituan,,,2024-08-16,,False,False
