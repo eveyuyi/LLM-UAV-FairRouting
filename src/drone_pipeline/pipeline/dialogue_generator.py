@@ -1,5 +1,5 @@
 """
-Module 1: Dialogue Generator — 从 demand_events_5min.csv 读取结构化需求事件，
+Module 1: Dialogue Generator — 从 daily_demand_events.csv 读取结构化需求事件，
 生成 Module 2 所需的对话 JSON 格式数据。
 
 需求层级（优先级由高到低）：
@@ -25,6 +25,8 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 if TYPE_CHECKING:
     from openai import OpenAI
+
+from drone_pipeline.seed_data import DEMAND_EVENTS_FILENAME, DEMAND_EVENTS_PATH, STATION_DATA_FILENAME
 
 
 # ============================================================================
@@ -353,12 +355,19 @@ def _pick_tier_template(tier: str, material: str, rng: random.Random) -> str:
     return rng.choice(templates)
 
 
+def _pick_template(priority: int, material: str) -> str:
+    """兼容旧测试/调用方的模板选择入口。"""
+    tier = _map_priority_to_tier(priority)
+    rng = random.Random(hash((priority, material)))
+    return _pick_tier_template(tier, material, rng)
+
+
 # ============================================================================
 # 数据加载
 # ============================================================================
 
 def load_stations(xlsx_path: str) -> List[Dict]:
-    """从 latest_location.xlsx 读取站点数据，返回深圳站点列表。
+    """从 drone_station_locations.xlsx 读取站点数据，返回深圳站点列表。
 
     每个站点格式::
 
@@ -414,17 +423,45 @@ def load_stations(xlsx_path: str) -> List[Dict]:
     return stations
 
 
+def _infer_material_type(supply_type: str, priority: int, unique_id: str = "") -> str:
+    """Infer material type from supply_type and priority (for CSV without material_type).
+
+    Medical (医疗) supply types map to clinical materials;
+    Commercial (商业) supply types map to consumer goods.
+    Priority determines urgency tier but not material category.
+    """
+    rng = random.Random(hash(unique_id))
+    if supply_type == "医疗":
+        if priority == 1:
+            return rng.choice(["cardiac_drug", "blood_product", "aed", "thrombolytic"])
+        elif priority == 2:
+            return rng.choice(["ventilator", "icu_drug"])
+        elif priority == 3:
+            return rng.choice(["vaccine", "medicine", "protective_suit"])
+        else:
+            return rng.choice(["medicine", "vaccine"])
+    else:  # 商业 or other
+        if priority == 1:
+            return rng.choice(["medicine", "protective_suit", "disinfectant"])
+        elif priority == 2:
+            return rng.choice(["medicine", "mask", "disinfectant"])
+        elif priority == 3:
+            return rng.choice(["food", "mask", "daily_supply"])
+        else:
+            return rng.choice(["food", "daily_supply", "otc_drug"])
+
+
 def load_demand_events(
     csv_path: str,
     n_events: Optional[int] = None,
     time_slots: Optional[List[int]] = None,
 ) -> List[Dict]:
-    """从 demand_events_5min.csv 读取需求事件。
+    """读取需求事件 CSV（支持旧 demand_events_5min.csv 和新 daily_demand_events.csv）。
 
     Parameters
     ----------
     csv_path : str
-        demand_events_5min.csv 的路径。
+        CSV 路径。
     n_events : int, optional
         若指定，随机采样不超过该数量的事件。
     time_slots : list[int], optional
@@ -435,7 +472,36 @@ def load_demand_events(
     except ImportError:
         raise ImportError("需要 pandas: pip install pandas")
 
-    df = pd.read_csv(csv_path)
+    df = pd.read_csv(csv_path, encoding="utf-8-sig")
+
+    # Auto-detect new CSV format: has "time" (float hours) instead of "time_slot" (int)
+    if "time" in df.columns and "time_slot" not in df.columns:
+        df["time_slot"] = (df["time"] * 12).round().astype(int)
+
+    # Rename new CSV columns to match expected schema
+    rename_map = {}
+    if "unique_id" in df.columns and "event_id" not in df.columns:
+        rename_map["unique_id"] = "event_id"
+    if "demand_fid" in df.columns and "demand_node_id" not in df.columns:
+        rename_map["demand_fid"] = "demand_node_id"
+    if "material_weight" in df.columns and "quantity_kg" not in df.columns:
+        rename_map["material_weight"] = "quantity_kg"
+    if rename_map:
+        df = df.rename(columns=rename_map)
+
+    # Infer material_type from supply_type if not present
+    if "material_type" not in df.columns:
+        if "supply_type" in df.columns:
+            df["material_type"] = df.apply(
+                lambda row: _infer_material_type(
+                    str(row.get("supply_type", "")),
+                    int(row.get("priority", 3)),
+                    str(row.get("event_id", "")),
+                ),
+                axis=1,
+            )
+        else:
+            df["material_type"] = "medicine"
 
     if time_slots is not None:
         df = df[df["time_slot"].isin(time_slots)]
@@ -469,6 +535,22 @@ def _find_nearest_station(lon: float, lat: float, stations: List[Dict]) -> Dict:
 # 事件 → dialogue record
 # ============================================================================
 
+def _supply_to_station(event: Dict) -> Dict:
+    """Build a station-like dict from CSV supply point info."""
+    supply_fid = str(event.get("supply_fid", ""))
+    supply_type = str(event.get("supply_type", ""))
+    if supply_type == "医疗":
+        name = f"Medical Supply Center {supply_fid}"
+    else:
+        name = f"Commercial Distribution Hub {supply_fid}"
+    return {
+        "station_id": supply_fid,
+        "name": name,
+        "lon": float(event["supply_lon"]),
+        "lat": float(event["supply_lat"]),
+    }
+
+
 def _event_to_dialogue(
     event: Dict,
     stations: List[Dict],
@@ -481,9 +563,9 @@ def _event_to_dialogue(
     Parameters
     ----------
     event : dict
-        demand_events_5min.csv 的一行。
+        需求事件的一行（支持新旧 CSV 格式）。
     stations : list[dict]
-        站点列表（已按 load_stations() 格式化）。
+        站点列表（已按 load_stations() 格式化）。可为空列表。
     base_date : str
         日期字符串，如 "2024-03-15"，time_slot=0 对应 00:00:00。
     dialogue_idx : int
@@ -503,12 +585,22 @@ def _event_to_dialogue(
     qty_kg = float(event.get("quantity_kg", 1.0))
     priority = int(event.get("priority", 3))
     demand_node_id = str(event.get("demand_node_id", f"D{dialogue_idx}"))
-    dest_fid = int(event.get("demand_node_index", dialogue_idx))
+    dest_fid = event.get("demand_node_index", event.get("demand_node_id", f"D{dialogue_idx}"))
 
-    # Map CSV priority directly to demand tier (no material override)
     tier = _map_priority_to_tier(priority)
 
-    station = _find_nearest_station(dest_lon, dest_lat, stations)
+    # Use supply point from CSV if available, otherwise find nearest station
+    if event.get("supply_lon") is not None and event.get("supply_lat") is not None:
+        station = _supply_to_station(event)
+    elif stations:
+        station = _find_nearest_station(dest_lon, dest_lat, stations)
+    else:
+        station = {
+            "station_id": f"ST{dialogue_idx:03d}",
+            "name": f"Station-{dialogue_idx}",
+            "lon": dest_lon,
+            "lat": dest_lat,
+        }
 
     if conversation is None:
         conversation = _generate_rule_conversation(
@@ -549,6 +641,7 @@ def _event_to_dialogue(
             "requester_role": requester_role,
             "demand_type": str(event.get("demand_type", "")),
             "supply_station_name": station["name"],
+            "supply_type": str(event.get("supply_type", "")),
         },
     }
 
@@ -559,10 +652,12 @@ def _generate_rule_conversation(
     material: str,
     qty_kg: float,
     priority: int,
-    tier: str,
+    tier: Optional[str] = None,
     ts_hhmm: str = "09:00",
 ) -> str:
     """Generate a multi-turn English dialogue from tier × material templates."""
+    if tier is None:
+        tier = _map_priority_to_tier(priority)
     mat_en = MATERIAL_EN.get(material, material)
     deadline = PRIORITY_DEADLINE.get(priority, 60)
 
@@ -590,8 +685,10 @@ def _generate_rule_conversation(
     )
 
 
-def _infer_poi(material: str, priority: int, tier: str) -> List[str]:
+def _infer_poi(material: str, priority: int, tier: Optional[str] = None) -> List[str]:
     """根据物资类型和需求层级推断附近兴趣点。"""
+    if tier is None:
+        tier = _map_priority_to_tier(priority)
     poi_map = {
         "aed":              ["public_space", "residential", "community_center"],
         "cardiac_drug":     ["hospital", "emergency_room", "icu_unit"],
@@ -756,7 +853,7 @@ def _parse_llm_batch_response(raw: str, batch: List[Dict]) -> Dict[str, str]:
 
 def generate_dialogues(
     csv_path: str,
-    xlsx_path: str,
+    xlsx_path: Optional[str] = None,
     offline: bool = True,
     client: Optional["OpenAI"] = None,
     model: str = "gpt-4o-mini",
@@ -771,9 +868,10 @@ def generate_dialogues(
     Parameters
     ----------
     csv_path : str
-        demand_events_5min.csv 路径。
-    xlsx_path : str
-        latest_location.xlsx（站点数据）路径。
+        需求事件 CSV 路径（支持旧 demand_events_5min.csv 和新
+        daily_demand_events.csv 格式）。
+    xlsx_path : str, optional
+        drone_station_locations.xlsx（站点数据）路径。当 CSV 内含供给点信息时可省略。
     offline : bool
         True=规则模式，False=调用 LLM。
     client : OpenAI, optional
@@ -791,10 +889,13 @@ def generate_dialogues(
     batch_size : int
         LLM 批处理大小（仅 online 模式生效）。
     """
-    stations = load_stations(xlsx_path)
-    if not stations:
-        raise ValueError(f"未能从 {xlsx_path} 加载任何站点数据")
-    print(f"[Module 1] 加载 {len(stations)} 个站点")
+    stations: List[Dict] = []
+    if xlsx_path:
+        try:
+            stations = load_stations(xlsx_path)
+            print(f"[Module 1] 加载 {len(stations)} 个站点")
+        except Exception as e:
+            print(f"[Module 1] 站点数据加载失败 ({e})，将使用 CSV 中的供给点信息")
 
     events = load_demand_events(csv_path, n_events=n_events, time_slots=time_slots)
     if not events:
@@ -835,13 +936,13 @@ def main():
     parser = argparse.ArgumentParser(description="Module 1: Dialogue Generator")
     parser.add_argument(
         "--csv", type=str,
-        default=str(PROJECT_ROOT / "data" / "seed" / "demand_events_5min.csv"),
-        help="demand_events_5min.csv 路径",
+        default=str(DEMAND_EVENTS_PATH),
+        help=f"需求事件 CSV 路径（默认 {DEMAND_EVENTS_FILENAME}）",
     )
     parser.add_argument(
         "--stations", type=str,
-        default=str(PROJECT_ROOT / "data" / "seed" / "latest_location.xlsx"),
-        help="latest_location.xlsx 路径",
+        default=None,
+        help=f"{STATION_DATA_FILENAME} 路径（CSV 含供给点信息时可省略）",
     )
     parser.add_argument(
         "--output", type=str,

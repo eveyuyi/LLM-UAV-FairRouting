@@ -6,14 +6,14 @@
   (默认)      调用 LLM API 进行对话生成 + context extraction + weight adjustment
 
 Module 1 数据来源（优先级由高到低）:
-  1. --csv + --stations  从 demand_events_5min.csv 生成对话（推荐）
+  1. --csv + --stations  从 daily_demand_events.csv 生成对话（推荐）
   2. --dialogues         直接加载已有 JSONL 对话文件（兼容旧流程）
 """
 
 import argparse
 import json
 import os
-import time
+from datetime import datetime
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -22,67 +22,24 @@ from typing import Dict, List, Optional
 from drone_pipeline.pipeline.context_extractor import (
     extract_all_demands,
     extract_demands_offline,
-    group_by_time_window,
+)
+from drone_pipeline.pipeline.solver_runner import (
+    serialize_pipeline_results,
+    solve_window_demands,
 )
 from drone_pipeline.pipeline.weight_adjuster import adjust_weights, adjust_weights_offline
+from drone_pipeline.seed_data import DEMAND_EVENTS_FILENAME, DEMAND_EVENTS_PATH, STATION_DATA_FILENAME
 
 
-# ============================================================================
-# 从 Module 2 的需求构建求解器输入
-# ============================================================================
+def _build_run_dir(base_dir: Path, model: str, noise_weight: float) -> Path:
+    """Create a timestamped run directory under *base_dir*.
 
-def _demands_to_solver_inputs(demands: List[Dict]) -> tuple:
-    """从结构化需求构建 supply_points, demand_points, demand_weights。
-
-    注意：station_points 需要外部提供（来自站点数据文件）。
+    Format: ``<base_dir>/run_<YYYYMMDD_HHMMSS>_<model>_noise<w>/``
     """
-    from drone_pipeline.utils.drone_cplex_real_data import Point
-
-    supply_set = {}
-    demand_points = []
-    demand_weights = []
-
-    for d in demands:
-        origin = d.get("origin", {})
-        ofid = origin.get("fid")
-        if ofid and ofid not in supply_set:
-            coords = origin.get("coords", [0, 0])
-            supply_set[ofid] = Point(
-                id=f"S_{ofid}",
-                lon=coords[0],
-                lat=coords[1],
-                alt=50.0,
-                type="supply",
-            )
-
-        dest = d.get("destination", {})
-        dfid = dest.get("fid")
-        coords = dest.get("coords", [0, 0])
-        demand_points.append(Point(
-            id=f"D_{dfid}",
-            lon=coords[0],
-            lat=coords[1],
-            alt=50.0,
-            type="demand",
-        ))
-
-        cargo = d.get("cargo", {})
-        demand_weights.append(cargo.get("weight_kg", 2.0))
-
-    supply_points = list(supply_set.values())
-    return supply_points, demand_points, demand_weights
-
-
-def _create_mock_stations(n: int = 3) -> list:
-    """创建 mock 站点（当没有站点数据文件时使用）。"""
-    from drone_pipeline.utils.drone_cplex_real_data import Point
-
-    stations = [
-        Point(id="L1", lon=113.85, lat=22.68, alt=50.0, type="station"),
-        Point(id="L2", lon=113.92, lat=22.68, alt=50.0, type="station"),
-        Point(id="L3", lon=113.82, lat=22.67, alt=50.0, type="station"),
-    ]
-    return stations[:n]
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    tag = model.replace("/", "-")
+    run_name = f"run_{ts}_{tag}_noise{noise_weight}"
+    return base_dir / run_name
 
 
 # ============================================================================
@@ -114,11 +71,43 @@ def run_pipeline(
     max_drones_per_station: int = 6,
     max_payload: float = 25.0,
     max_range: float = 40000.0,
+    max_solver_stations: Optional[int] = 10,
     skip_solver: bool = False,
+    # Noise 参数
+    noise_weight: float = 0.0,
 ):
     """端到端运行 pipeline（Module 1 → Module 2 → Module 3）。"""
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    base_dir = Path(output_dir)
+    run_dir = _build_run_dir(base_dir, model, noise_weight)
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    weight_configs_dir = run_dir / "weight_configs"
+    weight_configs_dir.mkdir(exist_ok=True)
+
+    # Save run metadata for reproducibility
+    run_meta = {
+        "created_at": datetime.now().isoformat(),
+        "model": model,
+        "offline": offline,
+        "noise_weight": noise_weight,
+        "temperature": temperature,
+        "window_minutes": window_minutes,
+        "time_limit": time_limit,
+        "max_drones_per_station": max_drones_per_station,
+        "max_payload": max_payload,
+        "max_range": max_range,
+        "max_solver_stations": max_solver_stations,
+        "csv_path": csv_path,
+        "stations_path": stations_path,
+        "dialogue_path": dialogue_path,
+        "time_slots": time_slots,
+        "base_date": base_date,
+        "skip_solver": skip_solver,
+    }
+    with open(run_dir / "run_meta.json", "w", encoding="utf-8") as f:
+        json.dump(run_meta, f, ensure_ascii=False, indent=2)
+    print(f"Run directory: {run_dir}")
+
     client = None
 
     if not offline:
@@ -136,8 +125,8 @@ def run_pipeline(
     print("Step 1: 对话生成 (Module 1)")
     print("=" * 60)
 
-    if csv_path and stations_path:
-        # 新路径：从 demand_events_5min.csv 生成对话
+    if csv_path:
+        # 从 CSV 生成对话（stations_path 可选）
         from drone_pipeline.pipeline.dialogue_generator import generate_dialogues
         dialogues = generate_dialogues(
             csv_path=csv_path,
@@ -151,8 +140,7 @@ def run_pipeline(
             temperature=temperature,
             batch_size=dialogue_batch_size,
         )
-        # 保存生成的对话（方便复用）
-        dlg_out = output_dir / "generated_dialogues.jsonl"
+        dlg_out = run_dir / "generated_dialogues.jsonl"
         from drone_pipeline.pipeline.dialogue_generator import save_dialogues
         save_dialogues(dialogues, str(dlg_out))
     elif dialogue_path:
@@ -162,7 +150,7 @@ def run_pipeline(
         print(f"  加载 {len(dialogues)} 条对话（来自文件: {dialogue_path}）")
     else:
         raise ValueError(
-            "必须提供 csv_path + stations_path（从 CSV 生成对话）"
+            "必须提供 csv_path（从 CSV 生成对话）"
             " 或 dialogue_path（直接加载 JSONL 文件）"
         )
 
@@ -182,7 +170,7 @@ def run_pipeline(
             dialogues, client, model, window_minutes, temperature,
         )
 
-    demands_path = output_dir / "extracted_demands.json"
+    demands_path = run_dir / "extracted_demands.json"
     with open(demands_path, "w", encoding="utf-8") as f:
         json.dump(window_results, f, ensure_ascii=False, indent=2)
     print(f"  需求保存至 {demands_path}")
@@ -217,8 +205,7 @@ def run_pipeline(
 
         weight_config["time_window"] = tw
 
-        # 保存权重配置
-        wc_path = output_dir / f"weight_config_{w_idx}.json"
+        wc_path = weight_configs_dir / f"weight_config_window{w_idx}.json"
         with open(wc_path, "w", encoding="utf-8") as f:
             json.dump(weight_config, f, ensure_ascii=False, indent=2)
 
@@ -235,230 +222,33 @@ def run_pipeline(
             })
             continue
 
-        # 3b: 构建求解器输入 — 过滤超载需求
-        feasible_demands = [
-            d for d in demands
-            if d.get("cargo", {}).get("weight_kg", 0) <= max_payload
-        ]
-        skipped = len(demands) - len(feasible_demands)
-        if skipped:
-            print(f"  跳过 {skipped} 条超载需求 (>{max_payload}kg)")
-        if not feasible_demands:
-            print(f"  无可行需求，跳过")
-            all_solutions.append({
-                "time_window": tw,
-                "weight_config": weight_config,
-                "feasible_demands": [],
-                "n_demands_total": len(demands),
-                "n_demands_filtered": skipped,
-                "solution": None,
-                "n_supply": 0,
-            })
-            continue
-
-        # 同步更新 weight_config 中的 demand_configs
-        feasible_ids = {d["demand_id"] for d in feasible_demands}
-        weight_config["demand_configs"] = [
-            dc for dc in weight_config.get("demand_configs", [])
-            if dc["demand_id"] in feasible_ids
-        ]
-
-        supply_pts, demand_pts, d_weights = _demands_to_solver_inputs(feasible_demands)
-        station_pts = _create_mock_stations()
-
-        if not supply_pts or not demand_pts:
-            print(f"  供给点或需求点为空，跳过")
-            continue
-
-        print(f"  供给点 {len(supply_pts)}, 需求点 {len(demand_pts)}, "
-              f"站点 {len(station_pts)}")
-
-        from drone_pipeline.utils.drone_cplex_real_data import create_drones, calculate_distance_matrix
-        from drone_pipeline.utils.drone_solver import build_solver_from_pipeline
-
-        drones = create_drones(
-            station_pts,
-            drones_per_station=max_drones_per_station,
-            max_payload=max_payload,
-            max_range=max_range,
+        all_solutions.append(
+            solve_window_demands(
+                time_window=tw,
+                demands=demands,
+                weight_config=weight_config,
+                stations_path=stations_path,
+                max_solver_stations=max_solver_stations,
+                time_limit=time_limit,
+                max_drones_per_station=max_drones_per_station,
+                max_payload=max_payload,
+                max_range=max_range,
+                noise_weight=noise_weight,
+            )
         )
-
-        dist_info = calculate_distance_matrix(supply_pts, demand_pts, station_pts)
-
-        solver = build_solver_from_pipeline(
-            demands=demands,
-            weight_config=weight_config,
-            supply_points=supply_pts,
-            demand_points=demand_pts,
-            station_points=station_pts,
-            demand_weights=d_weights,
-            drones=drones,
-            dist_info=dist_info,
-        )
-
-        solver.build_model()
-
-        try:
-            solution = solver.solve(time_limit=time_limit)
-            solver.print_solution()
-        except Exception as e:
-            print(f"  求解失败: {e}")
-            solution = None
-
-        all_solutions.append({
-            "time_window": tw,
-            "weight_config": weight_config,
-            "feasible_demands": feasible_demands,
-            "n_demands_total": len(demands),
-            "n_demands_filtered": skipped,
-            "solution": solution,
-            "n_supply": len(supply_pts),
-        })
 
     # ----------------------------------------------------------------
     # 保存汇总结果（含完整 eval 字段）
     # ----------------------------------------------------------------
-    summary_path = output_dir / "pipeline_results.json"
-    serializable = []
-    for s in all_solutions:
-        wc = s["weight_config"]
-        sol = s["solution"]
-        feasible_demands = s.get("feasible_demands", [])
-        n_supply = s.get("n_supply", 0)
-
-        entry: Dict = {
-            "time_window": s["time_window"],
-            "n_demands_extracted": s.get("n_demands_total", len(feasible_demands)),
-            "n_demands_feasible": len(feasible_demands),
-            "n_demands_filtered": s.get("n_demands_filtered", 0),
-            "has_solution": sol is not None,
-            "global_weights": wc.get("global_weights", {}),
-            "n_supplementary_constraints": len(wc.get("supplementary_constraints", [])),
-        }
-
-        if sol:
-            cruise_speed = 15.0  # m/s default
-            total_dist = sol.get("total_distance", 0.0)
-
-            entry.update({
-                "solve_status": sol.get("solve_status", "unknown"),
-                "solve_time_s": sol.get("solve_time_s", 0.0),
-                "objective_value": sol.get("objective_value", total_dist),
-                "drones_used": sol.get("drones_used", 0),
-                "total_distance_m": round(total_dist, 2),
-                "total_estimated_time_s": round(total_dist / cruise_speed, 1),
-                "cruise_speed_ms": cruise_speed,
-            })
-
-            # Build demand_id → weight config map
-            dc_map = {
-                dc["demand_id"]: dc
-                for dc in wc.get("demand_configs", [])
-            }
-
-            # Map served demands: local_demand_idx → (drone_id, delivery_time_s)
-            served_map: Dict[int, str] = {}
-            delivery_time_map: Dict[int, float] = {}
-            for assign in sol.get("assignments", []):
-                ddt = assign.get("demand_delivery_times_s", {})
-                for node_idx in assign.get("demand_indices", []):
-                    local_idx = node_idx - n_supply
-                    served_map[local_idx] = assign["drone_id"]
-                    if node_idx in ddt:
-                        delivery_time_map[local_idx] = ddt[node_idx]
-
-            # Per-demand results
-            per_demand = []
-            for i, fd in enumerate(feasible_demands):
-                did = fd.get("demand_id", f"D{i+1}")
-                dc = dc_map.get(did, {})
-                cargo = fd.get("cargo", {})
-                origin = fd.get("origin", {})
-                dest = fd.get("destination", {})
-                vuln = fd.get("priority_evaluation_signals", {}).get(
-                    "population_vulnerability", {}
-                )
-                per_demand.append({
-                    "demand_id": did,
-                    "source_dialogue_id": fd.get("source_dialogue_id"),
-                    "demand_tier": fd.get("demand_tier", cargo.get("demand_tier", "")),
-                    "cargo_type": cargo.get("type", ""),
-                    "cargo_type_cn": cargo.get("type_cn", ""),
-                    "weight_kg": cargo.get("weight_kg", 0.0),
-                    "temperature_sensitive": cargo.get("temperature_sensitive", False),
-                    "alpha": dc.get("alpha", 1.0),
-                    "beta": dc.get("beta", 1.0),
-                    "priority": dc.get("priority", 3),
-                    "llm_reasoning": dc.get("reasoning", ""),
-                    "elderly_involved": vuln.get("elderly_involved", False),
-                    "vulnerable_community": vuln.get("vulnerable_community", False),
-                    "time_sensitivity": fd.get("priority_evaluation_signals", {}).get(
-                        "time_sensitivity", ""
-                    ),
-                    "requester_role": fd.get("priority_evaluation_signals", {}).get(
-                        "requester_role", ""
-                    ),
-                    "nearby_facility": fd.get("priority_evaluation_signals", {}).get(
-                        "nearby_critical_facility", ""
-                    ),
-                    "is_served": i in served_map,
-                    "assigned_drone": served_map.get(i),
-                    "delivery_time_s": delivery_time_map.get(i),
-                    "delivery_time_min": round(delivery_time_map[i] / 60, 2) if i in delivery_time_map else None,
-                    "origin_fid": origin.get("fid"),
-                    "origin_coords": origin.get("coords", []),
-                    "dest_fid": dest.get("fid"),
-                    "dest_coords": dest.get("coords", []),
-                    "dest_type": dest.get("type", ""),
-                })
-
-            n_served = sum(1 for d in per_demand if d["is_served"])
-            entry["n_demands_served"] = n_served
-            entry["service_rate"] = round(n_served / len(feasible_demands), 3) if feasible_demands else 0.0
-            entry["per_demand_results"] = per_demand
-
-            # Per-drone details
-            per_drone = []
-            paths = sol.get("paths", [])
-            for i_a, assign in enumerate(sol.get("assignments", [])):
-                local_idxs = [
-                    node_idx - n_supply
-                    for node_idx in assign.get("demand_indices", [])
-                ]
-                total_weight = sum(
-                    feasible_demands[i].get("cargo", {}).get("weight_kg", 0.0)
-                    for i in local_idxs
-                    if 0 <= i < len(feasible_demands)
-                )
-                demand_ids_served = [
-                    feasible_demands[i].get("demand_id", f"D{i+1}")
-                    for i in local_idxs
-                    if 0 <= i < len(feasible_demands)
-                ]
-                per_drone.append({
-                    "drone_id": assign.get("drone_id"),
-                    "station_name": assign.get("station_name", ""),
-                    "station_id": assign.get("station_id", -1),
-                    "supply_idx": assign.get("supply_idx", -1),
-                    "n_demands_served": len(demand_ids_served),
-                    "total_weight_kg": round(total_weight, 3),
-                    "demand_ids_served": demand_ids_served,
-                    "path_str": assign.get("path_str", ""),
-                    "path_labels": assign.get("path_labels", []),
-                    "path_node_indices": paths[i_a] if i_a < len(paths) else [],
-                    "total_mission_time_s": assign.get("total_mission_time_s"),
-                    "total_mission_time_min": round(assign["total_mission_time_s"] / 60, 2) if assign.get("total_mission_time_s") else None,
-                })
-
-            entry["per_drone_details"] = per_drone
-
-        serializable.append(entry)
-
+    summary_path = run_dir / "pipeline_results.json"
     with open(summary_path, "w", encoding="utf-8") as f:
-        json.dump(serializable, f, ensure_ascii=False, indent=2)
+        json.dump(serialize_pipeline_results(all_solutions), f, ensure_ascii=False, indent=2)
 
     print(f"\n{'=' * 60}")
-    print(f"Pipeline 完成！结果保存至 {output_dir}")
+    print(f"Pipeline 完成！结果保存至:")
+    print(f"  Run directory   : {run_dir}")
+    print(f"  Weight configs  : {weight_configs_dir}")
+    print(f"  Pipeline results: {summary_path}")
     print(f"{'=' * 60}")
 
     return all_solutions
@@ -488,13 +278,13 @@ def main():
     src_group = parser.add_argument_group("Module 1 数据来源")
     src_group.add_argument(
         "--csv", type=str,
-        default=str(PROJECT_ROOT / "data" / "seed" / "demand_events_5min.csv"),
-        help="demand_events_5min.csv 路径（与 --stations 一起使用）",
+        default=str(DEMAND_EVENTS_PATH),
+        help=f"需求事件 CSV 路径（默认 {DEMAND_EVENTS_FILENAME}）",
     )
     src_group.add_argument(
         "--stations", type=str,
-        default=str(PROJECT_ROOT / "data" / "seed" / "latest_location.xlsx"),
-        help="latest_location.xlsx 站点数据路径",
+        default=None,
+        help=f"{STATION_DATA_FILENAME} 站点数据路径（CSV 含供给点信息时可省略）",
     )
     src_group.add_argument(
         "--dialogues", type=str, default=None,
@@ -503,8 +293,8 @@ def main():
 
     parser.add_argument(
         "--output-dir", type=str,
-        default=str(PROJECT_ROOT / "data" / "drone" / "pipeline_output"),
-        help="输出目录",
+        default=str(PROJECT_ROOT / "results"),
+        help="输出根目录（每次运行自动创建带时间戳的子目录）",
     )
     parser.add_argument("--offline", action="store_true", help="离线模式，不调用 LLM")
     parser.add_argument("--skip-solver", action="store_true", help="跳过 CPLEX 求解")
@@ -512,7 +302,7 @@ def main():
     parser.add_argument("--api-key", type=str, default=None)
     parser.add_argument("--model", type=str, default="gpt-4o-mini")
     parser.add_argument("--temperature", type=float, default=0.0)
-    parser.add_argument("--window", type=int, default=5, help="时间窗口（分钟），默认 5 以匹配 demand_events_5min.csv 粒度")
+    parser.add_argument("--window", type=int, default=5, help="时间窗口（分钟），默认 5 以匹配需求事件的 5 分钟粒度")
     parser.add_argument("--time-limit", type=int, default=300, help="求解器时间限制（秒）")
     parser.add_argument("--n-events", type=int, default=None, help="最多处理的事件数")
     parser.add_argument("--time-slots", type=int, nargs="+", default=None,
@@ -520,6 +310,14 @@ def main():
     parser.add_argument("--base-date", type=str, default="2024-03-15", help="基准日期")
     parser.add_argument("--dialogue-batch-size", type=int, default=5,
                         help="LLM 对话生成批大小")
+    parser.add_argument(
+        "--max-solver-stations",
+        type=int,
+        default=10,
+        help="求解时最多使用多少个真实站点；0 表示使用全部",
+    )
+    parser.add_argument("--noise-weight", type=float, default=0.0,
+                        help="噪声成本权重（>0 启用噪声优先级，按 1/priority 加权）")
     args = parser.parse_args()
 
     # 确定 Module 1 数据来源
@@ -529,9 +327,9 @@ def main():
         # 显式指定了旧格式文件
         dialogue_path = args.dialogues
     else:
-        # 默认从 CSV 生成
+        # 默认从 CSV 生成（stations 可选）
         csv_path = args.csv
-        stations_path = args.stations
+        stations_path = args.stations  # may be None
         dialogue_path = None
 
     run_pipeline(
@@ -550,7 +348,9 @@ def main():
         dialogue_batch_size=args.dialogue_batch_size,
         window_minutes=args.window,
         time_limit=args.time_limit,
+        max_solver_stations=args.max_solver_stations,
         skip_solver=args.skip_solver,
+        noise_weight=args.noise_weight,
     )
 
 

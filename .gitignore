@@ -7,6 +7,7 @@ __pycache__/
 .venv/
 venv/
 .env
+.cursor/
 
 build/
 dist/
@@ -16,3 +17,4 @@ dist/
 
 # Generated outputs
 /data/drone/
+/results/
