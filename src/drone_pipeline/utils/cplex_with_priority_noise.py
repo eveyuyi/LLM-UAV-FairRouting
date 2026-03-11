@@ -16,6 +16,8 @@ from pyomo.environ import (
     SolverFactory, Binary, minimize, value, TerminationCondition
 )
 
+from drone_pipeline.seed_data import BUILDING_DATA_PATH, STATION_DATA_PATH
+
 # 尝试导入诊断工具（可选）
 try:
     from pyomo.contrib.iis import write_iis, log_infeasible_constraints
@@ -1327,8 +1329,8 @@ def main():
 
     # 读取数据
     try:
-        hospitals, residences = read_building_data("target_area.xlsx")
-        stations_df = read_station_data("latest_location.xlsx")
+        hospitals, residences = read_building_data(str(BUILDING_DATA_PATH))
+        stations_df = read_station_data(str(STATION_DATA_PATH))
 
         # 配置：2个供给点，4个需求点，1个站点
         supply_points, demand_points, station_points = create_points(

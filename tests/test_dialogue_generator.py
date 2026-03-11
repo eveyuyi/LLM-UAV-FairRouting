@@ -26,6 +26,7 @@ from drone_pipeline.pipeline.dialogue_generator import (
     load_stations,
     save_dialogues,
 )
+from drone_pipeline.seed_data import DEMAND_EVENTS_PATH, STATION_DATA_PATH
 
 # ============================================================================
 # 测试固件
@@ -282,8 +283,8 @@ class TestSaveDialogues:
 # 真实文件测试（integration）
 # ============================================================================
 
-CSV_PATH = str(PROJECT_ROOT / "data" / "seed" / "demand_events_5min.csv")
-XLSX_PATH = str(PROJECT_ROOT / "data" / "seed" / "latest_location.xlsx")
+CSV_PATH = str(DEMAND_EVENTS_PATH)
+XLSX_PATH = str(STATION_DATA_PATH)
 
 
 @pytest.mark.skipif(

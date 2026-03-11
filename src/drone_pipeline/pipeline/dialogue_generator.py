@@ -1,5 +1,5 @@
 """
-Module 1: Dialogue Generator — 从 demand_events_5min.csv 读取结构化需求事件，
+Module 1: Dialogue Generator — 从 daily_demand_events.csv 读取结构化需求事件，
 生成 Module 2 所需的对话 JSON 格式数据。
 
 需求层级（优先级由高到低）：
@@ -25,6 +25,8 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 if TYPE_CHECKING:
     from openai import OpenAI
+
+from drone_pipeline.seed_data import DEMAND_EVENTS_FILENAME, DEMAND_EVENTS_PATH, STATION_DATA_FILENAME
 
 
 # ============================================================================
@@ -365,7 +367,7 @@ def _pick_template(priority: int, material: str) -> str:
 # ============================================================================
 
 def load_stations(xlsx_path: str) -> List[Dict]:
-    """从 latest_location.xlsx 读取站点数据，返回深圳站点列表。
+    """从 drone_station_locations.xlsx 读取站点数据，返回深圳站点列表。
 
     每个站点格式::
 
@@ -454,7 +456,7 @@ def load_demand_events(
     n_events: Optional[int] = None,
     time_slots: Optional[List[int]] = None,
 ) -> List[Dict]:
-    """读取需求事件 CSV（支持 demand_events_5min.csv 和 daily_demands_with_noise_constrain.csv）。
+    """读取需求事件 CSV（支持旧 demand_events_5min.csv 和新 daily_demand_events.csv）。
 
     Parameters
     ----------
@@ -867,9 +869,9 @@ def generate_dialogues(
     ----------
     csv_path : str
         需求事件 CSV 路径（支持旧 demand_events_5min.csv 和新
-        daily_demands_with_noise_constrain.csv 格式）。
+        daily_demand_events.csv 格式）。
     xlsx_path : str, optional
-        latest_location.xlsx（站点数据）路径。当 CSV 内含供给点信息时可省略。
+        drone_station_locations.xlsx（站点数据）路径。当 CSV 内含供给点信息时可省略。
     offline : bool
         True=规则模式，False=调用 LLM。
     client : OpenAI, optional
@@ -934,13 +936,13 @@ def main():
     parser = argparse.ArgumentParser(description="Module 1: Dialogue Generator")
     parser.add_argument(
         "--csv", type=str,
-        default=str(PROJECT_ROOT / "data" / "seed" / "daily_demands_with_noise_constrain.csv"),
-        help="需求事件 CSV 路径",
+        default=str(DEMAND_EVENTS_PATH),
+        help=f"需求事件 CSV 路径（默认 {DEMAND_EVENTS_FILENAME}）",
     )
     parser.add_argument(
         "--stations", type=str,
         default=None,
-        help="latest_location.xlsx 路径（CSV 含供给点信息时可省略）",
+        help=f"{STATION_DATA_FILENAME} 路径（CSV 含供给点信息时可省略）",
     )
     parser.add_argument(
         "--output", type=str,

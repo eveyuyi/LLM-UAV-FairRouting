@@ -33,6 +33,7 @@ if os.path.isdir(_CPLEX_BIN) and _CPLEX_BIN not in os.environ.get("PATH", ""):
     os.environ["PATH"] = _CPLEX_BIN + ":" + os.environ.get("PATH", "")
 
 from drone_pipeline.pipeline.dialogue_generator import load_stations
+from drone_pipeline.seed_data import STATION_DATA_FILENAME
 
 
 @dataclass
@@ -749,7 +750,7 @@ def main():
         "--stations",
         type=str,
         default=None,
-        help="真实站点文件 latest_location.xlsx；不传则回退到 mock stations",
+        help=f"真实站点文件 {STATION_DATA_FILENAME}；不传则回退到 mock stations",
     )
     parser.add_argument(
         "--output",

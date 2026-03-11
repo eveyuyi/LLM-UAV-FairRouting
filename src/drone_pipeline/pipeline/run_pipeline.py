@@ -6,7 +6,7 @@
   (默认)      调用 LLM API 进行对话生成 + context extraction + weight adjustment
 
 Module 1 数据来源（优先级由高到低）:
-  1. --csv + --stations  从 demand_events_5min.csv 生成对话（推荐）
+  1. --csv + --stations  从 daily_demand_events.csv 生成对话（推荐）
   2. --dialogues         直接加载已有 JSONL 对话文件（兼容旧流程）
 """
 
@@ -28,6 +28,7 @@ from drone_pipeline.pipeline.solver_runner import (
     solve_window_demands,
 )
 from drone_pipeline.pipeline.weight_adjuster import adjust_weights, adjust_weights_offline
+from drone_pipeline.seed_data import DEMAND_EVENTS_FILENAME, DEMAND_EVENTS_PATH, STATION_DATA_FILENAME
 
 
 def _build_run_dir(base_dir: Path, model: str, noise_weight: float) -> Path:
@@ -277,13 +278,13 @@ def main():
     src_group = parser.add_argument_group("Module 1 数据来源")
     src_group.add_argument(
         "--csv", type=str,
-        default=str(PROJECT_ROOT / "data" / "seed" / "daily_demands_with_noise_constrain.csv"),
-        help="需求事件 CSV 路径（支持 daily_demands_with_noise_constrain.csv）",
+        default=str(DEMAND_EVENTS_PATH),
+        help=f"需求事件 CSV 路径（默认 {DEMAND_EVENTS_FILENAME}）",
     )
     src_group.add_argument(
         "--stations", type=str,
         default=None,
-        help="latest_location.xlsx 站点数据路径（CSV 含供给点信息时可省略）",
+        help=f"{STATION_DATA_FILENAME} 站点数据路径（CSV 含供给点信息时可省略）",
     )
     src_group.add_argument(
         "--dialogues", type=str, default=None,
@@ -301,7 +302,7 @@ def main():
     parser.add_argument("--api-key", type=str, default=None)
     parser.add_argument("--model", type=str, default="gpt-4o-mini")
     parser.add_argument("--temperature", type=float, default=0.0)
-    parser.add_argument("--window", type=int, default=5, help="时间窗口（分钟），默认 5 以匹配 demand_events_5min.csv 粒度")
+    parser.add_argument("--window", type=int, default=5, help="时间窗口（分钟），默认 5 以匹配需求事件的 5 分钟粒度")
     parser.add_argument("--time-limit", type=int, default=300, help="求解器时间限制（秒）")
     parser.add_argument("--n-events", type=int, default=None, help="最多处理的事件数")
     parser.add_argument("--time-slots", type=int, nargs="+", default=None,
