@@ -17,6 +17,11 @@ from pyomo.environ import (
 )
 
 from drone_pipeline.seed_data import BUILDING_DATA_PATH, STATION_DATA_PATH
+from drone_pipeline.utils.building_data import (
+    HEALTHCARE_LAND_USE,
+    RESIDENTIAL_LAND_USE,
+    load_building_data,
+)
 
 # 尝试导入诊断工具（可选）
 try:
@@ -379,20 +384,21 @@ def compute_path_noise_impact(
 
 
 # ========== 数据读取 ==========
-def read_building_data(file_path: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    """读取建筑数据文件"""
+def read_building_data(file_path: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """读取建筑数据文件并规范化为英文列名。"""
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"建筑数据文件不存在: {file_path}")
     print(f"读取建筑数据文件: {file_path}")
-    df = pd.read_excel(file_path)
+    df = load_building_data(file_path)
 
-    hospitals = df[df['type'] == '医疗卫生用地'].copy()
-    residences = df[df['type'] == '居住用地'].copy()
+    hospitals = df[df["land_use_type"] == HEALTHCARE_LAND_USE].copy()
+    residences = df[df["land_use_type"] == RESIDENTIAL_LAND_USE].copy()
 
     print(f"医疗卫生用地数量: {len(hospitals)}")
     print(f"居住用地数量: {len(residences)}")
+    print(f"建筑物总数: {len(df)}")
 
-    return hospitals, residences
+    return hospitals, residences, df
 
 
 def read_station_data(file_path: str) -> pd.DataFrame:
@@ -420,8 +426,8 @@ def create_points(hospitals: pd.DataFrame,
     for idx, (_, row) in enumerate(selected_hospitals.iterrows()):
         point = Point(
             id=f"S{idx + 1}",
-            lon=float(row['经度']),
-            lat=float(row['纬度']),
+            lon=float(row["longitude"]),
+            lat=float(row["latitude"]),
             alt=flight_height,
             type='supply'
         )
@@ -434,8 +440,8 @@ def create_points(hospitals: pd.DataFrame,
     for idx, (_, row) in enumerate(selected_residences.iterrows()):
         point = Point(
             id=f"D{idx + 1}",
-            lon=float(row['经度']),
-            lat=float(row['纬度']),
+            lon=float(row["longitude"]),
+            lat=float(row["latitude"]),
             alt=flight_height,
             type='demand'
         )
@@ -463,20 +469,20 @@ def create_obstacles_from_buildings(
         selected_coords: set,
         min_obstacle_height: float = 30.0,
         obstacle_radius: float = 20.0
-) -> List[Tuple[np.ndarray, float]]:
+) -> List[dict]:
     """
     从建筑数据中生成球体障碍物列表。
     selected_coords: 已选为任务点的坐标集合 (lon, lat)
     """
     obstacles = []
     for _, row in building_df.iterrows():
-        lon, lat = float(row['经度']), float(row['纬度'])
+        lon, lat = float(row["longitude"]), float(row["latitude"])
         if (lon, lat) in selected_coords:
             continue
-        height = float(row['Height'])
+        height = float(row["building_height_m"])
         if height <= min_obstacle_height:
             continue
-        dem = float(row['DEM高度'])
+        dem = float(row["ground_elevation_m"])
         # 球心位于建筑物几何中心
         center_alt = dem + height / 2.0
         # 临时创建点用于ENU转换（将在后续进行）
@@ -1329,7 +1335,7 @@ def main():
 
     # 读取数据
     try:
-        hospitals, residences = read_building_data(str(BUILDING_DATA_PATH))
+        hospitals, residences, all_buildings = read_building_data(str(BUILDING_DATA_PATH))
         stations_df = read_station_data(str(STATION_DATA_PATH))
 
         # 配置：2个供给点，4个需求点，1个站点
@@ -1375,24 +1381,13 @@ def main():
 
     # 从建筑数据生成障碍物（如果数据存在）
     obstacles_raw = []
-    if 'hospitals' in locals() and 'residences' in locals():
-        # 合并所有建筑数据
-        all_buildings = pd.concat([hospitals, residences], ignore_index=True)
-        # 排除已选任务点
-        for _, row in all_buildings.iterrows():
-            lon, lat = float(row['经度']), float(row['纬度'])
-            if (lon, lat) in selected_coords:
-                continue
-            height = float(row['Height'])
-            if height > 30.0:  # 障碍物最小高度
-                dem = float(row['DEM高度'])
-                center_alt = dem + height / 2.0
-                obstacles_raw.append({
-                    'lon': lon,
-                    'lat': lat,
-                    'alt': center_alt,
-                    'radius': 20.0
-                })
+    if 'all_buildings' in locals():
+        obstacles_raw = create_obstacles_from_buildings(
+            all_buildings,
+            selected_coords,
+            min_obstacle_height=30.0,
+            obstacle_radius=20.0,
+        )
     else:
         # 测试数据：生成一些随机障碍物
         for _ in range(5):
@@ -1408,15 +1403,20 @@ def main():
 
     # 构建居住建筑点集（用于噪声评估）
     residential_positions = []
-    if 'residences' in locals():
+    if 'residences' in locals() and not residences.empty:
         for _, row in residences.iterrows():
-            p = Point(id="", lon=float(row['经度']), lat=float(row['纬度']), alt=float(row['DEM高度']))
+            p = Point(
+                id="",
+                lon=float(row["longitude"]),
+                lat=float(row["latitude"]),
+                alt=float(row["ground_elevation_m"]),
+            )
             p.to_enu(ref_lat, ref_lon, 0)
             residential_positions.append([p.x, p.y, p.z])
     else:
         # 测试：使用需求点作为居住建筑（模拟）
         for p in demand_points:
-            # 居住建筑在地面（alt为0），这里使用DEM高度设为0
+            # 居住建筑在地面（alt 为 0）
             p_ground = Point(id="", lon=p.lon, lat=p.lat, alt=0.0)
             p_ground.to_enu(ref_lat, ref_lon, 0)
             residential_positions.append([p_ground.x, p_ground.y, p_ground.z])
