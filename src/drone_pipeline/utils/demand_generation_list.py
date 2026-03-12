@@ -8,8 +8,30 @@ random.seed(42)
 np.random.seed(42)
 
 # ========== 配置参数 ==========
-INPUT_FILE = "target_area.xlsx"          # 输入建筑数据文件
-OUTPUT_FILE = "daily_demands.csv"        # 输出需求文件
+INPUT_FILE = "data/seed/building_information.csv"      # 输入建筑数据文件
+OUTPUT_FILE = "data/seed/daily_demand_events.csv"      # 输出需求文件
+
+LAND_USE_COLUMN = "land_use_type"
+LONGITUDE_COLUMN = "longitude"
+LATITUDE_COLUMN = "latitude"
+
+MEDICAL_LAND_USE = "medical_and_healthcare_land"
+COMMERCIAL_LAND_USE = "commercial_service_land"
+RESIDENTIAL_LAND_USE = "residential_land"
+
+OUTPUT_COLUMNS = [
+    "time",
+    "demand_fid",
+    "demand_lon",
+    "demand_lat",
+    "priority",
+    "supply_fid",
+    "supply_lon",
+    "supply_lat",
+    "supply_type",
+    "material_weight",
+    "unique_id",
+]
 
 # 时间窗设置
 TIME_WINDOW_MINUTES = 5                   # 每个时间窗长度（分钟）
@@ -42,17 +64,17 @@ NOISE_WEIGHT = 0.5
 # ========== 读取建筑数据 ==========
 def load_buildings(file_path):
     """读取建筑数据，返回医疗、商业、居住用地DataFrame"""
-    df = pd.read_excel(file_path)
+    df = pd.read_csv(file_path)
     print(f"读取建筑数据，共 {len(df)} 条记录")
     print("用地类型分布：")
-    print(df['type'].value_counts())
+    print(df[LAND_USE_COLUMN].value_counts())
 
     # 分离各类用地
-    medical = df[df['type'] == '医疗卫生用地'].copy()
-    residential = df[df['type'] == '居住用地'].copy()
+    medical = df[df[LAND_USE_COLUMN] == MEDICAL_LAND_USE].copy()
+    residential = df[df[LAND_USE_COLUMN] == RESIDENTIAL_LAND_USE].copy()
 
     # 处理商业用地：优先从 '商业用地' 类型中获取，若不存在则从其他类型中选取（此处假设从医疗中拆分一部分作为演示）
-    commercial = df[df['type'] == '商业用地'].copy()
+    commercial = df[df[LAND_USE_COLUMN] == COMMERCIAL_LAND_USE].copy()
     if len(commercial) == 0:
         print("警告：未找到'商业用地'类型，将从医疗卫生用地中随机分配一部分作为商业供给点。")
         # 从医疗用地中随机抽取一半作为商业（仅用于演示，实际应使用真实数据）
@@ -62,12 +84,12 @@ def load_buildings(file_path):
             split_point = len(medical_indices) // 2
             commercial_indices = medical_indices[:split_point]
             commercial = medical.loc[commercial_indices].copy()
-            commercial['type'] = '商业用地'  # 修改类型
+            commercial[LAND_USE_COLUMN] = COMMERCIAL_LAND_USE  # 修改类型
             medical = medical.drop(commercial_indices)  # 剩余仍为医疗
         else:
             # 若医疗不足，则创建虚拟商业点（用第一个医疗点）
             commercial = medical.head(1).copy()
-            commercial['type'] = '商业用地'
+            commercial[LAND_USE_COLUMN] = COMMERCIAL_LAND_USE
 
     print(f"医疗用地数量: {len(medical)}")
     print(f"商业用地数量: {len(commercial)}")
@@ -85,8 +107,8 @@ def build_supply_points(medical_df, commercial_df, num_medical, num_commercial):
     for idx, row in medical_selected.iterrows():
         supply_points.append({
             'fid': f"MED_{idx}",          # 用索引作为fid，可自定义
-            'lon': float(row['经度']),
-            'lat': float(row['纬度']),
+            'lon': float(row[LONGITUDE_COLUMN]),
+            'lat': float(row[LATITUDE_COLUMN]),
             'type': '医疗'
         })
 
@@ -95,8 +117,8 @@ def build_supply_points(medical_df, commercial_df, num_medical, num_commercial):
     for idx, row in commercial_selected.iterrows():
         supply_points.append({
             'fid': f"COM_{idx}",
-            'lon': float(row['经度']),
-            'lat': float(row['纬度']),
+            'lon': float(row[LONGITUDE_COLUMN]),
+            'lat': float(row[LATITUDE_COLUMN]),
             'type': '商业'
         })
 
@@ -110,8 +132,8 @@ def build_demand_points(residential_df):
     for idx, row in residential_df.iterrows():
         demand_points.append({
             'fid': f"DEM_{idx}",
-            'lon': float(row['经度']),
-            'lat': float(row['纬度'])
+            'lon': float(row[LONGITUDE_COLUMN]),
+            'lat': float(row[LATITUDE_COLUMN])
         })
     print(f"共 {len(demand_points)} 个潜在需求点")
     return demand_points
@@ -189,7 +211,8 @@ def main():
     demands = generate_daily_demands(supply_points, demand_points)
 
     # 5. 转换为DataFrame并保存CSV
-    df_demands = pd.DataFrame(demands)
+    df_demands = pd.DataFrame(demands).rename(columns={'weight': 'material_weight'})
+    df_demands = df_demands[OUTPUT_COLUMNS]
 
     # 添加全局权重信息（可作为注释或单独列）
     df_demands.attrs['distance_weight'] = DISTANCE_WEIGHT
