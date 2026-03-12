@@ -24,7 +24,7 @@ import time as _time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
@@ -33,12 +33,13 @@ _CPLEX_BIN = "/Applications/CPLEX_Studio2211/cplex/bin/x86-64_osx"
 if os.path.isdir(_CPLEX_BIN) and _CPLEX_BIN not in os.environ.get("PATH", ""):
     os.environ["PATH"] = _CPLEX_BIN + ":" + os.environ.get("PATH", "")
 
-from drone_pipeline.pipeline.dialogue_generator import load_stations
 from drone_pipeline.seed_data import (
     BUILDING_DATA_FILENAME,
     BUILDING_DATA_PATH,
     STATION_DATA_FILENAME,
+    STATION_DATA_PATH,
 )
+from drone_pipeline.utils.station_data import load_station_data
 
 
 @dataclass
@@ -126,81 +127,70 @@ def create_mock_stations(n: int = 3) -> list[SolverPoint]:
     ]
     return stations[:n]
 
-
-def _iter_active_coords(demands: List[Dict]) -> Iterable[tuple[float, float]]:
-    for demand in demands:
-        for key in ("origin", "destination"):
-            coords = demand.get(key, {}).get("coords", [])
-            if len(coords) == 2:
-                yield float(coords[0]), float(coords[1])
-
-
-def _haversine_m(lon1: float, lat1: float, lon2: float, lat2: float) -> float:
-    import math
-
-    radius = 6371000.0
-    phi1, phi2 = math.radians(lat1), math.radians(lat2)
-    dphi = math.radians(lat2 - lat1)
-    dlam = math.radians(lon2 - lon1)
-    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2) ** 2
-    return 2 * radius * math.asin(math.sqrt(a))
-
-
 def _select_station_dicts(
     stations: List[Dict],
     demands: List[Dict],
     max_stations: Optional[int],
 ) -> List[Dict]:
+    """Mirror cplex_with_priority_noise: preserve source order and take the first N."""
     if not stations:
         return []
     if max_stations is None or max_stations <= 0 or len(stations) <= max_stations:
         return list(stations)
+    return list(stations[:max_stations])
 
-    active_coords = list(_iter_active_coords(demands))
-    if not active_coords:
-        return stations[:max_stations]
 
-    def station_score(station: Dict) -> float:
-        lon = float(station["lon"])
-        lat = float(station["lat"])
-        return min(
-            _haversine_m(lon, lat, active_lon, active_lat)
-            for active_lon, active_lat in active_coords
-        )
+def _load_station_dicts(station_path: str) -> List[Dict]:
+    df = load_station_data(station_path)
 
-    ranked = sorted(
-        stations,
-        key=lambda station: (station_score(station), station.get("station_id", "")),
-    )
-    return ranked[:max_stations]
+    stations: List[Dict] = []
+    for _, row in df.iterrows():
+        lat_val = row["latitude"]
+        lon_val = row["longitude"]
+        try:
+            lat = float(lat_val)
+            lon = float(lon_val)
+        except (TypeError, ValueError):
+            continue
+        if math.isnan(lat) or math.isnan(lon):
+            continue
+
+        station_idx = len(stations) + 1
+        name_val = row["station_name"] if "station_name" in row.index else f"L{station_idx}"
+        name = str(name_val).strip() or f"L{station_idx}"
+        stations.append({
+            "station_id": f"L{station_idx}",
+            "name": name,
+            "lon": lon,
+            "lat": lat,
+        })
+
+    return stations
 
 
 def load_solver_station_points(
     stations_path: Optional[str],
     demands: List[Dict],
-    max_stations: Optional[int] = 10,
+    max_stations: Optional[int] = 1,
 ) -> List[SolverPoint]:
     """加载求解器站点。
 
-    优先复用 stations_path；若站点过多，则按距离当前窗口需求最近优先截取。
+    默认使用项目 seed 真实站点，并与 cplex_with_priority_noise 一样按源数据顺序截取。
     """
-    if not stations_path:
-        count = max_stations if max_stations and max_stations > 0 else 3
-        print("  未提供站点文件，回退到 mock stations")
-        return create_mock_stations(count)
+    resolved_path = str(stations_path or STATION_DATA_PATH)
 
     try:
-        station_dicts = load_stations(stations_path)
+        station_dicts = _load_station_dicts(resolved_path)
     except Exception as exc:
         count = max_stations if max_stations and max_stations > 0 else 3
-        print(f"  站点文件加载失败 ({exc})，回退到 mock stations")
+        print(f"  真实站点文件加载失败 ({exc})，回退到 mock stations")
         return create_mock_stations(count)
 
     selected = _select_station_dicts(station_dicts, demands, max_stations)
     if len(selected) < len(station_dicts):
         print(
             f"  站点文件共 {len(station_dicts)} 个站点，"
-            f"为当前窗口选取最近的 {len(selected)} 个参与求解"
+            f"按 cplex_with_priority_noise 口径取前 {len(selected)} 个参与求解"
         )
     else:
         print(f"  复用真实站点 {len(selected)} 个参与求解")
@@ -1112,8 +1102,8 @@ def main():
     parser.add_argument(
         "--stations",
         type=str,
-        default=None,
-        help=f"真实站点文件 {STATION_DATA_FILENAME}；不传则回退到 mock stations",
+        default=str(STATION_DATA_PATH),
+        help=f"真实站点文件 {STATION_DATA_FILENAME}；默认使用项目 seed 数据",
     )
     parser.add_argument(
         "--building-data",
@@ -1128,16 +1118,16 @@ def main():
         help="求解结果输出路径",
     )
     parser.add_argument(
-        "--time-limit", type=int, default=300, help="求解器时间限制（秒）"
+        "--time-limit", type=int, default=10, help="求解器时间限制（秒）"
     )
     parser.add_argument(
-        "--max-drones-per-station", type=int, default=6, help="每个站点最大无人机数"
+        "--max-drones-per-station", type=int, default=3, help="每个站点最大无人机数"
     )
     parser.add_argument(
-        "--max-payload", type=float, default=25.0, help="最大载重（kg）"
+        "--max-payload", type=float, default=60.0, help="最大载重（kg）"
     )
     parser.add_argument(
-        "--max-range", type=float, default=40000.0, help="最大航程（m）"
+        "--max-range", type=float, default=200000.0, help="最大航程（m）"
     )
     parser.add_argument(
         "--drone-speed", type=float, default=DEFAULT_DRONE_SPEED_MS, help="无人机飞行速度（m/s）"
@@ -1145,14 +1135,14 @@ def main():
     parser.add_argument(
         "--noise-weight",
         type=float,
-        default=0.0,
+        default=0.5,
         help="噪声成本权重（>0 启用噪声优先级）",
     )
     parser.add_argument(
         "--max-solver-stations",
         type=int,
-        default=10,
-        help="求解时最多使用多少个真实站点；0 表示使用全部",
+        default=1,
+        help="求解时最多使用多少个真实站点；默认 1 以对齐 cplex_with_priority_noise.py，0 表示使用全部",
     )
     args = parser.parse_args()
 
