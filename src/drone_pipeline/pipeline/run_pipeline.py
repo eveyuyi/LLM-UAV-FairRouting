@@ -25,10 +25,16 @@ from drone_pipeline.pipeline.context_extractor import (
 )
 from drone_pipeline.pipeline.solver_runner import (
     serialize_pipeline_results,
-    solve_window_demands,
+    solve_windows_dynamically,
 )
 from drone_pipeline.pipeline.weight_adjuster import adjust_weights, adjust_weights_offline
-from drone_pipeline.seed_data import DEMAND_EVENTS_FILENAME, DEMAND_EVENTS_PATH, STATION_DATA_FILENAME
+from drone_pipeline.seed_data import (
+    BUILDING_DATA_FILENAME,
+    BUILDING_DATA_PATH,
+    DEMAND_EVENTS_FILENAME,
+    DEMAND_EVENTS_PATH,
+    STATION_DATA_FILENAME,
+)
 
 
 def _build_run_dir(base_dir: Path, model: str, noise_weight: float) -> Path:
@@ -75,6 +81,8 @@ def run_pipeline(
     skip_solver: bool = False,
     # Noise 参数
     noise_weight: float = 0.0,
+    building_path: Optional[str] = None,
+    drone_speed: float = 60.0,
 ):
     """端到端运行 pipeline（Module 1 → Module 2 → Module 3）。"""
     base_dir = Path(output_dir)
@@ -97,6 +105,8 @@ def run_pipeline(
         "max_payload": max_payload,
         "max_range": max_range,
         "max_solver_stations": max_solver_stations,
+        "building_path": building_path or str(BUILDING_DATA_PATH),
+        "drone_speed": drone_speed,
         "csv_path": csv_path,
         "stations_path": stations_path,
         "dialogue_path": dialogue_path,
@@ -186,6 +196,8 @@ def run_pipeline(
     print("=" * 60)
 
     all_solutions = []
+    windows_to_solve = []
+    weight_configs_by_window: Dict[str, Dict] = {}
 
     for w_idx, window in enumerate(window_results):
         tw = window.get("time_window", f"window_{w_idx}")
@@ -208,6 +220,7 @@ def run_pipeline(
         wc_path = weight_configs_dir / f"weight_config_window{w_idx}.json"
         with open(wc_path, "w", encoding="utf-8") as f:
             json.dump(weight_config, f, ensure_ascii=False, indent=2)
+        weight_configs_by_window[tw] = weight_config
 
         if skip_solver:
             print(f"  跳过求解 (--skip-solver)")
@@ -222,18 +235,25 @@ def run_pipeline(
             })
             continue
 
-        all_solutions.append(
-            solve_window_demands(
-                time_window=tw,
-                demands=demands,
-                weight_config=weight_config,
+        windows_to_solve.append({
+            "time_window": tw,
+            "demands": demands,
+        })
+
+    if not skip_solver and windows_to_solve:
+        all_solutions.extend(
+            solve_windows_dynamically(
+                windows=windows_to_solve,
+                weight_configs=weight_configs_by_window,
                 stations_path=stations_path,
+                building_path=building_path or str(BUILDING_DATA_PATH),
                 max_solver_stations=max_solver_stations,
                 time_limit=time_limit,
                 max_drones_per_station=max_drones_per_station,
                 max_payload=max_payload,
                 max_range=max_range,
                 noise_weight=noise_weight,
+                drone_speed=drone_speed,
             )
         )
 
@@ -296,6 +316,12 @@ def main():
         default=str(PROJECT_ROOT / "results"),
         help="输出根目录（每次运行自动创建带时间戳的子目录）",
     )
+    parser.add_argument(
+        "--building-data",
+        type=str,
+        default=str(BUILDING_DATA_PATH),
+        help=f"{BUILDING_DATA_FILENAME} 建筑物数据路径（用于真实距离/噪声矩阵）",
+    )
     parser.add_argument("--offline", action="store_true", help="离线模式，不调用 LLM")
     parser.add_argument("--skip-solver", action="store_true", help="跳过 CPLEX 求解")
     parser.add_argument("--api-base", type=str, default=None)
@@ -315,6 +341,12 @@ def main():
         type=int,
         default=10,
         help="求解时最多使用多少个真实站点；0 表示使用全部",
+    )
+    parser.add_argument(
+        "--drone-speed",
+        type=float,
+        default=60.0,
+        help="动态模拟中的无人机飞行速度（m/s）",
     )
     parser.add_argument("--noise-weight", type=float, default=0.0,
                         help="噪声成本权重（>0 启用噪声优先级，按 1/priority 加权）")
@@ -351,6 +383,8 @@ def main():
         max_solver_stations=args.max_solver_stations,
         skip_solver=args.skip_solver,
         noise_weight=args.noise_weight,
+        building_path=args.building_data,
+        drone_speed=args.drone_speed,
     )
 
 

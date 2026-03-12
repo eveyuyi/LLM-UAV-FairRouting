@@ -104,7 +104,7 @@ class TestFindNearestStation:
 class TestPickTemplate:
     def test_priority1_ventilator(self):
         tpl = _pick_template(1, "ventilator")
-        assert "重症" in tpl or "分钟" in tpl
+        assert "ICU" in tpl or "min" in tpl
 
     def test_priority2_vaccine(self):
         tpl = _pick_template(2, "vaccine")

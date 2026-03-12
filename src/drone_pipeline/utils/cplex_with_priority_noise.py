@@ -118,6 +118,7 @@ class DemandEvent:
     unique_id: str
     priority: int
     assigned_drone: Optional[str] = None
+    assigned_time: Optional[float] = None
     served_time: Optional[float] = None
     supply_node: Optional[int] = None
     # 新增：对应的供给点索引
@@ -937,7 +938,9 @@ class FinalDroneSimulator:
                  demand_events: List[DemandEvent],
                  noise_cost_matrix: np.ndarray = None,
                  noise_weight: float = 0.0,
-                 time_step: float = 0.001):
+                 time_step: float = 0.001,
+                 solve_interval: float = 0.05,
+                 time_limit: int = 10):
 
         self.supply_points = supply_points
         self.demand_points = demand_points
@@ -946,6 +949,7 @@ class FinalDroneSimulator:
         self.dist_matrix = dist_matrix
         self.all_demand_events = demand_events
         self.time_step = time_step
+        self.solve_interval = solve_interval
 
         # 创建所有点列表和索引
         self.all_points = supply_points + demand_points + station_points
@@ -989,6 +993,7 @@ class FinalDroneSimulator:
             heapq.heappush(self.event_queue, (ev.time, ev))
 
         self.current_time = 0.0
+        self.last_solve_time = -1.0
         self.total_distance = 0.0
         self.total_noise_impact = 0.0  # 新增：累计噪声影响
 
@@ -1001,34 +1006,95 @@ class FinalDroneSimulator:
             all_points=self.all_points,
             noise_cost_matrix=noise_cost_matrix,
             noise_weight=noise_weight,
-            time_limit=10
+            time_limit=time_limit,
         )
 
     def run(self, end_time: float):
         print(f"\n开始模拟，结束时间 {end_time} 小时")
         print("=" * 50)
 
-        last_solve_time = -1
-        solve_interval = 0.05  # 3分钟
+        self.advance_to(end_time)
+        self._print_summary()
 
-        while self.current_time < end_time:
-            # 处理新需求
+    def advance_to(self, end_time: float):
+        """将模拟推进到 ``end_time``，保留无人机和需求状态。"""
+        if end_time < self.current_time:
+            raise ValueError(
+                f"end_time={end_time:.3f}h 早于当前模拟时间 {self.current_time:.3f}h"
+            )
+
+        while self.current_time + self.time_step < end_time:
             self._process_new_demands()
-
-            # 更新无人机位置
             self._update_positions()
-
-            # 检查到达
             self._check_arrivals()
 
-            # 定期求解（只分配给空闲无人机）
-            if self.current_time - last_solve_time >= solve_interval:
+            if self.current_time - self.last_solve_time >= self.solve_interval:
                 self._solve_assignment()
-                last_solve_time = self.current_time
+                self.last_solve_time = self.current_time
 
             self.current_time += self.time_step
 
-        self._print_summary()
+        if self.current_time < end_time:
+            self.current_time = end_time
+            self._process_new_demands()
+            self._update_positions()
+            self._check_arrivals()
+
+            if self.current_time - self.last_solve_time >= self.solve_interval:
+                self._solve_assignment()
+                self.last_solve_time = self.current_time
+
+    def is_complete(self) -> bool:
+        """所有需求已处理且所有无人机空闲。"""
+        has_pending_events = bool(self.event_queue)
+        has_unfinished_demands = any(d is not None for d in self.unserved_demands)
+        has_active_drones = any(
+            ds.status != DroneStatus.IDLE or ds.task_queue for ds in self.drone_states
+        )
+        return not has_pending_events and not has_unfinished_demands and not has_active_drones
+
+    def run_until_complete(self, max_time: float):
+        """持续推进直到所有需求完成或到达上限时间。"""
+        while self.current_time < max_time and not self.is_complete():
+            next_time = min(self.current_time + self.solve_interval, max_time)
+            self.advance_to(next_time)
+
+        if not self.is_complete():
+            print(
+                f"警告: 模拟在 {self.current_time:.3f}h 达到上限，仍有未完成任务"
+            )
+
+    def snapshot_state(self) -> Dict[str, object]:
+        """返回当前模拟时刻的状态快照，供外部窗口汇总使用。"""
+        served_ids = [
+            ev.unique_id
+            for ev in self.all_demand_events
+            if ev.served_time is not None and ev.served_time <= self.current_time
+        ]
+        assigned_ids = [
+            ev.unique_id
+            for ev in self.all_demand_events
+            if ev.assigned_time is not None and ev.assigned_time <= self.current_time
+        ]
+        pending_ids = [
+            ev.unique_id
+            for ev in self.unserved_demands
+            if ev is not None
+        ]
+        busy_drones = [
+            ds.drone_id
+            for ds in self.drone_states
+            if ds.status != DroneStatus.IDLE or ds.task_queue
+        ]
+        return {
+            "current_time_h": round(self.current_time, 6),
+            "served_ids": served_ids,
+            "assigned_ids": assigned_ids,
+            "pending_ids": pending_ids,
+            "busy_drones": busy_drones,
+            "total_distance_m": float(self.total_distance),
+            "total_noise_impact": float(self.total_noise_impact),
+        }
 
     def _update_positions(self):
         for ds in self.drone_states:
@@ -1234,6 +1300,7 @@ class FinalDroneSimulator:
             supply_node = assign['supply_node']
 
             demand.assigned_drone = drone.drone_id
+            demand.assigned_time = self.current_time
             demand.supply_node = supply_node
 
             task = {

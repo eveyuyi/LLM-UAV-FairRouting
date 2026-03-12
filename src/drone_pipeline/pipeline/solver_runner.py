@@ -22,8 +22,9 @@ import math
 import os
 import time as _time
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional
+from typing import Dict, Iterable, List, Optional, Tuple
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
@@ -33,7 +34,11 @@ if os.path.isdir(_CPLEX_BIN) and _CPLEX_BIN not in os.environ.get("PATH", ""):
     os.environ["PATH"] = _CPLEX_BIN + ":" + os.environ.get("PATH", "")
 
 from drone_pipeline.pipeline.dialogue_generator import load_stations
-from drone_pipeline.seed_data import STATION_DATA_FILENAME
+from drone_pipeline.seed_data import (
+    BUILDING_DATA_FILENAME,
+    BUILDING_DATA_PATH,
+    STATION_DATA_FILENAME,
+)
 
 
 @dataclass
@@ -212,6 +217,427 @@ def load_solver_station_points(
     ]
 
 
+DEFAULT_DRONE_SPEED_MS = 60.0
+DEFAULT_SIMULATION_PADDING_H = 24.0
+
+
+def _parse_window_bounds(time_window: str) -> Tuple[datetime, datetime]:
+    """Parse labels like ``2024-03-15T00:00-00:05`` into datetimes."""
+    date_part, span = time_window.split("T", 1)
+    start_str, end_str = span.split("-", 1)
+    start_dt = datetime.fromisoformat(f"{date_part}T{start_str}")
+
+    end_hour, end_minute = [int(token) for token in end_str.split(":")]
+    if end_hour == 24:
+        end_dt = datetime.fromisoformat(f"{date_part}T00:00") + timedelta(days=1)
+    else:
+        end_dt = datetime.fromisoformat(f"{date_part}T{end_str}")
+        if end_dt < start_dt:
+            end_dt += timedelta(days=1)
+    return start_dt, end_dt
+
+
+def _resolve_request_datetime(demand: Dict, window_start: datetime) -> datetime:
+    ts = demand.get("request_timestamp")
+    if ts:
+        try:
+            return datetime.fromisoformat(str(ts))
+        except ValueError:
+            pass
+    return window_start
+
+
+def _point_key(fid: object, coords: List[float], fallback: str) -> str:
+    fid_text = str(fid).strip() if fid is not None else ""
+    if fid_text:
+        return f"fid:{fid_text}"
+    if len(coords) == 2:
+        lon = round(float(coords[0]), 7)
+        lat = round(float(coords[1]), 7)
+        return f"coords:{lon}:{lat}"
+    return fallback
+
+
+def _build_window_payloads(
+    windows: List[Dict],
+    weight_configs: Dict[str, Dict],
+    max_payload: float,
+) -> List[Dict]:
+    payloads: List[Dict] = []
+
+    for w_idx, window in enumerate(windows):
+        time_window = window.get("time_window", f"window_{w_idx}")
+        demands = window.get("demands", [])
+        if not demands:
+            continue
+
+        weight_config = weight_configs.get(time_window)
+        if weight_config is None:
+            print(f"窗口 {time_window} 缺少权重配置，跳过")
+            continue
+
+        window_weight_config = copy.deepcopy(weight_config)
+        feasible_demands = [
+            copy.deepcopy(demand)
+            for demand in demands
+            if demand.get("cargo", {}).get("weight_kg", 0.0) <= max_payload
+        ]
+        skipped = len(demands) - len(feasible_demands)
+        if skipped:
+            print(f"  窗口 {time_window}: 跳过 {skipped} 条超载需求 (>{max_payload}kg)")
+
+        feasible_ids = {demand["demand_id"] for demand in feasible_demands}
+        window_weight_config["demand_configs"] = [
+            config for config in window_weight_config.get("demand_configs", [])
+            if config["demand_id"] in feasible_ids
+        ]
+
+        start_dt, end_dt = _parse_window_bounds(time_window)
+        payloads.append({
+            "time_window": time_window,
+            "window_start_dt": start_dt,
+            "window_end_dt": end_dt,
+            "weight_config": window_weight_config,
+            "feasible_demands": feasible_demands,
+            "n_demands_total": len(demands),
+            "n_demands_filtered": skipped,
+        })
+
+    payloads.sort(key=lambda payload: payload["window_start_dt"])
+    return payloads
+
+
+def solve_windows_dynamically(
+    *,
+    windows: List[Dict],
+    weight_configs: Dict[str, Dict],
+    stations_path: Optional[str],
+    building_path: Optional[str],
+    max_solver_stations: Optional[int],
+    time_limit: int,
+    max_drones_per_station: int,
+    max_payload: float,
+    max_range: float,
+    noise_weight: float,
+    drone_speed: float = DEFAULT_DRONE_SPEED_MS,
+) -> List[Dict]:
+    """Use the shared dynamic simulator to solve the full window sequence."""
+    window_payloads = _build_window_payloads(
+        windows=windows,
+        weight_configs=weight_configs,
+        max_payload=max_payload,
+    )
+    if not window_payloads:
+        return []
+
+    all_feasible_demands = [
+        demand
+        for payload in window_payloads
+        for demand in payload["feasible_demands"]
+    ]
+    if not all_feasible_demands:
+        return [
+            {
+                "time_window": payload["time_window"],
+                "weight_config": payload["weight_config"],
+                "feasible_demands": [],
+                "n_demands_total": payload["n_demands_total"],
+                "n_demands_filtered": payload["n_demands_filtered"],
+                "solution": None,
+                "n_supply": 0,
+            }
+            for payload in window_payloads
+        ]
+
+    station_points = load_solver_station_points(
+        stations_path=stations_path,
+        demands=all_feasible_demands,
+        max_stations=max_solver_stations,
+    )
+    if not station_points:
+        return [
+            {
+                "time_window": payload["time_window"],
+                "weight_config": payload["weight_config"],
+                "feasible_demands": payload["feasible_demands"],
+                "n_demands_total": payload["n_demands_total"],
+                "n_demands_filtered": payload["n_demands_filtered"],
+                "solution": None,
+                "n_supply": 0,
+            }
+            for payload in window_payloads
+        ]
+
+    try:
+        import numpy as np
+        from scipy.spatial import cKDTree
+
+        from drone_pipeline.utils.cplex_with_priority_noise import (
+            DemandEvent as _DemandEvent,
+            FinalDroneSimulator as _FinalDroneSimulator,
+            FLIGHT_HEIGHT as _FLIGHT_HEIGHT,
+            Point as _CplexPoint,
+            build_realistic_distance_and_noise_matrices,
+            create_drones,
+            create_obstacles_from_buildings,
+            read_building_data,
+        )
+    except Exception as exc:
+        raise RuntimeError(f"动态求解依赖加载失败: {exc}") from exc
+
+    building_source = str(building_path or BUILDING_DATA_PATH)
+    if not Path(building_source).exists():
+        raise FileNotFoundError(
+            f"动态求解需要建筑数据文件，未找到: {building_source}"
+        )
+
+    supply_points: List = []
+    demand_points: List = []
+    supply_key_to_idx: Dict[str, int] = {}
+    demand_key_to_idx: Dict[str, int] = {}
+    event_records: List[Dict] = []
+
+    for payload in window_payloads:
+        demand_cfg_map = {
+            config["demand_id"]: config
+            for config in payload["weight_config"].get("demand_configs", [])
+        }
+        for idx, demand in enumerate(payload["feasible_demands"]):
+            origin = demand.get("origin", {})
+            origin_coords = origin.get("coords", [])
+            origin_key = _point_key(
+                origin.get("fid"),
+                origin_coords,
+                fallback=f"{payload['time_window']}:origin:{idx}",
+            )
+            if origin_key not in supply_key_to_idx:
+                supply_key_to_idx[origin_key] = len(supply_points)
+                supply_points.append(
+                    _CplexPoint(
+                        id=f"S_{origin.get('fid', len(supply_points) + 1)}",
+                        lon=float(origin_coords[0]),
+                        lat=float(origin_coords[1]),
+                        alt=_FLIGHT_HEIGHT,
+                        type="supply",
+                    )
+                )
+
+            dest = demand.get("destination", {})
+            dest_coords = dest.get("coords", [])
+            dest_key = _point_key(
+                dest.get("fid"),
+                dest_coords,
+                fallback=f"{payload['time_window']}:destination:{idx}",
+            )
+            if dest_key not in demand_key_to_idx:
+                demand_key_to_idx[dest_key] = len(demand_points)
+                demand_points.append(
+                    _CplexPoint(
+                        id=f"D_{dest.get('fid', len(demand_points) + 1)}",
+                        lon=float(dest_coords[0]),
+                        lat=float(dest_coords[1]),
+                        alt=_FLIGHT_HEIGHT,
+                        type="demand",
+                    )
+                )
+
+            original_demand_id = demand.get("demand_id", f"D{idx + 1}")
+            event_id = f"{payload['time_window']}::{original_demand_id}::{idx}"
+            demand["solver_event_id"] = event_id
+
+            cfg = demand_cfg_map.get(original_demand_id, {})
+            event_records.append({
+                "event_id": event_id,
+                "original_demand_id": original_demand_id,
+                "time_window": payload["time_window"],
+                "request_dt": _resolve_request_datetime(
+                    demand, payload["window_start_dt"]
+                ),
+                "weight": float(demand.get("cargo", {}).get("weight_kg", 0.0)),
+                "priority": int(cfg.get("priority", 3)),
+                "required_supply_idx": supply_key_to_idx[origin_key],
+                "demand_point_idx": demand_key_to_idx[dest_key],
+                "demand_point_id": demand_points[demand_key_to_idx[dest_key]].id,
+            })
+
+    if not supply_points or not demand_points:
+        return [
+            {
+                "time_window": payload["time_window"],
+                "weight_config": payload["weight_config"],
+                "feasible_demands": payload["feasible_demands"],
+                "n_demands_total": payload["n_demands_total"],
+                "n_demands_filtered": payload["n_demands_filtered"],
+                "solution": None,
+                "n_supply": len(supply_points),
+            }
+            for payload in window_payloads
+        ]
+
+    station_cplex_points = [
+        _CplexPoint(
+            id=station.id,
+            lon=station.lon,
+            lat=station.lat,
+            alt=_FLIGHT_HEIGHT,
+            type="station",
+        )
+        for station in station_points
+    ]
+
+    all_points = supply_points + demand_points + station_cplex_points
+    ref_lat = float(np.mean([point.lat for point in all_points]))
+    ref_lon = float(np.mean([point.lon for point in all_points]))
+    for point in all_points:
+        point.to_enu(ref_lat, ref_lon, 0.0)
+
+    hospitals, residences, all_buildings = read_building_data(building_source)
+    selected_coords = {(point.lon, point.lat) for point in all_points}
+    obstacles_raw = create_obstacles_from_buildings(
+        all_buildings,
+        selected_coords,
+        min_obstacle_height=30.0,
+        obstacle_radius=20.0,
+    )
+    residential_positions = []
+    for _, row in residences.iterrows():
+        residence = _CplexPoint(
+            id="",
+            lon=float(row["longitude"]),
+            lat=float(row["latitude"]),
+            alt=float(row["ground_elevation_m"]),
+            type="residential",
+        )
+        residence.to_enu(ref_lat, ref_lon, 0.0)
+        residential_positions.append([residence.x, residence.y, residence.z])
+
+    residential_positions_np = np.array(residential_positions, dtype=float)
+    residential_tree = cKDTree(residential_positions_np)
+    dist_matrix, noise_cost_matrix = build_realistic_distance_and_noise_matrices(
+        task_points=all_points,
+        obstacles_raw=obstacles_raw,
+        residential_positions=residential_positions_np,
+        residential_tree=residential_tree,
+        ref_lat=ref_lat,
+        ref_lon=ref_lon,
+        flight_height=_FLIGHT_HEIGHT,
+    )
+
+    base_dt = min(record["request_dt"] for record in event_records)
+    n_supply = len(supply_points)
+    demand_events: List = []
+    for record in event_records:
+        event_time_h = max(
+            0.0,
+            (record["request_dt"] - base_dt).total_seconds() / 3600.0,
+        )
+        demand_events.append(
+            _DemandEvent(
+                time=event_time_h,
+                node_idx=n_supply + record["demand_point_idx"],
+                weight=record["weight"],
+                unique_id=record["event_id"],
+                priority=record["priority"],
+                required_supply_idx=record["required_supply_idx"],
+                demand_point_id=record["demand_point_id"],
+            )
+        )
+        record["event_time_h"] = event_time_h
+
+    drones = create_drones(
+        station_cplex_points,
+        drones_per_station=max_drones_per_station,
+        max_payload=max_payload,
+        max_range=max_range,
+        speed=drone_speed,
+    )
+    simulator = _FinalDroneSimulator(
+        supply_points=supply_points,
+        demand_points=demand_points,
+        station_points=station_cplex_points,
+        drones_static=drones,
+        dist_matrix=dist_matrix,
+        demand_events=demand_events,
+        noise_cost_matrix=noise_cost_matrix,
+        noise_weight=noise_weight,
+        time_step=0.001,
+        solve_interval=0.05,
+        time_limit=time_limit,
+    )
+
+    window_snapshots: Dict[str, Dict] = {}
+    for payload in window_payloads:
+        end_time_h = max(
+            0.0,
+            (payload["window_end_dt"] - base_dt).total_seconds() / 3600.0,
+        )
+        payload["window_end_h"] = end_time_h
+
+        step_started_at = _time.time()
+        simulator.advance_to(end_time_h)
+        snapshot = simulator.snapshot_state()
+        snapshot["solve_time_s"] = round(_time.time() - step_started_at, 3)
+        window_snapshots[payload["time_window"]] = snapshot
+
+    last_event_time_h = max(record["event_time_h"] for record in event_records)
+    simulator.run_until_complete(last_event_time_h + DEFAULT_SIMULATION_PADDING_H)
+
+    demand_event_lookup = {event.unique_id: event for event in demand_events}
+    simulation_completed = simulator.is_complete()
+    results: List[Dict] = []
+
+    for payload in window_payloads:
+        snapshot = window_snapshots[payload["time_window"]]
+        demand_event_results: Dict[str, Dict] = {}
+        for demand in payload["feasible_demands"]:
+            event_id = demand["solver_event_id"]
+            event = demand_event_lookup[event_id]
+            served_time_s = (
+                round(event.served_time * 3600.0, 1)
+                if event.served_time is not None else None
+            )
+            demand_event_results[event_id] = {
+                "event_id": event_id,
+                "assigned_drone": event.assigned_drone,
+                "assigned_time_h": event.assigned_time,
+                "served_time_h": event.served_time,
+                "served_time_s": served_time_s,
+                "required_supply_idx": event.required_supply_idx,
+                "supply_node": event.supply_node,
+                "demand_point_id": event.demand_point_id,
+                "is_assigned_by_snapshot": event_id in snapshot["assigned_ids"],
+                "is_served_by_snapshot": event_id in snapshot["served_ids"],
+                "is_served_eventually": event.served_time is not None,
+            }
+
+        results.append({
+            "time_window": payload["time_window"],
+            "weight_config": payload["weight_config"],
+            "feasible_demands": payload["feasible_demands"],
+            "n_demands_total": payload["n_demands_total"],
+            "n_demands_filtered": payload["n_demands_filtered"],
+            "solution": {
+                "solve_mode": "dynamic_periodic",
+                "solve_status": "completed" if simulation_completed else "max_time_limit",
+                "solve_time_s": snapshot["solve_time_s"],
+                "drone_speed_ms": drone_speed,
+                "snapshot_time_h": snapshot["current_time_h"],
+                "snapshot_time_window_end": payload["window_end_dt"].isoformat(),
+                "snapshot_served_ids": snapshot["served_ids"],
+                "snapshot_assigned_ids": snapshot["assigned_ids"],
+                "snapshot_pending_ids": snapshot["pending_ids"],
+                "busy_drones": snapshot["busy_drones"],
+                "total_distance": snapshot["total_distance_m"],
+                "total_noise_impact": snapshot["total_noise_impact"],
+                "objective_value": None,
+                "demand_event_results": demand_event_results,
+            },
+            "n_supply": n_supply,
+        })
+
+    return results
+
+
 def _build_simplified_noise_matrix(dist_matrix):
     """Build a simplified noise cost matrix when detailed building data is unavailable.
 
@@ -327,229 +753,34 @@ def solve_window_demands(
     max_payload: float,
     max_range: float,
     noise_weight: float,
+    drone_speed: float = DEFAULT_DRONE_SPEED_MS,
+    building_path: Optional[str] = None,
 ) -> Dict:
-    """求解单个时间窗口。
-
-    统一使用 ``cplex_with_priority_noise.CplexSolver`` 作为求解后端，
-    使 LLM pipeline 和 solver-only baseline 共享同一求解引擎。
-
-    模型特性（对齐 cplex_with_priority_noise）：
-    - 目标函数: ``(distance + noise_weight * noise) * (1/priority)``
-    - 允许部分需求不被服务（unassigned + 大罚项）
-    - 每架无人机单次求解最多接 1 个需求（single_task_per_drone）
-    - 需求必须从指定供给点取货（supply_demand_matching）
-    """
-    window_weight_config = copy.deepcopy(weight_config)
-
-    feasible_demands = [
-        demand for demand in demands
-        if demand.get("cargo", {}).get("weight_kg", 0.0) <= max_payload
-    ]
-    skipped = len(demands) - len(feasible_demands)
-    if skipped:
-        print(f"  跳过 {skipped} 条超载需求 (>{max_payload}kg)")
-
-    if not feasible_demands:
-        print("  无可行需求，跳过")
-        return {
-            "time_window": time_window,
-            "weight_config": window_weight_config,
-            "feasible_demands": [],
-            "n_demands_total": len(demands),
-            "n_demands_filtered": skipped,
-            "solution": None,
-            "n_supply": 0,
-        }
-
-    feasible_ids = {demand["demand_id"] for demand in feasible_demands}
-    window_weight_config["demand_configs"] = [
-        config for config in window_weight_config.get("demand_configs", [])
-        if config["demand_id"] in feasible_ids
-    ]
-
-    supply_points, demand_points, demand_weights, demand_required_supply = (
-        demands_to_solver_inputs(feasible_demands)
-    )
-    station_points = load_solver_station_points(
+    """单窗口兼容入口，内部复用动态周期重求解核心。"""
+    results = solve_windows_dynamically(
+        windows=[{"time_window": time_window, "demands": demands}],
+        weight_configs={time_window: weight_config},
         stations_path=stations_path,
-        demands=feasible_demands,
-        max_stations=max_solver_stations,
-    )
-
-    if not supply_points or not demand_points or not station_points:
-        print("  供给点、需求点或站点为空，跳过")
-        return {
-            "time_window": time_window,
-            "weight_config": window_weight_config,
-            "feasible_demands": feasible_demands,
-            "n_demands_total": len(demands),
-            "n_demands_filtered": skipped,
-            "solution": None,
-            "n_supply": len(supply_points),
-        }
-
-    # Defer heavy imports until after early-return checks
-    import numpy as np
-
-    n_supply = len(supply_points)
-    n_demand = len(demand_points)
-    n_station = len(station_points)
-
-    print(
-        f"  供给点 {n_supply}, 需求点 {n_demand}, "
-        f"站点 {n_station}"
-    )
-
-    # ----- Import shared solver backend (cplex_with_priority_noise) -----
-    try:
-        from drone_pipeline.utils.cplex_with_priority_noise import (
-            CplexSolver as _CplexSolver,
-            Point as _CplexPoint,
-            Drone as _CplexDrone,
-            DroneState as _DroneState,
-            DroneStatus as _DroneStatus,
-            DemandEvent as _DemandEvent,
-        )
-    except Exception as exc:
-        print(f"  求解依赖加载失败: {exc}")
-        return {
-            "time_window": time_window,
-            "weight_config": window_weight_config,
-            "feasible_demands": feasible_demands,
-            "n_demands_total": len(demands),
-            "n_demands_filtered": skipped,
-            "solution": None,
-            "n_supply": n_supply,
-        }
-
-    # ----- Convert SolverPoints → CplexPoints with ENU coordinates -----
-    all_solver_pts = supply_points + demand_points + station_points
-    ref_lat = float(np.mean([p.lat for p in all_solver_pts]))
-    ref_lon = float(np.mean([p.lon for p in all_solver_pts]))
-
-    cplex_points: List = []
-    for sp in all_solver_pts:
-        cp = _CplexPoint(id=sp.id, lon=sp.lon, lat=sp.lat, alt=sp.alt, type=sp.type)
-        cp.to_enu(ref_lat, ref_lon, 0.0)
-        cplex_points.append(cp)
-
-    # ----- Euclidean distance matrix -----
-    n_pts = len(cplex_points)
-    dist_matrix = np.zeros((n_pts, n_pts))
-    for i in range(n_pts):
-        for j in range(i + 1, n_pts):
-            dx = cplex_points[i].x - cplex_points[j].x
-            dy = cplex_points[i].y - cplex_points[j].y
-            dz = cplex_points[i].z - cplex_points[j].z
-            d = math.sqrt(dx * dx + dy * dy + dz * dz)
-            dist_matrix[i, j] = d
-            dist_matrix[j, i] = d
-
-    # ----- Noise cost matrix (simplified when building data unavailable) -----
-    noise_cost_matrix = None
-    if noise_weight > 0:
-        noise_cost_matrix = _build_simplified_noise_matrix(dist_matrix)
-        print(f"  噪声矩阵: {noise_cost_matrix.shape}, 权重={noise_weight}")
-
-    # ----- Index lists (same layout as cplex_with_priority_noise) -----
-    supply_indices = list(range(n_supply))
-    station_indices = list(range(n_supply + n_demand, n_supply + n_demand + n_station))
-
-    # ----- Create drones (all idle at their stations) -----
-    cruise_speed = 15.0
-    cplex_drones: List = []
-    for s_idx in range(n_station):
-        for d_idx in range(max_drones_per_station):
-            cplex_drones.append(_CplexDrone(
-                id=f"U{s_idx + 1}{d_idx + 1}",
-                station_id=s_idx,
-                station_name=station_points[s_idx].id,
-                max_payload=max_payload,
-                max_range=max_range,
-                speed=cruise_speed,
-            ))
-
-    drone_states: List = []
-    for drone in cplex_drones:
-        station_node = station_indices[drone.station_id]
-        drone_states.append(_DroneState(
-            drone_id=drone.id,
-            station_id=drone.station_id,
-            current_node=station_node,
-            remaining_range=drone.max_range,
-            remaining_payload=drone.max_payload,
-            status=_DroneStatus.IDLE,
-            position_x=cplex_points[station_node].x,
-            position_y=cplex_points[station_node].y,
-        ))
-
-    # ----- Create DemandEvents with LLM priority + required_supply_idx -----
-    demand_cfg_map = {
-        dc["demand_id"]: dc
-        for dc in window_weight_config.get("demand_configs", [])
-    }
-    demand_events: List = []
-    for idx, demand in enumerate(feasible_demands):
-        demand_id = demand.get("demand_id", f"D{idx + 1}")
-        cfg = demand_cfg_map.get(demand_id, {})
-        priority = cfg.get("priority", 3)
-        demand_events.append(_DemandEvent(
-            time=0.0,
-            node_idx=n_supply + idx,
-            weight=demand_weights[idx],
-            unique_id=demand_id,
-            priority=priority,
-            required_supply_idx=demand_required_supply[idx],
-            demand_point_id=demand_points[idx].id,
-        ))
-
-    # ----- Solve via shared CplexSolver backend -----
-    solver = _CplexSolver(
-        drones=cplex_drones,
-        supply_indices=supply_indices,
-        station_indices=station_indices,
-        dist_matrix=dist_matrix,
-        all_points=cplex_points,
-        noise_cost_matrix=noise_cost_matrix,
-        noise_weight=noise_weight,
+        building_path=building_path,
+        max_solver_stations=max_solver_stations,
         time_limit=time_limit,
+        max_drones_per_station=max_drones_per_station,
+        max_payload=max_payload,
+        max_range=max_range,
+        noise_weight=noise_weight,
+        drone_speed=drone_speed,
     )
-
-    t0 = _time.time()
-    try:
-        assignments = solver.solve_assignment(
-            drone_states, demand_events, current_time=0.0,
-        )
-        solve_time = _time.time() - t0
-        solution = _build_solution_from_assignments(
-            assignments=assignments,
-            demand_events=demand_events,
-            dist_matrix=dist_matrix,
-            cplex_points=cplex_points,
-            station_indices=station_indices,
-            n_supply=n_supply,
-            cruise_speed=cruise_speed,
-            solve_time=solve_time,
-        )
-
-        n_served = len(assignments)
-        n_unserved = n_demand - n_served
-        print(
-            f"  求解完成: {n_served}/{n_demand} 需求已分配, "
-            f"{n_unserved} 未分配, 耗时 {solve_time:.2f}s"
-        )
-    except Exception as exc:
-        print(f"  求解失败: {exc}")
-        solution = None
+    if results:
+        return results[0]
 
     return {
         "time_window": time_window,
-        "weight_config": window_weight_config,
-        "feasible_demands": feasible_demands,
+        "weight_config": copy.deepcopy(weight_config),
+        "feasible_demands": [],
         "n_demands_total": len(demands),
-        "n_demands_filtered": skipped,
-        "solution": solution,
-        "n_supply": n_supply,
+        "n_demands_filtered": len(demands),
+        "solution": None,
+        "n_supply": 0,
     }
 
 
@@ -576,6 +807,138 @@ def serialize_pipeline_results(all_solutions: List[Dict]) -> List[Dict]:
         }
 
         if solution:
+            if solution.get("solve_mode") == "dynamic_periodic":
+                drone_speed = float(solution.get("drone_speed_ms", DEFAULT_DRONE_SPEED_MS))
+                total_dist = float(solution.get("total_distance", 0.0))
+                total_noise = float(solution.get("total_noise_impact", 0.0))
+                entry.update({
+                    "solve_status": solution.get("solve_status", "dynamic_periodic"),
+                    "solve_time_s": solution.get("solve_time_s", 0.0),
+                    "objective_value": solution.get("objective_value"),
+                    "drones_used": len({
+                        outcome.get("assigned_drone")
+                        for outcome in solution.get("demand_event_results", {}).values()
+                        if outcome.get("assigned_drone")
+                    }),
+                    "total_distance_m": round(total_dist, 2),
+                    "total_noise_impact": round(total_noise, 2),
+                    "total_estimated_time_s": round(total_dist / drone_speed, 1),
+                    "cruise_speed_ms": drone_speed,
+                    "snapshot_time_h": solution.get("snapshot_time_h"),
+                    "snapshot_time_window_end": solution.get("snapshot_time_window_end"),
+                    "busy_drones_at_window_end": solution.get("busy_drones", []),
+                })
+
+                config_map = {
+                    config["demand_id"]: config
+                    for config in weight_config.get("demand_configs", [])
+                }
+                demand_event_results = solution.get("demand_event_results", {})
+
+                per_demand = []
+                for demand in feasible_demands:
+                    demand_id = demand.get("demand_id", "")
+                    solver_event_id = demand.get("solver_event_id", demand_id)
+                    outcome = demand_event_results.get(solver_event_id, {})
+                    config = config_map.get(demand_id, {})
+                    cargo = demand.get("cargo", {})
+                    origin = demand.get("origin", {})
+                    dest = demand.get("destination", {})
+                    vuln = demand.get("priority_evaluation_signals", {}).get(
+                        "population_vulnerability", {}
+                    )
+                    delivery_time_s = outcome.get("served_time_s")
+                    per_demand.append({
+                        "demand_id": demand_id,
+                        "solver_event_id": solver_event_id,
+                        "source_dialogue_id": demand.get("source_dialogue_id"),
+                        "request_timestamp": demand.get("request_timestamp"),
+                        "demand_tier": demand.get("demand_tier", cargo.get("demand_tier", "")),
+                        "cargo_type": cargo.get("type", ""),
+                        "cargo_type_cn": cargo.get("type_cn", ""),
+                        "weight_kg": cargo.get("weight_kg", 0.0),
+                        "temperature_sensitive": cargo.get("temperature_sensitive", False),
+                        "alpha": config.get("alpha", 1.0),
+                        "beta": config.get("beta", 1.0),
+                        "priority": config.get("priority", 3),
+                        "llm_reasoning": config.get("reasoning", ""),
+                        "elderly_involved": vuln.get("elderly_involved", False),
+                        "vulnerable_community": vuln.get("vulnerable_community", False),
+                        "time_sensitivity": demand.get("priority_evaluation_signals", {}).get(
+                            "time_sensitivity", ""
+                        ),
+                        "requester_role": demand.get("priority_evaluation_signals", {}).get(
+                            "requester_role", ""
+                        ),
+                        "nearby_facility": demand.get("priority_evaluation_signals", {}).get(
+                            "nearby_critical_facility", ""
+                        ),
+                        "is_assigned_by_window_end": outcome.get("is_assigned_by_snapshot", False),
+                        "is_served_by_window_end": outcome.get("is_served_by_snapshot", False),
+                        "is_served": outcome.get("is_served_eventually", False),
+                        "assigned_drone": outcome.get("assigned_drone"),
+                        "assigned_time_h": outcome.get("assigned_time_h"),
+                        "delivery_time_h": outcome.get("served_time_h"),
+                        "delivery_time_s": delivery_time_s,
+                        "delivery_time_min": (
+                            round(delivery_time_s / 60, 2)
+                            if delivery_time_s is not None else None
+                        ),
+                        "origin_fid": origin.get("fid"),
+                        "origin_coords": origin.get("coords", []),
+                        "dest_fid": dest.get("fid"),
+                        "dest_coords": dest.get("coords", []),
+                        "dest_type": dest.get("type", ""),
+                    })
+
+                n_served_final = sum(1 for demand in per_demand if demand["is_served"])
+                n_served_snapshot = sum(
+                    1 for demand in per_demand if demand["is_served_by_window_end"]
+                )
+                entry["n_demands_served"] = n_served_final
+                entry["n_demands_served_by_window_end"] = n_served_snapshot
+                entry["service_rate"] = (
+                    round(n_served_final / len(feasible_demands), 3)
+                    if feasible_demands else 0.0
+                )
+                entry["service_rate_by_window_end"] = (
+                    round(n_served_snapshot / len(feasible_demands), 3)
+                    if feasible_demands else 0.0
+                )
+                entry["per_demand_results"] = per_demand
+
+                drone_groups: Dict[str, List[Dict]] = {}
+                for demand_result in per_demand:
+                    drone_id = demand_result.get("assigned_drone")
+                    if not drone_id:
+                        continue
+                    drone_groups.setdefault(drone_id, []).append(demand_result)
+
+                entry["per_drone_details"] = [
+                    {
+                        "drone_id": drone_id,
+                        "n_demands_assigned_in_window": len(items),
+                        "n_demands_served_in_window": sum(
+                            1 for item in items if item["is_served"]
+                        ),
+                        "demand_ids_served": [
+                            item["demand_id"] for item in items if item["is_served"]
+                        ],
+                        "demand_ids_assigned": [item["demand_id"] for item in items],
+                        "latest_delivery_time_h": max(
+                            (
+                                item["delivery_time_h"]
+                                for item in items
+                                if item["delivery_time_h"] is not None
+                            ),
+                            default=None,
+                        ),
+                    }
+                    for drone_id, items in sorted(drone_groups.items())
+                ]
+                serializable.append(entry)
+                continue
+
             cruise_speed = 15.0
             total_dist = solution.get("total_distance", 0.0)
 
@@ -753,6 +1116,12 @@ def main():
         help=f"真实站点文件 {STATION_DATA_FILENAME}；不传则回退到 mock stations",
     )
     parser.add_argument(
+        "--building-data",
+        type=str,
+        default=str(BUILDING_DATA_PATH),
+        help=f"真实建筑文件 {BUILDING_DATA_FILENAME}；用于构建真实距离/噪声矩阵",
+    )
+    parser.add_argument(
         "--output",
         type=str,
         default=str(PROJECT_ROOT / "data" / "drone" / "solver_results.json"),
@@ -769,6 +1138,9 @@ def main():
     )
     parser.add_argument(
         "--max-range", type=float, default=40000.0, help="最大航程（m）"
+    )
+    parser.add_argument(
+        "--drone-speed", type=float, default=DEFAULT_DRONE_SPEED_MS, help="无人机飞行速度（m/s）"
     )
     parser.add_argument(
         "--noise-weight",
@@ -788,33 +1160,19 @@ def main():
         windows = json.load(f)
 
     weight_configs = _load_weight_configs(args.weights)
-    all_solutions = []
-
-    for window in windows:
-        time_window = window.get("time_window", "")
-        demands = window.get("demands", [])
-        if not demands:
-            continue
-
-        weight_config = weight_configs.get(time_window)
-        if weight_config is None:
-            print(f"窗口 {time_window} 缺少权重配置，跳过")
-            continue
-
-        print(f"\n---- 窗口 {time_window}: {len(demands)} 条需求 ----")
-        result = solve_window_demands(
-            time_window=time_window,
-            demands=demands,
-            weight_config=weight_config,
-            stations_path=args.stations,
-            max_solver_stations=args.max_solver_stations,
-            time_limit=args.time_limit,
-            max_drones_per_station=args.max_drones_per_station,
-            max_payload=args.max_payload,
-            max_range=args.max_range,
-            noise_weight=args.noise_weight,
-        )
-        all_solutions.append(result)
+    all_solutions = solve_windows_dynamically(
+        windows=windows,
+        weight_configs=weight_configs,
+        stations_path=args.stations,
+        building_path=args.building_data,
+        max_solver_stations=args.max_solver_stations,
+        time_limit=args.time_limit,
+        max_drones_per_station=args.max_drones_per_station,
+        max_payload=args.max_payload,
+        max_range=args.max_range,
+        noise_weight=args.noise_weight,
+        drone_speed=args.drone_speed,
+    )
 
     out_path = Path(args.output)
     out_path.parent.mkdir(parents=True, exist_ok=True)
