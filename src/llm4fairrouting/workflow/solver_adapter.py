@@ -614,49 +614,6 @@ def solve_windows_dynamically(
     return results
 
 
-def solve_window_demands(
-    *,
-    time_window: str,
-    demands: List[Dict],
-    weight_config: Dict,
-    stations_path: Optional[str],
-    max_solver_stations: Optional[int],
-    time_limit: int,
-    max_drones_per_station: int,
-    max_payload: float,
-    max_range: float,
-    noise_weight: float,
-    drone_speed: float = DEFAULT_DRONE_SPEED_MS,
-    building_path: Optional[str] = None,
-) -> Dict:
-    """单窗口兼容入口，内部复用动态周期重求解核心。"""
-    results = solve_windows_dynamically(
-        windows=[{"time_window": time_window, "demands": demands}],
-        weight_configs={time_window: weight_config},
-        stations_path=stations_path,
-        building_path=building_path,
-        max_solver_stations=max_solver_stations,
-        time_limit=time_limit,
-        max_drones_per_station=max_drones_per_station,
-        max_payload=max_payload,
-        max_range=max_range,
-        noise_weight=noise_weight,
-        drone_speed=drone_speed,
-    )
-    if results:
-        return results[0]
-
-    return {
-        "time_window": time_window,
-        "weight_config": copy.deepcopy(weight_config),
-        "feasible_demands": [],
-        "n_demands_total": len(demands),
-        "n_demands_filtered": len(demands),
-        "solution": None,
-        "n_supply": 0,
-    }
-
-
 def serialize_workflow_results(all_solutions: List[Dict]) -> List[Dict]:
     """将求解结果转换为 JSON 可直接落盘的摘要结构。"""
     serializable: List[Dict] = []

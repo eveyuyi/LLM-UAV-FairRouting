@@ -356,13 +356,6 @@ def _pick_tier_template(tier: str, material: str, rng: random.Random) -> str:
     return rng.choice(templates)
 
 
-def _pick_template(priority: int, material: str) -> str:
-    """兼容旧测试/调用方的模板选择入口。"""
-    tier = _map_priority_to_tier(priority)
-    rng = random.Random(hash((priority, material)))
-    return _pick_tier_template(tier, material, rng)
-
-
 # ============================================================================
 # 数据加载
 # ============================================================================

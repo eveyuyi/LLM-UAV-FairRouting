@@ -7,6 +7,7 @@ Module 1 单元测试 — llm/dialogue_generation.py
 
 import json
 import math
+import random
 import tempfile
 from pathlib import Path
 
@@ -20,7 +21,8 @@ from llm4fairrouting.llm.dialogue_generation import (
     _generate_rule_conversation,
     _haversine,
     _infer_poi,
-    _pick_template,
+    _map_priority_to_tier,
+    _pick_tier_template,
     generate_dialogues_offline,
     load_demand_events,
     load_stations,
@@ -103,15 +105,15 @@ class TestFindNearestStation:
 
 class TestPickTemplate:
     def test_priority1_ventilator(self):
-        tpl = _pick_template(1, "ventilator")
+        tpl = _pick_tier_template(_map_priority_to_tier(1), "ventilator", random.Random(1))
         assert "ICU" in tpl or "min" in tpl
 
     def test_priority2_vaccine(self):
-        tpl = _pick_template(2, "vaccine")
+        tpl = _pick_tier_template(_map_priority_to_tier(2), "vaccine", random.Random(2))
         assert "{dest_id}" in tpl
 
     def test_fallback_for_unknown(self):
-        tpl = _pick_template(99, "unknown_material")
+        tpl = _pick_tier_template(_map_priority_to_tier(99), "unknown_material", random.Random(3))
         assert "{origin_name}" in tpl
 
 
