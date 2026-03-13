@@ -12,7 +12,6 @@ Module 1 数据来源（优先级由高到低）:
 
 import argparse
 import json
-import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -41,6 +40,7 @@ from llm4fairrouting.llm.priority_inference import (
     adjust_weights,
     adjust_weights_offline,
 )
+from llm4fairrouting.llm.client_utils import create_openai_client
 from llm4fairrouting.data.seed_paths import (
     BUILDING_DATA_FILENAME,
     BUILDING_DATA_PATH,
@@ -168,15 +168,7 @@ def run_workflow(
         client = None
 
         if not offline:
-            from openai import OpenAI
-
-            base = api_base or os.getenv(
-                "LLMOPT_API_BASE_URL", "http://35.220.164.252:3888/v1/"
-            )
-            key = api_key or os.getenv("LLMOPT_API_KEY")
-            if not key:
-                raise ValueError("需要 API key: 设置 LLMOPT_API_KEY 或 --api-key")
-            client = OpenAI(base_url=base, api_key=key)
+            client = create_openai_client(api_base, api_key)
 
         # ----------------------------------------------------------------
         # Step 1: Module 1 — 生成对话

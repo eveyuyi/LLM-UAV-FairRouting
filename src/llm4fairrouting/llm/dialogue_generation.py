@@ -16,7 +16,6 @@ Module 1: Dialogue Generator — 从 daily_demand_events.csv 读取结构化需�
 import json
 import math
 import random
-import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -33,6 +32,11 @@ from llm4fairrouting.data.seed_paths import (
     STATION_DATA_PATH,
 )
 from llm4fairrouting.data.stations import load_station_data
+from llm4fairrouting.llm.client_utils import (
+    call_llm,
+    create_openai_client,
+    parse_json_response,
+)
 
 
 # ============================================================================
@@ -706,38 +710,6 @@ def generate_dialogues_offline(
     return dialogues
 
 
-# ============================================================================
-# 主入口：在线（LLM）生成
-# ============================================================================
-
-def _call_llm(
-    client: "OpenAI",
-    model: str,
-    system_prompt: str,
-    user_prompt: str,
-    temperature: float = 0.7,
-    max_retries: int = 3,
-) -> str:
-    last_err = None
-    for attempt in range(1, max_retries + 1):
-        try:
-            resp = client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                temperature=temperature,
-            )
-            return resp.choices[0].message.content or ""
-        except Exception as e:
-            last_err = e
-            print(f"  [LLM] attempt {attempt}/{max_retries} failed: {e}")
-            if attempt < max_retries:
-                time.sleep(2.0)
-    raise RuntimeError(f"LLM call failed after {max_retries} attempts: {last_err}")
-
-
 def generate_dialogues_online(
     demand_events: List[Dict],
     stations: List[Dict],
@@ -789,7 +761,7 @@ def generate_dialogues_online(
         print(f"  [Module 1] batch {start // batch_size + 1}: {len(batch)} items, calling LLM ...")
 
         try:
-            raw = _call_llm(client, model, DRONE_SYSTEM_PROMPT, prompt, temperature)
+            raw = call_llm(client, model, DRONE_SYSTEM_PROMPT, prompt, temperature)
             llm_texts = _parse_llm_batch_response(raw, batch)
         except Exception as e:
             print(f"  [Module 1] LLM failed, falling back to rule-based text: {e}")
@@ -811,13 +783,8 @@ def _parse_llm_batch_response(raw: str, batch: List[Dict]) -> Dict[str, str]:
         {"dialogues": [{"dialogue_id": "D0001", "conversation": "..."}, ...]}
     """
     cleaned = raw.strip()
-    if "```json" in cleaned:
-        cleaned = cleaned.split("```json", 1)[1]
-    if "```" in cleaned:
-        cleaned = cleaned.split("```", 1)[0]
-
     try:
-        obj = json.loads(cleaned.strip())
+        obj = parse_json_response(cleaned)
         items = obj.get("dialogues", [])
         return {item["dialogue_id"]: item["conversation"] for item in items}
     except Exception:
@@ -908,7 +875,6 @@ def save_dialogues(dialogues: List[Dict], output_path: str) -> None:
 
 def main():
     import argparse
-    import os
 
     parser = argparse.ArgumentParser(description="Module 1: Dialogue Generator")
     parser.add_argument(
@@ -940,12 +906,7 @@ def main():
 
     client = None
     if not args.offline:
-        from openai import OpenAI
-        base = args.api_base or os.getenv("LLMOPT_API_BASE_URL", "http://35.220.164.252:3888/v1/")
-        key = args.api_key or os.getenv("LLMOPT_API_KEY")
-        if not key:
-            raise ValueError("需要 API key: 设置 LLMOPT_API_KEY 或 --api-key")
-        client = OpenAI(base_url=base, api_key=key)
+        client = create_openai_client(args.api_base, args.api_key)
 
     dialogues = generate_dialogues(
         csv_path=args.csv,

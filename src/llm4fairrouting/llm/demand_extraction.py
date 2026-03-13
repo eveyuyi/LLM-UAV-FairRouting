@@ -3,7 +3,6 @@ Module 2: Context Extraction — 按时间窗口聚合对话，调用 LLM 提取
 """
 
 import json
-import time
 from collections import defaultdict
 from pathlib import Path
 
@@ -12,6 +11,12 @@ from typing import TYPE_CHECKING, Dict, List
 
 if TYPE_CHECKING:
     from openai import OpenAI
+
+from llm4fairrouting.llm.client_utils import (
+    call_llm,
+    create_openai_client,
+    parse_json_response,
+)
 
 
 # ============================================================================
@@ -54,48 +59,6 @@ def group_by_time_window(
         groups[label].sort(key=lambda d: d["timestamp"])
 
     return dict(sorted(groups.items()))
-
-
-# ============================================================================
-# LLM 调用
-# ============================================================================
-
-def _call_llm(
-    client: "OpenAI",
-    model: str,
-    system_prompt: str,
-    user_prompt: str,
-    temperature: float = 0.0,
-    max_retries: int = 3,
-) -> str:
-    last_err = None
-    for attempt in range(1, max_retries + 1):
-        try:
-            resp = client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                temperature=temperature,
-            )
-            return resp.choices[0].message.content or ""
-        except Exception as e:
-            last_err = e
-            print(f"  [LLM] attempt {attempt}/{max_retries} failed: {e}")
-            if attempt < max_retries:
-                time.sleep(2.0)
-    raise RuntimeError(f"LLM call failed after {max_retries} attempts: {last_err}")
-
-
-def _parse_json_response(text: str) -> Dict:
-    """从 LLM 返回中提取 JSON（兼容 markdown code fence）。"""
-    cleaned = text.strip()
-    if "```json" in cleaned:
-        cleaned = cleaned.split("```json", 1)[1]
-    if "```" in cleaned:
-        cleaned = cleaned.split("```", 1)[0]
-    return json.loads(cleaned.strip())
 
 
 # ============================================================================
@@ -157,8 +120,8 @@ def extract_demands_for_window(
     prompt = context_extraction_prompt(dialogues, time_window)
     print(f"  [Module 2] 窗口 {time_window}: {len(dialogues)} 条对话，调用 LLM ...")
 
-    raw = _call_llm(client, model, DRONE_SYSTEM_PROMPT, prompt, temperature)
-    result = _parse_json_response(raw)
+    raw = call_llm(client, model, DRONE_SYSTEM_PROMPT, prompt, temperature)
+    result = parse_json_response(raw)
 
     # Enrich with coords from metadata (LLM cannot know these from text alone)
     result["demands"] = _enrich_demands_with_metadata(
@@ -344,12 +307,7 @@ def main():
     if args.offline:
         results = extract_demands_offline(dialogues, args.window)
     else:
-        import os
-        base = args.api_base or os.getenv("LLMOPT_API_BASE_URL", "http://35.220.164.252:3888/v1/")
-        key = args.api_key or os.getenv("LLMOPT_API_KEY")
-        if not key:
-            raise ValueError("需要 API key: 设置 LLMOPT_API_KEY 或 --api-key")
-        client = OpenAI(base_url=base, api_key=key)
+        client = create_openai_client(args.api_base, args.api_key)
         results = extract_all_demands(dialogues, client, args.model, args.window)
 
     out_path = args.output or str(PROJECT_ROOT / "data" / "drone" / "extracted_demands.json")
