@@ -2,9 +2,9 @@
 
 from pathlib import Path
 
-from drone_pipeline.pipeline.dialogue_generator import load_stations
-from drone_pipeline.seed_data import STATION_DATA_PATH, STATION_DATA_SOURCE_PATH
-from drone_pipeline.utils.station_data import CANONICAL_STATION_COLUMNS, load_station_data
+from llm4fairrouting.data.seed_paths import STATION_DATA_PATH, STATION_DATA_SOURCE_PATH
+from llm4fairrouting.data.stations import CANONICAL_STATION_COLUMNS, load_station_data
+from llm4fairrouting.llm.dialogue_generation import load_stations
 
 
 def test_normalized_station_csv_exists():

@@ -1,5 +1,5 @@
 """
-无人机医疗配送 pipeline 的 prompt 模板。
+无人机医疗配送 workflow 的 prompt 模板。
 
 - dialogue_generation_prompt()   — Module 1 (对话生成)
 - context_extraction_prompt()    — Module 2 (信息提取 + 优先级评估信号，不赋值优先级)
@@ -87,7 +87,7 @@ def context_extraction_prompt(dialogues: List[Dict], time_window: str) -> str:
     """Module 2：从对话中提取结构化信息及优先级评估所需信号。
 
     注意：Module 2 **不**做优先级排序，只提取客观信息和信号，
-    优先级排序由 Module 3（weight_adjuster）完成。
+    优先级排序由 Module 3（priority_inference）完成。
 
     Parameters
     ----------
@@ -97,7 +97,7 @@ def context_extraction_prompt(dialogues: List[Dict], time_window: str) -> str:
         时间窗口标识，如 "2024-03-15T09:00-09:30"。
     """
     # Module 2 只看对话文本，不接收坐标/人口统计等 metadata
-    # 坐标/fid 由 context_extractor 在 LLM 返回后从原始 metadata 回填
+    # 坐标/fid 由 demand_extraction 在 LLM 返回后从原始 metadata 回填
     dialogue_text = ""
     for d in dialogues:
         dialogue_text += (

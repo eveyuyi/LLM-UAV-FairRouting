@@ -150,7 +150,10 @@ def extract_demands_for_window(
     LLM 只接收对话文本；坐标/fid 由 _enrich_demands_with_metadata 从
     原始 dialogue metadata 注入，保证 solver 可用。
     """
-    from drone_pipeline.prompts.drone_prompt import DRONE_SYSTEM_PROMPT, context_extraction_prompt
+    from llm4fairrouting.llm.prompt_templates import (
+        DRONE_SYSTEM_PROMPT,
+        context_extraction_prompt,
+    )
     prompt = context_extraction_prompt(dialogues, time_window)
     print(f"  [Module 2] 窗口 {time_window}: {len(dialogues)} 条对话，调用 LLM ...")
 

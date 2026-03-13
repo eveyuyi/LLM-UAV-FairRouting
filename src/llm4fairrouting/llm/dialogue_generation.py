@@ -26,13 +26,13 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 if TYPE_CHECKING:
     from openai import OpenAI
 
-from drone_pipeline.seed_data import (
+from llm4fairrouting.data.seed_paths import (
     DEMAND_EVENTS_FILENAME,
     DEMAND_EVENTS_PATH,
     STATION_DATA_FILENAME,
     STATION_DATA_PATH,
 )
-from drone_pipeline.utils.station_data import load_station_data
+from llm4fairrouting.data.stations import load_station_data
 
 
 # ============================================================================
@@ -761,7 +761,10 @@ def generate_dialogues_online(
     每次将 batch_size 条事件打包成一个 LLM 请求，生成对话文本后
     替换离线规则文本，其余字段保持不变。
     """
-    from drone_pipeline.prompts.drone_prompt import DRONE_SYSTEM_PROMPT, dialogue_generation_prompt
+    from llm4fairrouting.llm.prompt_templates import (
+        DRONE_SYSTEM_PROMPT,
+        dialogue_generation_prompt,
+    )
 
     dialogues = generate_dialogues_offline(demand_events, stations, base_date)
 

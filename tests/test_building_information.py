@@ -1,14 +1,14 @@
-"""Tests for normalized building seed data."""
+"""Tests for normalized building_information seed data."""
 
 from pathlib import Path
 
-from drone_pipeline.seed_data import BUILDING_DATA_PATH, BUILDING_DATA_SOURCE_PATH
-from drone_pipeline.utils.building_data import (
-    CANONICAL_BUILDING_COLUMNS,
+from llm4fairrouting.data.building_information import (
+    BUILDING_DATA_COLUMNS,
     HEALTHCARE_LAND_USE,
     RESIDENTIAL_LAND_USE,
     load_building_data,
 )
+from llm4fairrouting.data.seed_paths import BUILDING_DATA_PATH, BUILDING_DATA_SOURCE_PATH
 
 
 def test_normalized_building_csv_exists():
@@ -18,7 +18,7 @@ def test_normalized_building_csv_exists():
 def test_normalized_building_data_uses_english_schema():
     df = load_building_data(str(BUILDING_DATA_PATH))
 
-    assert list(df.columns) == CANONICAL_BUILDING_COLUMNS
+    assert list(df.columns) == BUILDING_DATA_COLUMNS
     assert HEALTHCARE_LAND_USE in set(df["land_use_type"])
     assert RESIDENTIAL_LAND_USE in set(df["land_use_type"])
 

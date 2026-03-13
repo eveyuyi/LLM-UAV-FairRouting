@@ -1,4 +1,4 @@
-from drone_pipeline.pipeline.solver_runner import (
+from llm4fairrouting.workflow.solver_adapter import (
     _parse_window_bounds,
     _select_station_dicts,
     demands_to_solver_inputs,

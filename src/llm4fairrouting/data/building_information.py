@@ -7,7 +7,7 @@ from typing import Iterable
 
 import pandas as pd
 
-CANONICAL_BUILDING_COLUMNS = [
+BUILDING_DATA_COLUMNS = [
     "wkt_geometry",
     "feature_id",
     "building_height_m",
@@ -97,11 +97,11 @@ def normalize_building_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     }
     normalized = df.rename(columns=rename_map).copy()
 
-    missing_columns = [column for column in CANONICAL_BUILDING_COLUMNS if column not in normalized.columns]
+    missing_columns = [column for column in BUILDING_DATA_COLUMNS if column not in normalized.columns]
     if missing_columns:
         raise ValueError(f"Missing required building columns: {missing_columns}")
 
-    normalized = normalized[CANONICAL_BUILDING_COLUMNS]
+    normalized = normalized[BUILDING_DATA_COLUMNS]
     normalized["land_use_type"] = normalized["land_use_type"].replace(_LAND_USE_TRANSLATIONS)
     normalized["province"] = normalized["province"].replace(_PROVINCE_TRANSLATIONS)
     normalized["city"] = normalized["city"].replace(_CITY_TRANSLATIONS)
@@ -129,6 +129,13 @@ def normalize_building_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 
 def load_building_data(file_path: str) -> pd.DataFrame:
     return normalize_building_dataframe(_read_table(file_path))
+
+
+def load_building_partitions(file_path: str) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    df = load_building_data(file_path)
+    hospitals = df[df["land_use_type"] == HEALTHCARE_LAND_USE].copy()
+    residences = df[df["land_use_type"] == RESIDENTIAL_LAND_USE].copy()
+    return hospitals, residences, df
 
 
 def export_normalized_building_csv(source_path: str, output_path: str) -> pd.DataFrame:

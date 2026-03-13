@@ -3,9 +3,9 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "drone-delivery-pipeline"
+name = "llm4fairrouting"
 version = "0.1.0"
-description = "Independent drone medical delivery pipeline extracted from LLMOPT"
+description = "Shared LLM workflow and baseline routing core for fair drone delivery"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -13,6 +13,7 @@ dependencies = [
   "numpy",
   "pandas",
   "pyomo",
+  "scipy",
   "matplotlib",
   "openpyxl",
 ]
@@ -23,11 +24,11 @@ dev = [
 ]
 
 [project.scripts]
-drone-module1 = "drone_pipeline.scripts.module1_generate_dialogues:main"
-drone-module2 = "drone_pipeline.scripts.module2_extract_demands:main"
-drone-module3a = "drone_pipeline.scripts.module3_adjust_weights:main"
-drone-module3b = "drone_pipeline.scripts.module3_solve:main"
-drone-pipeline = "drone_pipeline.scripts.run_pipeline:main"
+llm4fairrouting-dialogue = "llm4fairrouting.llm.dialogue_generation:main"
+llm4fairrouting-demand = "llm4fairrouting.llm.demand_extraction:main"
+llm4fairrouting-priority = "llm4fairrouting.llm.priority_inference:main"
+llm4fairrouting-solver = "llm4fairrouting.workflow.solver_adapter:main"
+llm4fairrouting-workflow = "llm4fairrouting.workflow.run_workflow:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

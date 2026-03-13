@@ -1,5 +1,5 @@
 """
-端到端 pipeline runner — 串联 Module 1 → Module 2 → Module 3。
+端到端 workflow runner — 串联 Module 1 → Module 2 → Module 3。
 
 支持两种运行模式:
   --offline   不调用 LLM，使用规则数据跑通全流程
@@ -20,16 +20,19 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 from typing import Dict, List, Optional
 
-from drone_pipeline.pipeline.context_extractor import (
+from llm4fairrouting.llm.demand_extraction import (
     extract_all_demands,
     extract_demands_offline,
 )
-from drone_pipeline.pipeline.solver_runner import (
-    serialize_pipeline_results,
+from llm4fairrouting.workflow.solver_adapter import (
+    serialize_workflow_results,
     solve_windows_dynamically,
 )
-from drone_pipeline.pipeline.weight_adjuster import adjust_weights, adjust_weights_offline
-from drone_pipeline.seed_data import (
+from llm4fairrouting.llm.priority_inference import (
+    adjust_weights,
+    adjust_weights_offline,
+)
+from llm4fairrouting.data.seed_paths import (
     BUILDING_DATA_FILENAME,
     BUILDING_DATA_PATH,
     DEMAND_EVENTS_FILENAME,
@@ -72,7 +75,7 @@ def _build_run_dir(base_dir: Path, model: str, noise_weight: float) -> Path:
 # Pipeline Runner
 # ============================================================================
 
-def run_pipeline(
+def run_workflow(
     output_dir: str,
     # Module 1 数据来源
     csv_path: Optional[str] = None,
@@ -92,7 +95,7 @@ def run_pipeline(
     dialogue_batch_size: int = 5,
     # Module 2 参数
     window_minutes: int = 5,
-    # Solver 参数（默认值与 cplex_with_priority_noise.main() 对齐）
+    # Solver 参数（默认值与 baseline demo 对齐）
     time_limit: int = 10,
     max_drones_per_station: int = 3,
     max_payload: float = 60.0,
@@ -104,14 +107,14 @@ def run_pipeline(
     building_path: Optional[str] = None,
     drone_speed: float = 60.0,
 ):
-    """端到端运行 pipeline（Module 1 → Module 2 → Module 3）。"""
+    """端到端运行 workflow（Module 1 → Module 2 → Module 3）。"""
     base_dir = Path(output_dir)
     run_dir = _build_run_dir(base_dir, model, noise_weight)
     run_dir.mkdir(parents=True, exist_ok=True)
     resolved_stations_path = str(stations_path or STATION_DATA_PATH)
 
     # 将 stdout 同步写入终端和 log 文件
-    log_path = run_dir / "pipeline.log"
+    log_path = run_dir / "workflow.log"
     original_stdout = sys.stdout
     log_file = open(log_path, "w", encoding="utf-8")
     sys.stdout = _TeeStdout(original_stdout, log_file)
@@ -175,7 +178,7 @@ def run_pipeline(
 
         if csv_path:
             # 从 CSV 生成对话（stations_path 可选）
-            from drone_pipeline.pipeline.dialogue_generator import generate_dialogues
+            from llm4fairrouting.llm.dialogue_generation import generate_dialogues
 
             dialogues = generate_dialogues(
                 csv_path=csv_path,
@@ -190,7 +193,7 @@ def run_pipeline(
                 batch_size=dialogue_batch_size,
             )
             dlg_out = run_dir / "generated_dialogues.jsonl"
-            from drone_pipeline.pipeline.dialogue_generator import save_dialogues
+            from llm4fairrouting.llm.dialogue_generation import save_dialogues
 
             save_dialogues(dialogues, str(dlg_out))
         elif dialogue_path:
@@ -308,20 +311,20 @@ def run_pipeline(
         # ----------------------------------------------------------------
         # 保存汇总结果（含完整 eval 字段）
         # ----------------------------------------------------------------
-        summary_path = run_dir / "pipeline_results.json"
+        summary_path = run_dir / "workflow_results.json"
         with open(summary_path, "w", encoding="utf-8") as f:
             json.dump(
-                serialize_pipeline_results(all_solutions),
+                serialize_workflow_results(all_solutions),
                 f,
                 ensure_ascii=False,
                 indent=2,
             )
 
         print(f"\n{'=' * 60}")
-        print("Pipeline 完成！结果保存至:")
+        print("Workflow 完成！结果保存至:")
         print(f"  Run directory   : {run_dir}")
         print(f"  Weight configs  : {weight_configs_dir}")
-        print(f"  Pipeline results: {summary_path}")
+        print(f"  Workflow results: {summary_path}")
         print(f"  Log file        : {log_path}")
         print(f"{'=' * 60}")
 
@@ -338,17 +341,17 @@ def run_pipeline(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Drone Delivery Pipeline Runner (Module 1 → 2 → 3)",
+        description="llm4fairrouting Workflow Runner (Module 1 → 2 → 3)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""示例:
   # 离线全流程（从 CSV 生成对话，跳过求解器）
-  python pipeline/run_pipeline.py --offline --skip-solver
+  python -m llm4fairrouting.workflow.run_workflow --offline --skip-solver
 
   # 指定 CSV + 站点文件，仅处理前 20 条事件
-  python pipeline/run_pipeline.py --offline --skip-solver --n-events 20
+  python -m llm4fairrouting.workflow.run_workflow --offline --skip-solver --n-events 20
 
   # 在线 LLM 模式
-  python pipeline/run_pipeline.py --api-key YOUR_KEY --n-events 10
+  python -m llm4fairrouting.workflow.run_workflow --api-key YOUR_KEY --n-events 10
 """,
     )
 
@@ -398,7 +401,7 @@ def main():
         "--max-solver-stations",
         type=int,
         default=1,
-        help="求解时最多使用多少个真实站点；默认 1 以对齐 cplex_with_priority_noise.py，0 表示使用全部",
+        help="求解时最多使用多少个真实站点；默认 1 以对齐 baseline demo，0 表示使用全部",
     )
     parser.add_argument(
         "--drone-speed",
@@ -422,7 +425,7 @@ def main():
         stations_path = args.stations  # may be None
         dialogue_path = None
 
-    run_pipeline(
+    run_workflow(
         output_dir=args.output_dir,
         csv_path=csv_path,
         stations_path=stations_path,

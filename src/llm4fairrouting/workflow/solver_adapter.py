@@ -1,12 +1,12 @@
 """
-Module 3b: Solver Runner
+Module 3b: Solver Adapter
 
 负责将 Module 2 的结构化需求和 Module 3a 的权重配置送入求解器。
-该模块既可被 run_pipeline 复用，也可作为独立脚本运行。
+该模块既可被 run_workflow 复用，也可作为独立脚本运行。
 
-统一使用 ``cplex_with_priority_noise.CplexSolver`` 作为求解后端。
+统一使用共享 routing 核心作为求解后端。
 
-求解模型特性（对齐 cplex_with_priority_noise）：
+求解模型特性（对齐 baseline）：
 - 目标函数: ``(distance + noise_weight * noise) * (1/priority)``
 - 允许部分需求不被服务（unassigned 变量 + 大罚项 1e9）
 - 每架无人机单次求解最多接 1 个需求（single_task_per_drone）
@@ -21,7 +21,6 @@ import json
 import math
 import os
 import time as _time
-from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -33,34 +32,17 @@ _CPLEX_BIN = "/Applications/CPLEX_Studio2211/cplex/bin/x86-64_osx"
 if os.path.isdir(_CPLEX_BIN) and _CPLEX_BIN not in os.environ.get("PATH", ""):
     os.environ["PATH"] = _CPLEX_BIN + ":" + os.environ.get("PATH", "")
 
-from drone_pipeline.seed_data import (
+from llm4fairrouting.data.seed_paths import (
     BUILDING_DATA_FILENAME,
     BUILDING_DATA_PATH,
     STATION_DATA_FILENAME,
     STATION_DATA_PATH,
 )
-from drone_pipeline.utils.station_data import load_station_data
+from llm4fairrouting.data.stations import load_station_data
+from llm4fairrouting.routing.domain import Point
 
 
-@dataclass
-class SolverPoint:
-    """轻量点结构，避免在非求解场景提前依赖 pyomo。"""
-
-    id: str
-    lon: float
-    lat: float
-    alt: float
-    x: float = 0.0
-    y: float = 0.0
-    z: float = 0.0
-    type: str = ""
-
-    def to_enu(self, ref_lat: float, ref_lon: float, ref_alt: float):
-        lat_scale = 111000.0
-        lon_scale = 111000.0 * math.cos(math.radians(ref_lat))
-        self.x = (self.lon - ref_lon) * lon_scale
-        self.y = (self.lat - ref_lat) * lat_scale
-        self.z = self.alt - ref_alt
+SolverPoint = Point
 
 
 def demands_to_solver_inputs(
@@ -132,7 +114,7 @@ def _select_station_dicts(
     demands: List[Dict],
     max_stations: Optional[int],
 ) -> List[Dict]:
-    """Mirror cplex_with_priority_noise: preserve source order and take the first N."""
+    """Preserve source order and take the first N stations, matching the baseline demo."""
     if not stations:
         return []
     if max_stations is None or max_stations <= 0 or len(stations) <= max_stations:
@@ -175,7 +157,7 @@ def load_solver_station_points(
 ) -> List[SolverPoint]:
     """加载求解器站点。
 
-    默认使用项目 seed 真实站点，并与 cplex_with_priority_noise 一样按源数据顺序截取。
+    默认使用项目 seed 真实站点，并与 baseline demo 一样按源数据顺序截取。
     """
     resolved_path = str(stations_path or STATION_DATA_PATH)
 
@@ -190,7 +172,7 @@ def load_solver_station_points(
     if len(selected) < len(station_dicts):
         print(
             f"  站点文件共 {len(station_dicts)} 个站点，"
-            f"按 cplex_with_priority_noise 口径取前 {len(selected)} 个参与求解"
+            f"按 baseline demo 口径取前 {len(selected)} 个参与求解"
         )
     else:
         print(f"  复用真实站点 {len(selected)} 个参与求解")
@@ -311,7 +293,7 @@ def solve_windows_dynamically(
     noise_weight: float,
     drone_speed: float = DEFAULT_DRONE_SPEED_MS,
 ) -> List[Dict]:
-    """Use the shared dynamic simulator to solve the full window sequence."""
+    """Use the shared routing core to solve the full window sequence."""
     window_payloads = _build_window_payloads(
         windows=windows,
         weight_configs=weight_configs,
@@ -362,15 +344,19 @@ def solve_windows_dynamically(
         import numpy as np
         from scipy.spatial import cKDTree
 
-        from drone_pipeline.utils.cplex_with_priority_noise import (
+        from llm4fairrouting.data.building_information import load_building_partitions
+        from llm4fairrouting.routing.domain import (
             DemandEvent as _DemandEvent,
-            FinalDroneSimulator as _FinalDroneSimulator,
-            FLIGHT_HEIGHT as _FLIGHT_HEIGHT,
-            Point as _CplexPoint,
-            build_realistic_distance_and_noise_matrices,
+            Point as _RoutingPoint,
             create_drones,
+        )
+        from llm4fairrouting.routing.path_costs import (
+            FLIGHT_HEIGHT as _FLIGHT_HEIGHT,
+            build_realistic_distance_and_noise_matrices,
             create_obstacles_from_buildings,
-            read_building_data,
+        )
+        from llm4fairrouting.routing.simulator import (
+            FinalDroneSimulator as _FinalDroneSimulator,
         )
     except Exception as exc:
         raise RuntimeError(f"动态求解依赖加载失败: {exc}") from exc
@@ -403,7 +389,7 @@ def solve_windows_dynamically(
             if origin_key not in supply_key_to_idx:
                 supply_key_to_idx[origin_key] = len(supply_points)
                 supply_points.append(
-                    _CplexPoint(
+                    _RoutingPoint(
                         id=f"S_{origin.get('fid', len(supply_points) + 1)}",
                         lon=float(origin_coords[0]),
                         lat=float(origin_coords[1]),
@@ -422,7 +408,7 @@ def solve_windows_dynamically(
             if dest_key not in demand_key_to_idx:
                 demand_key_to_idx[dest_key] = len(demand_points)
                 demand_points.append(
-                    _CplexPoint(
+                    _RoutingPoint(
                         id=f"D_{dest.get('fid', len(demand_points) + 1)}",
                         lon=float(dest_coords[0]),
                         lat=float(dest_coords[1]),
@@ -465,7 +451,7 @@ def solve_windows_dynamically(
         ]
 
     station_cplex_points = [
-        _CplexPoint(
+        _RoutingPoint(
             id=station.id,
             lon=station.lon,
             lat=station.lat,
@@ -481,7 +467,7 @@ def solve_windows_dynamically(
     for point in all_points:
         point.to_enu(ref_lat, ref_lon, 0.0)
 
-    hospitals, residences, all_buildings = read_building_data(building_source)
+    _, residences, all_buildings = load_building_partitions(building_source)
     selected_coords = {(point.lon, point.lat) for point in all_points}
     obstacles_raw = create_obstacles_from_buildings(
         all_buildings,
@@ -491,7 +477,7 @@ def solve_windows_dynamically(
     )
     residential_positions = []
     for _, row in residences.iterrows():
-        residence = _CplexPoint(
+        residence = _RoutingPoint(
             id="",
             lon=float(row["longitude"]),
             lat=float(row["latitude"]),
@@ -634,7 +620,7 @@ def _build_simplified_noise_matrix(dist_matrix):
     Approximates the number of affected residential buildings per flight segment
     as proportional to path length (~1 building per 200 m of urban flight).
     This serves as a lightweight stand-in for the full RRT+building noise
-    pipeline in ``cplex_with_priority_noise.build_realistic_distance_and_noise_matrices``.
+    workflow in ``llm4fairrouting.routing.path_costs.build_realistic_distance_and_noise_matrices``.
     """
     import numpy as np
 
@@ -661,7 +647,7 @@ def _build_solution_from_assignments(
     solve_time: float,
 ) -> Dict:
     """Convert CplexSolver assignment list to the solution dict expected by
-    ``serialize_pipeline_results``.
+    ``serialize_workflow_results``.
 
     Each assignment maps one drone to one demand (single-task-per-drone model).
     Path per drone: station -> supply -> demand -> station.
@@ -774,7 +760,7 @@ def solve_window_demands(
     }
 
 
-def serialize_pipeline_results(all_solutions: List[Dict]) -> List[Dict]:
+def serialize_workflow_results(all_solutions: List[Dict]) -> List[Dict]:
     """将求解结果转换为 JSON 可直接落盘的摘要结构。"""
     serializable: List[Dict] = []
 
@@ -1086,7 +1072,7 @@ def _load_weight_configs(source_path: str) -> Dict[str, Dict]:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Module 3b: Solver Runner")
+    parser = argparse.ArgumentParser(description="Module 3b: Solver Adapter")
     parser.add_argument(
         "--demands",
         type=str,
@@ -1142,7 +1128,7 @@ def main():
         "--max-solver-stations",
         type=int,
         default=1,
-        help="求解时最多使用多少个真实站点；默认 1 以对齐 cplex_with_priority_noise.py，0 表示使用全部",
+        help="求解时最多使用多少个真实站点；默认 1 以对齐 baseline demo，0 表示使用全部",
     )
     args = parser.parse_args()
 
@@ -1167,10 +1153,13 @@ def main():
     out_path = Path(args.output)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "w", encoding="utf-8") as f:
-        json.dump(serialize_pipeline_results(all_solutions), f, ensure_ascii=False, indent=2)
+        json.dump(serialize_workflow_results(all_solutions), f, ensure_ascii=False, indent=2)
 
     print(f"结果保存至 {out_path}")
 
 
 if __name__ == "__main__":
     main()
+
+
+serialize_pipeline_results = serialize_workflow_results

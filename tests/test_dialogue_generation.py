@@ -1,8 +1,8 @@
 """
-Module 1 单元测试 — pipeline/dialogue_generator.py
+Module 1 单元测试 — llm/dialogue_generation.py
 
 运行方式（在项目根目录）:
-    /Users/eveyu/opt/anaconda3/envs/gpt_academic/bin/python -m pytest tests/test_dialogue_generator.py -v
+    /Users/eveyu/opt/anaconda3/envs/gpt_academic/bin/python -m pytest tests/test_dialogue_generation.py -v
 """
 
 import json
@@ -14,7 +14,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 import pytest
 
-from drone_pipeline.pipeline.dialogue_generator import (
+from llm4fairrouting.llm.dialogue_generation import (
     _event_to_dialogue,
     _find_nearest_station,
     _generate_rule_conversation,
@@ -26,7 +26,7 @@ from drone_pipeline.pipeline.dialogue_generator import (
     load_stations,
     save_dialogues,
 )
-from drone_pipeline.seed_data import DEMAND_EVENTS_PATH, STATION_DATA_PATH
+from llm4fairrouting.data.seed_paths import DEMAND_EVENTS_PATH, STATION_DATA_PATH
 
 # ============================================================================
 # 测试固件

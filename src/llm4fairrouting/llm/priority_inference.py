@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 
 # ============================================================================
-# LLM 调用 (复用 context_extractor 中的模式)
+# LLM 调用 (复用 demand_extraction 中的模式)
 # ============================================================================
 
 def _call_llm(
@@ -66,7 +66,10 @@ def adjust_weights(
     temperature: float = 0.0,
 ) -> Dict:
     """调用 LLM 为一组需求分配优先级和求解器权重。"""
-    from drone_pipeline.prompts.drone_prompt import DRONE_SYSTEM_PROMPT, weight_adjustment_prompt
+    from llm4fairrouting.llm.prompt_templates import (
+        DRONE_SYSTEM_PROMPT,
+        weight_adjustment_prompt,
+    )
     prompt = weight_adjustment_prompt(demands, city_context)
     print(f"  [Module 3a] {len(demands)} 条需求，调用 LLM 分配权重 ...")
 

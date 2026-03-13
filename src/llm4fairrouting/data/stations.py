@@ -234,82 +234,68 @@ def _parse_service_period(value: object) -> dict[str, object]:
 
 
 def _normalize_station_sheet(sheet_name: str, df: pd.DataFrame) -> pd.DataFrame:
+    station_name_series = df["航站名称"] if "航站名称" in df.columns else df["站点名"]
+    platform_series = df["运营方"] if "运营方" in df.columns else df["平台"]
+    service_period_series = df["服务时间"] if "服务时间" in df.columns else df["开通时间"]
     extra_notes_series = df.get("Unnamed: 7", pd.Series([""] * len(df), index=df.index))
     normalized = pd.DataFrame({
         "source_sheet": [_translate_mapping(sheet_name, _SHEET_TRANSLATIONS)] * len(df),
         "latitude": pd.to_numeric(df["纬度"], errors="raise"),
         "longitude": pd.to_numeric(df["经度"], errors="raise"),
-        "station_name": df["站点名"].map(_translate_station_name),
+        "station_name": station_name_series.map(_translate_station_name),
         "city": df["城市"].map(lambda value: _translate_mapping(value, _CITY_TRANSLATIONS)),
-        "platform": df["平台"].map(lambda value: _translate_mapping(value, _PLATFORM_TRANSLATIONS)),
-        "notes": df.get("备注", pd.Series([""] * len(df), index=df.index)).map(
-            lambda value: _translate_mapping(value, _NOTES_TRANSLATIONS)
-        ),
+        "platform": platform_series.map(lambda value: _translate_mapping(value, _PLATFORM_TRANSLATIONS)),
+        "notes": df["备注"].map(lambda value: _translate_mapping(value, _NOTES_TRANSLATIONS)),
         "additional_notes": extra_notes_series.map(
             lambda value: _translate_mapping(value, _ADDITIONAL_NOTES_TRANSLATIONS)
         ),
     })
 
-    service_periods = df.get("开通时间", pd.Series([""] * len(df), index=df.index)).map(_parse_service_period)
-    service_period_df = pd.DataFrame(service_periods.tolist(), index=df.index)
-    normalized = pd.concat([normalized, service_period_df], axis=1)
-    normalized = normalized[CANONICAL_STATION_COLUMNS]
-    return normalized
-
-
-def normalize_station_dataframe(df: pd.DataFrame) -> pd.DataFrame:
-    missing = [column for column in CANONICAL_STATION_COLUMNS if column not in df.columns]
-    if missing:
-        raise ValueError(f"Missing required station columns: {missing}")
-
-    normalized = df[CANONICAL_STATION_COLUMNS].copy()
-    normalized["latitude"] = pd.to_numeric(normalized["latitude"], errors="raise")
-    normalized["longitude"] = pd.to_numeric(normalized["longitude"], errors="raise")
-
-    for column in [
-        "source_sheet",
-        "station_name",
-        "city",
-        "platform",
-        "notes",
-        "additional_notes",
+    service_period = service_period_series.map(_parse_service_period)
+    for key in [
         "service_start_date",
         "service_end_date",
-    ]:
-        normalized[column] = normalized[column].fillna("").astype(str).str.strip()
-
-    for column in [
         "service_start_date_is_estimated",
         "service_end_date_is_estimated",
     ]:
-        normalized[column] = normalized[column].map(
-            lambda value: value if isinstance(value, bool)
-            else str(value).strip().lower() in {"true", "1", "yes"}
-        )
+        normalized[key] = service_period.map(lambda item: item[key])
+
+    return normalized[CANONICAL_STATION_COLUMNS]
+
+
+def normalize_station_workbook(file_path: str) -> pd.DataFrame:
+    suffix = Path(file_path).suffix.lower()
+    if suffix == ".csv":
+        df = pd.read_csv(file_path)
+        missing_columns = [column for column in CANONICAL_STATION_COLUMNS if column not in df.columns]
+        if missing_columns:
+            raise ValueError(f"Missing required station columns: {missing_columns}")
+        normalized = df[CANONICAL_STATION_COLUMNS].copy()
+    elif suffix in {".xlsx", ".xls"}:
+        workbook = pd.read_excel(file_path, sheet_name=None)
+        sheets = [
+            _normalize_station_sheet(sheet_name, sheet_df)
+            for sheet_name, sheet_df in workbook.items()
+            if not sheet_df.empty
+        ]
+        if not sheets:
+            raise ValueError(f"No station sheets found in workbook: {file_path}")
+        normalized = pd.concat(sheets, ignore_index=True)
+    else:
+        raise ValueError(f"Unsupported station data format: {file_path}")
 
     object_columns = normalized.select_dtypes(include="object").columns.tolist()
     remaining_cjk_columns = [
         column for column in object_columns if _contains_cjk(normalized[column].tolist())
     ]
     if remaining_cjk_columns:
-        raise ValueError(f"Untranslated Chinese text remains in station columns: {remaining_cjk_columns}")
+        raise ValueError(f"Untranslated Chinese text remains in columns: {remaining_cjk_columns}")
 
     return normalized
 
 
 def load_station_data(file_path: str) -> pd.DataFrame:
-    suffix = Path(file_path).suffix.lower()
-    if suffix == ".csv":
-        return normalize_station_dataframe(pd.read_csv(file_path))
-    if suffix not in {".xlsx", ".xls"}:
-        raise ValueError(f"Unsupported station data format: {file_path}")
-
-    workbook = pd.ExcelFile(file_path)
-    frames = []
-    for sheet_name in workbook.sheet_names:
-        sheet_df = workbook.parse(sheet_name)
-        frames.append(_normalize_station_sheet(sheet_name, sheet_df))
-    return normalize_station_dataframe(pd.concat(frames, ignore_index=True))
+    return normalize_station_workbook(file_path)
 
 
 def export_normalized_station_csv(source_path: str, output_path: str) -> pd.DataFrame:

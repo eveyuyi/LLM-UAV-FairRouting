@@ -1,13 +1,14 @@
-# Drone Delivery Pipeline
+# llm4fairrouting
 
-This is an independent project extracted from LLMOPT for drone medical delivery workflow experiments.
+This project unifies the LLM workflow and the CPLEX baseline around one shared dynamic routing core.
 
 ## Structure
 
-- `src/drone_pipeline/pipeline/`: module 1/2/3 pipeline code
-- `src/drone_pipeline/scripts/`: per-module script entrypoints and integrated experiment runner
-- `src/drone_pipeline/prompts/`: prompt templates
-- `src/drone_pipeline/utils/`: solver and data utilities
+- `src/llm4fairrouting/llm/`: dialogue generation, demand extraction, priority inference
+- `src/llm4fairrouting/workflow/`: workflow runner and solver adapter
+- `src/llm4fairrouting/routing/`: shared dynamic routing core used by workflow and baseline
+- `src/llm4fairrouting/data/`: building/station loaders and seed paths
+- `src/llm4fairrouting/baselines/`: baseline/demo scripts built on the shared routing core
 - `tests/`: unit tests
 - `data/seed/`: seed datasets
 
@@ -25,28 +26,29 @@ Run tests:
 pytest -q
 ```
 
-Run the integrated experiment pipeline:
+Run the integrated workflow:
 
 ```bash
-python -m drone_pipeline.scripts.run_pipeline --offline --skip-solver
+python -m llm4fairrouting.workflow.run_workflow --offline --skip-solver
 ```
 
 Run each module independently:
 
 ```bash
-python -m drone_pipeline.scripts.module1_generate_dialogues --offline
-python -m drone_pipeline.scripts.module2_extract_demands --offline
-python -m drone_pipeline.scripts.module3_adjust_weights --offline
-python -m drone_pipeline.scripts.module3_solve --weights path/to/weight_configs.json
+python -m llm4fairrouting.llm.dialogue_generation --offline
+python -m llm4fairrouting.llm.demand_extraction --offline
+python -m llm4fairrouting.llm.priority_inference --offline
+python -m llm4fairrouting.workflow.solver_adapter --weights path/to/weight_configs.json
+python -m llm4fairrouting.baselines.cplex_with_priority_noise
 ```
 
 If the project is installed with `pip install -e .`, the same entrypoints are also
 available as console commands:
 
 ```bash
-drone-module1
-drone-module2
-drone-module3a
-drone-module3b
-drone-pipeline
+llm4fairrouting-dialogue
+llm4fairrouting-demand
+llm4fairrouting-priority
+llm4fairrouting-solver
+llm4fairrouting-workflow
 ```

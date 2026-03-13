@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 SEED_DATA_DIR = PROJECT_ROOT / "data" / "seed"
 
 BUILDING_DATA_SOURCE_FILENAME = "building_information.xlsx"
