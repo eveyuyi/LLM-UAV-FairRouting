@@ -16,7 +16,7 @@ CONDA_ENV="${LLM4FAIRROUTING_CONDA_ENV:-}"
 cd "$ROOT_DIR"
 
 if [[ -n "$CONDA_ENV" ]]; then
-  PYTHONPATH=src conda run --no-capture-output -n "$CONDA_ENV" python -u -m llm4fairrouting.workflow.run_workflow "$@"
+  PYTHONPATH=src conda run --no-capture-output -n "$CONDA_ENV" python -u -m llm4fairrouting.data.demand_dialogue_dataset "$@"
 else
-  PYTHONPATH=src python -u -m llm4fairrouting.workflow.run_workflow "$@"
+  PYTHONPATH=src python -u -m llm4fairrouting.data.demand_dialogue_dataset "$@"
 fi

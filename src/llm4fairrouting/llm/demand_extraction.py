@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional
 if TYPE_CHECKING:
     from openai import OpenAI
 
+from llm4fairrouting.config.runtime_env import env_text, prepare_env_file
 from llm4fairrouting.llm.client_utils import (
     call_llm,
     create_openai_client,
@@ -644,7 +645,14 @@ def extract_demands_offline(dialogues: List[Dict], window_minutes: int = 5) -> L
 def main():
     import argparse
 
+    active_env_file = prepare_env_file(PROJECT_ROOT)
     parser = argparse.ArgumentParser(description="Module 2: Context Extraction")
+    parser.add_argument(
+        "--env-file",
+        type=str,
+        default=str(active_env_file) if active_env_file else None,
+        help="Environment file path; defaults to the project .env when present",
+    )
     parser.add_argument(
         "--input", type=str,
         default=str(PROJECT_ROOT / "data" / "drone" / "mock_dialogues.jsonl"),
@@ -652,9 +660,9 @@ def main():
     parser.add_argument("--output", type=str, default=None)
     parser.add_argument("--window", type=int, default=30)
     parser.add_argument("--offline", action="store_true", help="Run without calling an LLM")
-    parser.add_argument("--api-base", type=str, default=None)
-    parser.add_argument("--api-key", type=str, default=None)
-    parser.add_argument("--model", type=str, default="gpt-4o-mini")
+    parser.add_argument("--api-base", type=str, default=env_text("OPENAI_BASE_URL"))
+    parser.add_argument("--api-key", type=str, default=env_text("OPENAI_API_KEY"))
+    parser.add_argument("--model", type=str, default=env_text("LLM4FAIRROUTING_MODEL", "gpt-4o-mini"))
     args = parser.parse_args()
 
     with open(args.input, "r", encoding="utf-8") as f:

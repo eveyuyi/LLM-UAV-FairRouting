@@ -17,5 +17,4 @@ dist/
 
 # Generated outputs
 /data/drone/
-/data/cache/
 /results/

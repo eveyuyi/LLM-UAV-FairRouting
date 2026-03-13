@@ -12,8 +12,8 @@ if TYPE_CHECKING:
 
 
 DEFAULT_API_BASE = "http://35.220.164.252:3888/v1/"
-API_BASE_ENV = "LLMOPT_API_BASE_URL"
-API_KEY_ENV = "LLMOPT_API_KEY"
+API_BASE_ENV = "OPENAI_BASE_URL"
+API_KEY_ENV = "OPENAI_API_KEY"
 
 
 def create_openai_client(
@@ -23,10 +23,10 @@ def create_openai_client(
     """Create an OpenAI-compatible client from explicit args or env vars."""
     from openai import OpenAI
 
-    base = api_base or os.getenv(API_BASE_ENV, DEFAULT_API_BASE)
+    base = api_base or os.getenv(API_BASE_ENV) or DEFAULT_API_BASE
     key = api_key or os.getenv(API_KEY_ENV)
     if not key:
-        raise ValueError(f"需要 API key: 设置 {API_KEY_ENV} 或 --api-key")
+        raise ValueError(f"Missing API key. Set {API_KEY_ENV}, or pass --api-key.")
     return OpenAI(base_url=base, api_key=key)
 
 

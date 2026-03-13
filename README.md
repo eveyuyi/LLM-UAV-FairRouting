@@ -9,7 +9,7 @@
 
 The end-to-end LLM4fairrouting workflow is organized into three modules:
 
-1. `Module 1`: convert structured demand events into dialogue-style requests
+1. `Module 1`: build a fixed LLM-generated dialogue dataset from structured demand events
 2. `Module 2`: extract structured delivery demands from dialogues
 3. `Module 3`: infer priority/weight settings and solve dynamic routing windows
 
@@ -36,6 +36,14 @@ Copy the example environment file first:
 
 ```bash
 cp .env.example .env
+```
+
+Set `OPENAI_API_KEY` in `.env` before running any online Module 1/2/3 command. If you use a compatible gateway, set `OPENAI_BASE_URL` too.
+
+Build the canonical dialogue dataset with:
+
+```bash
+./scripts/build_daily_demand_dialogues.sh
 ```
 
 Run the llm4fairrouting workflow with:
@@ -81,8 +89,8 @@ PYTHONPATH=src python -m llm4fairrouting.data.demand_event_generation
 
 | Module | Location | Purpose | Main Input | Main Output |
 | --- | --- | --- | --- | --- |
-| Module 1 | `src/llm4fairrouting/llm/dialogue_generation.py` | Generate dialogue-style requests from structured demand events | `data/seed/daily_demand_events.csv`, optional station file | `generated_dialogues.jsonl` |
-| Module 2 | `src/llm4fairrouting/llm/demand_extraction.py` | Extract structured delivery demands from dialogues by time window | `generated_dialogues.jsonl` | `extracted_demands.json` |
+| Module 1 | `src/llm4fairrouting/data/demand_dialogue_dataset.py`, `src/llm4fairrouting/llm/dialogue_generation.py` | Build the fixed seed dialogue dataset from structured demand events with an LLM | `data/seed/daily_demand_events.csv`, optional station file | `data/seed/daily_demand_dialogues.jsonl` |
+| Module 2 | `src/llm4fairrouting/llm/demand_extraction.py` | Extract structured delivery demands from dialogues by time window | `data/seed/daily_demand_dialogues.jsonl` | `extracted_demands.json` |
 | Module 3 | `src/llm4fairrouting/llm/priority_inference.py`, `src/llm4fairrouting/workflow/solver_adapter.py` | Infer per-demand priority settings and solve routing windows | `extracted_demands.json`, weight configs, station/building data | `weight_configs.json` / `weight_configs/`, `solver_results.json`, `workflow_results.json` |
 
 ### Demand Event Generation
@@ -103,21 +111,20 @@ llm4fairrouting-demand-events --input data/seed/building_information.csv --outpu
 
 #### Module 1
 
-- File: `src/llm4fairrouting/llm/dialogue_generation.py`
-- Role: converts structured demand-event records into dialogue data for downstream modules
+- Files: `src/llm4fairrouting/data/demand_dialogue_dataset.py`, `src/llm4fairrouting/llm/dialogue_generation.py`
+- Role: builds one fixed LLM-generated dialogue dataset aligned with the seed demand events
 - Input:
   - `daily_demand_events.csv`
   - optional station metadata from `drone_station_locations.csv`
 - Output:
-  - standalone default: `data/drone/generated_dialogues.jsonl`
-  - workflow run: `results/run_*/generated_dialogues.jsonl`
+  - canonical seed dataset: `data/seed/daily_demand_dialogues.jsonl`
 
 #### Module 2
 
 - File: `src/llm4fairrouting/llm/demand_extraction.py`
 - Role: groups dialogues by time window and extracts solver-ready structured demands
 - Input:
-  - `generated_dialogues.jsonl`
+  - `daily_demand_dialogues.jsonl`
 - Output:
   - standalone default: `data/drone/extracted_demands.json`
   - workflow run: `results/run_*/extracted_demands.json`
@@ -149,7 +156,7 @@ llm4fairrouting-demand-events --input data/seed/building_information.csv --outpu
 
 ### Baseline
 
-The baseline entry is:
+The original baseline entry is:
 
 - file: `src/llm4fairrouting/baselines/cplex_with_priority_noise.py`
 - function: `main()`
@@ -167,6 +174,11 @@ The baseline:
 - generates demand events internally
 - reuses the shared routing core in `src/llm4fairrouting/routing/`
 
+An additional seed-aligned baseline is also available:
+
+- file: `src/llm4fairrouting/baselines/cplex_with_seed_priorities.py`
+- role: reads `data/seed/daily_demand_events.csv` directly and solves with the CSV priority values
+
 ### Shared Routing Core
 
 The routing core is shared by the workflow and the baseline:
@@ -176,4 +188,3 @@ The routing core is shared by the workflow and the baseline:
 - `src/llm4fairrouting/routing/assignment_model.py`: Pyomo/CPLEX assignment model
 - `src/llm4fairrouting/routing/simulator.py`: dynamic simulator for time-evolving demand and drone execution
 - `src/llm4fairrouting/routing/serialization.py`: serialization helpers for simulation and workflow results
-

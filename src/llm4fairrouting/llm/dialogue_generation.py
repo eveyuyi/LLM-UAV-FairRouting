@@ -17,6 +17,7 @@ import json
 import hashlib
 import math
 import random
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -26,7 +27,9 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 if TYPE_CHECKING:
     from openai import OpenAI
 
+from llm4fairrouting.config.runtime_env import env_text, prepare_env_file
 from llm4fairrouting.data.seed_paths import (
+    DEMAND_DIALOGUES_PATH,
     DEMAND_EVENTS_FILENAME,
     DEMAND_EVENTS_PATH,
     STATION_DATA_FILENAME,
@@ -1079,9 +1082,17 @@ def generate_dialogues_online(
     dialogues = generate_dialogues_offline(demand_events, stations, base_date)
 
     total = len(dialogues)
-    print(f"[Module 1] Starting LLM dialogue generation: {total} total, batch size {batch_size}")
+    total_batches = math.ceil(total / batch_size) if total else 0
+    started_at = time.perf_counter()
+    print(
+        f"[Module 1] Starting LLM dialogue generation: "
+        f"{total} dialogues across {total_batches} batches (batch size {batch_size})",
+        flush=True,
+    )
 
     for start in range(0, total, batch_size):
+        batch_started_at = time.perf_counter()
+        batch_index = start // batch_size + 1
         batch = dialogues[start: start + batch_size]
         batch_events = demand_events[start: start + batch_size]
         batch_context = []
@@ -1111,20 +1122,39 @@ def generate_dialogues_online(
             })
 
         prompt = dialogue_generation_prompt(batch_context)
-        print(f"  [Module 1] batch {start // batch_size + 1}: {len(batch)} items, calling LLM ...")
+        print(
+            f"  [Module 1] Batch {batch_index}/{total_batches}: "
+            f"sending {len(batch)} dialogues to the LLM "
+            f"({start}/{total} completed)",
+            flush=True,
+        )
 
         try:
             raw = call_llm(client, model, DRONE_SYSTEM_PROMPT, prompt, temperature)
             llm_texts = _parse_llm_batch_response(raw, batch)
         except Exception as e:
-            print(f"  [Module 1] LLM failed, falling back to rule-based text: {e}")
+            print(f"  [Module 1] LLM failed, falling back to rule-based text: {e}", flush=True)
             llm_texts = {dlg["dialogue_id"]: dlg["conversation"] for dlg in batch}
 
         for dlg in batch:
             if dlg["dialogue_id"] in llm_texts:
                 dlg["conversation"] = llm_texts[dlg["dialogue_id"]]
 
-    print(f"[Module 1] LLM dialogue generation complete")
+        completed = min(start + len(batch), total)
+        print(
+            f"  [Module 1] Batch {batch_index}/{total_batches} complete: "
+            f"{completed}/{total} dialogues ready "
+            f"({completed / total * 100:.1f}%), "
+            f"batch {time.perf_counter() - batch_started_at:.1f}s, "
+            f"elapsed {time.perf_counter() - started_at:.1f}s",
+            flush=True,
+        )
+
+    print(
+        f"[Module 1] LLM dialogue generation complete in "
+        f"{time.perf_counter() - started_at:.1f}s",
+        flush=True,
+    )
     return dialogues
 
 
@@ -1149,50 +1179,6 @@ def load_dialogues_from_file(path: str) -> List[Dict]:
         return [json.loads(line) for line in f if line.strip()]
 
 
-def _file_signature(path: Optional[str]) -> str:
-    if not path:
-        return "none"
-    resolved = Path(path)
-    if not resolved.exists():
-        return f"missing:{resolved}"
-    stat = resolved.stat()
-    return f"{resolved.resolve()}:{stat.st_size}:{stat.st_mtime_ns}"
-
-
-def build_dialogue_cache_path(
-    csv_path: str,
-    xlsx_path: Optional[str],
-    offline: bool,
-    model: str,
-    base_date: str,
-    n_events: Optional[int],
-    time_slots: Optional[List[int]],
-    temperature: float,
-    batch_size: int,
-    cache_dir: Optional[str] = None,
-) -> Path:
-    cache_root = Path(cache_dir) if cache_dir else PROJECT_ROOT / "data" / "cache" / "module1_dialogues"
-    cache_root.mkdir(parents=True, exist_ok=True)
-    cache_key = {
-        "version": DIALOGUE_PROFILE_VERSION,
-        "csv": _file_signature(csv_path),
-        "stations": _file_signature(xlsx_path),
-        "offline": bool(offline),
-        "model": model,
-        "base_date": base_date,
-        "n_events": n_events,
-        "time_slots": list(time_slots or []),
-        "temperature": temperature,
-        "batch_size": batch_size,
-    }
-    digest = hashlib.sha256(
-        json.dumps(cache_key, sort_keys=True).encode("utf-8")
-    ).hexdigest()[:16]
-    stem = Path(csv_path).stem.replace(" ", "_")
-    mode = "offline" if offline else "online"
-    return cache_root / f"{stem}_{mode}_{digest}.jsonl"
-
-
 # ============================================================================
 # 统一生成入口
 # ============================================================================
@@ -1208,8 +1194,6 @@ def generate_dialogues(
     time_slots: Optional[List[int]] = None,
     temperature: float = 0.7,
     batch_size: int = 5,
-    reuse_cache: bool = True,
-    cache_dir: Optional[str] = None,
 ) -> List[Dict]:
     """Module 1 统一入口：加载数据并生成对话。
 
@@ -1237,24 +1221,6 @@ def generate_dialogues(
     batch_size : int
         LLM 批处理大小（仅 online 模式生效）。
     """
-    cache_path = build_dialogue_cache_path(
-        csv_path=csv_path,
-        xlsx_path=xlsx_path,
-        offline=offline,
-        model=model,
-        base_date=base_date,
-        n_events=n_events,
-        time_slots=time_slots,
-        temperature=temperature,
-        batch_size=batch_size,
-        cache_dir=cache_dir,
-    )
-    if reuse_cache and cache_path.exists():
-        cached = load_dialogues_from_file(str(cache_path))
-        if cached:
-            print(f"[Module 1] Reusing cached dialogues from {cache_path}")
-            return cached
-
     stations: List[Dict] = []
     if xlsx_path:
         try:
@@ -1279,7 +1245,6 @@ def generate_dialogues(
         dialogues = generate_dialogues_online(
             events, stations, client, model, base_date, temperature, batch_size
         )
-    save_dialogues(dialogues, str(cache_path))
     return dialogues
 
 
@@ -1293,7 +1258,7 @@ def save_dialogues(dialogues: List[Dict], output_path: str) -> None:
     with open(output_path, "w", encoding="utf-8") as f:
         for dlg in dialogues:
             f.write(json.dumps(dlg, ensure_ascii=False) + "\n")
-    print(f"[Module 1] Saved {len(dialogues)} dialogues to {output_path}")
+    print(f"[Module 1] Saved {len(dialogues)} dialogues to {output_path}", flush=True)
 
 
 # ============================================================================
@@ -1303,7 +1268,13 @@ def save_dialogues(dialogues: List[Dict], output_path: str) -> None:
 def main():
     import argparse
 
+    active_env_file = prepare_env_file(PROJECT_ROOT)
     parser = argparse.ArgumentParser(description="Module 1: Dialogue Generator")
+    parser.add_argument(
+        "--env-file", type=str,
+        default=str(active_env_file) if active_env_file else None,
+        help="Environment file path; defaults to the project .env when present",
+    )
     parser.add_argument(
         "--csv", type=str,
         default=str(DEMAND_EVENTS_PATH),
@@ -1316,17 +1287,17 @@ def main():
     )
     parser.add_argument(
         "--output", type=str,
-        default=str(PROJECT_ROOT / "data" / "drone" / "generated_dialogues.jsonl"),
-        help="输出 JSONL 路径",
+        default=str(DEMAND_DIALOGUES_PATH),
+        help="Output JSONL path",
     )
     parser.add_argument("--offline", action="store_true", help="离线模式，不调用 LLM")
     parser.add_argument("--n-events", type=int, default=None, help="最多处理的事件数")
     parser.add_argument("--time-slots", type=int, nargs="+", default=None,
                         help="仅处理指定 time_slot（空格分隔）")
     parser.add_argument("--base-date", type=str, default="2024-03-15")
-    parser.add_argument("--api-base", type=str, default=None)
-    parser.add_argument("--api-key", type=str, default=None)
-    parser.add_argument("--model", type=str, default="gpt-4o-mini")
+    parser.add_argument("--api-base", type=str, default=env_text("OPENAI_BASE_URL"))
+    parser.add_argument("--api-key", type=str, default=env_text("OPENAI_API_KEY"))
+    parser.add_argument("--model", type=str, default=env_text("LLM4FAIRROUTING_MODEL", "gpt-4o-mini"))
     parser.add_argument("--temperature", type=float, default=0.7)
     parser.add_argument("--batch-size", type=int, default=5)
     args = parser.parse_args()

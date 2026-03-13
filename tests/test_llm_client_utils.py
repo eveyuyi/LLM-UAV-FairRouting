@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import sys
+import types
+
+import pytest
+
 from llm4fairrouting.llm import client_utils
 
 
@@ -46,3 +51,37 @@ def test_call_llm_retries_before_succeeding(monkeypatch):
     assert result == '{"status": "ok"}'
     assert client.completions.calls == 3
     assert sleep_calls == [2.0, 2.0]
+
+
+class _FakeOpenAI:
+    def __init__(self, *, base_url: str, api_key: str):
+        self.base_url = base_url
+        self.api_key = api_key
+
+
+def _install_fake_openai(monkeypatch):
+    fake_module = types.ModuleType("openai")
+    fake_module.OpenAI = _FakeOpenAI
+    monkeypatch.setitem(sys.modules, "openai", fake_module)
+
+
+def test_create_openai_client_accepts_openai_env_aliases(monkeypatch):
+    _install_fake_openai(monkeypatch)
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://openai-compatible.example/v1")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-openai")
+
+    client = client_utils.create_openai_client()
+
+    assert client.base_url == "https://openai-compatible.example/v1"
+    assert client.api_key == "sk-openai"
+
+
+def test_create_openai_client_error_lists_supported_env_names(monkeypatch):
+    _install_fake_openai(monkeypatch)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    with pytest.raises(ValueError) as exc_info:
+        client_utils.create_openai_client()
+
+    message = str(exc_info.value)
+    assert "OPENAI_API_KEY" in message

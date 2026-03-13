@@ -9,7 +9,6 @@ from llm4fairrouting.data.building_information import BUILDING_DATA_COLUMNS
 from llm4fairrouting.data.demand_event_generation import (
     OUTPUT_COLUMNS,
     generate_daily_demand_csv,
-    precompute_dialogue_cache,
 )
 from llm4fairrouting.routing.domain import Point
 
@@ -116,32 +115,3 @@ def test_generate_daily_demand_csv_assigns_priority_four_to_commercial(tmp_path)
 
     assert written["priority"].tolist() == [4, 4]
     assert written["supply_type"].tolist() == ["commercial", "commercial"]
-
-
-def test_precompute_dialogue_cache_can_materialize_jsonl(tmp_path):
-    csv_path = tmp_path / "daily_demand_events.csv"
-    pd.DataFrame([
-        {
-            "time": 0.0,
-            "demand_fid": "DEM_1",
-            "demand_lon": 113.90,
-            "demand_lat": 22.80,
-            "priority": 2,
-            "supply_fid": "MED_1",
-            "supply_lon": 113.80,
-            "supply_lat": 22.70,
-            "supply_type": "medical",
-            "material_weight": 3.2,
-            "unique_id": "DEM_000_00",
-        }
-    ]).to_csv(csv_path, index=False, encoding="utf-8-sig")
-    dialogue_output = tmp_path / "generated_dialogues.jsonl"
-
-    precompute_dialogue_cache(
-        csv_path=str(csv_path),
-        stations_file=None,
-        base_date="2024-03-15",
-        dialogue_output=str(dialogue_output),
-    )
-
-    assert dialogue_output.exists()

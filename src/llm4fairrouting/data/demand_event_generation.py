@@ -372,26 +372,6 @@ def generate_daily_demand_csv(
     return df
 
 
-def precompute_dialogue_cache(
-    csv_path: str,
-    stations_file: str | None = None,
-    base_date: str = "2024-03-15",
-    dialogue_output: str | None = None,
-) -> None:
-    """Warm Module 1 dialogue cache for a generated demand-event CSV."""
-    from llm4fairrouting.llm.dialogue_generation import generate_dialogues, save_dialogues
-
-    dialogues = generate_dialogues(
-        csv_path=csv_path,
-        xlsx_path=stations_file,
-        offline=True,
-        base_date=base_date,
-        reuse_cache=True,
-    )
-    if dialogue_output:
-        save_dialogues(dialogues, dialogue_output)
-
-
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Generate a full-day daily_demand_events.csv from building_information.csv."
@@ -405,10 +385,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--medical-ratio", type=float, default=0.2, help="Fraction of demands routed to medical supplies")
     parser.add_argument("--num-supply-medical", type=int, default=5, help="Number of medical supply points to use")
     parser.add_argument("--num-supply-commercial", type=int, default=5, help="Number of commercial supply points to use")
-    parser.add_argument("--build-dialogue-cache", action="store_true", help="Also precompute Module 1 dialogue cache for the generated CSV")
-    parser.add_argument("--dialogue-output", default=None, help="Optional JSONL path for a materialized dialogue file")
-    parser.add_argument("--stations", default=None, help="Optional station file used when precomputing dialogues")
-    parser.add_argument("--base-date", default="2024-03-15", help="Base date used for dialogue timestamps")
     return parser
 
 
@@ -425,14 +401,6 @@ def main() -> None:
         num_supply_medical=args.num_supply_medical,
         num_supply_commercial=args.num_supply_commercial,
     )
-
-    if args.build_dialogue_cache or args.dialogue_output:
-        precompute_dialogue_cache(
-            csv_path=args.output,
-            stations_file=args.stations,
-            base_date=args.base_date,
-            dialogue_output=args.dialogue_output,
-        )
 
     print(f"Demand events saved to {args.output}")
     print(f"Generated {len(df)} demand events")
