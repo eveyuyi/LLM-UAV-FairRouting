@@ -82,7 +82,14 @@ class DemandEvent:
     def __lt__(self, other):
         if not isinstance(other, DemandEvent):
             return NotImplemented
-        return self.priority > other.priority
+        return self.priority < other.priority
+
+
+def priority_service_score(priority: int, max_priority: int) -> int:
+    """Map ``priority=1`` (highest) to the largest service score."""
+    normalized = max(1, int(priority))
+    bounded = min(normalized, max_priority)
+    return max_priority + 1 - bounded
 
 
 def create_drones(

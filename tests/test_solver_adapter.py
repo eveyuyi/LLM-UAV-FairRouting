@@ -68,7 +68,7 @@ def test_solve_window_demands_returns_early_when_all_demands_overweight():
     ]
     weight_config = {
         "global_weights": {"w_distance": 1.0, "w_time": 1.0, "w_risk": 1.0},
-        "demand_configs": [{"demand_id": "REQ999", "alpha": 1.0, "beta": 1.0, "priority": 3}],
+        "demand_configs": [{"demand_id": "REQ999", "priority": 4}],
         "supplementary_constraints": [],
     }
 

@@ -3,7 +3,7 @@
 
 - dialogue_generation_prompt()   — Module 1 (对话生成)
 - context_extraction_prompt()    — Module 2 (信息提取 + 优先级评估信号，不赋值优先级)
-- weight_adjustment_prompt()     — Module 3 (优先级排序 + 权重分配)
+- weight_adjustment_prompt()     — Module 3 (优先级排序 + 约束建议)
 """
 
 import json
@@ -17,7 +17,7 @@ from typing import List, Dict, Optional
 DRONE_SYSTEM_PROMPT = (
     "你是深圳市无人机医疗配送调度系统的 AI 助手。"
     "你需要从自然语言对话中提取结构化的配送需求信息，"
-    "并在 Module 3 中根据需求特征进行优先级排序和优化参数分配。"
+    "并在 Module 3 中根据需求特征进行优先级排序和补充约束建议。"
     "请始终以有效的 JSON 格式返回结果。"
 )
 
@@ -186,11 +186,11 @@ def context_extraction_prompt(dialogues: List[Dict], time_window: str) -> str:
 # ============================================================================
 
 def weight_adjustment_prompt(demands: List[Dict], city_context: Optional[Dict] = None) -> str:
-    """Module 3：根据需求层级和优先级评估信号，做排序并分配求解器权重。
+    """Module 3：根据需求层级和优先级评估信号，做排序并分配优先级。
 
     Module 3 负责：
     1. 在时间窗口内对所有需求进行优先级排序（考虑层级 + 信号）
-    2. 为每条需求分配 alpha, beta, priority 参数
+    2. 为每条需求分配 priority，并给出可选的 supplementary_constraints
 
     Parameters
     ----------
@@ -202,11 +202,11 @@ def weight_adjustment_prompt(demands: List[Dict], city_context: Optional[Dict] =
     demands_json = json.dumps(demands, ensure_ascii=False, indent=2)
     city_json = json.dumps(city_context or {}, ensure_ascii=False, indent=2)
 
-    return f"""你是深圳市无人机医疗配送优化系统的优先级排序和权重分配模块（Module 3）。
+    return f"""你是深圳市无人机医疗配送优化系统的优先级排序模块（Module 3）。
 
 请根据以下配送需求的层级信息和优先级评估信号，完成两步工作：
 **Step 1：在时间窗口内对所有需求进行优先级排序**
-**Step 2：为每条需求分配优化求解器参数（alpha, beta, priority）**
+**Step 2：为每条需求分配求解优先级（priority）并补充必要约束建议**
 
 ## 配送需求（含 Module 2 提取的评估信号）
 {demands_json}
@@ -215,19 +215,16 @@ def weight_adjustment_prompt(demands: List[Dict], city_context: Optional[Dict] =
 {city_json}
 
 ## 四层需求体系（优先级由高到低）
-| 层级 | demand_tier | 典型场景 | alpha 范围 | beta 范围 | priority |
-|------|-------------|---------|-----------|----------|---------|
-| 生命支持 | life_support | 心脏骤停、大出血、AED 投送 | 15–20 | 0.05–0.2 | 1 |
-| 重症物资 | critical | ICU 药物、呼吸机调配 | 8–14 | 0.2–0.5 | 1–2 |
-| 常规物资 | regular | 社区补货、居民用药 | 2–6 | 0.5–2.0 | 2–3 |
-| 消费配送 | consumer | 外卖、OTC 药品、日用品 | 0.5–2 | 1.0–3.0 | 3–4 |
+| 层级 | demand_tier | 典型场景 | priority |
+|------|-------------|---------|----------|
+| 生命支持 | life_support | 心脏骤停、大出血、AED 投送 | 1 |
+| 重症物资 | critical | ICU 药物、呼吸机调配 | 2 |
+| 常规物资 | regular | 社区补货、居民用药 | 3 |
+| 消费配送 | consumer | 外卖、OTC 药品、日用品 | 4 |
 
 ## 参数说明
-- **alpha** (float)：时间权重系数，越大越优先缩短该需求的配送时间
-- **beta** (float)：风险权重系数，越小允许更激进路径（如飞越人口密集区）
-  - 生命支持类 beta 极低（允许高风险快速路径）
-  - 学校/幼儿园附近 beta 应高（规避噪音）
-- **priority** (int, 1–5)：1=最高优先级，影响调度队列排序
+- **priority** (int, 1–4)：1=最高优先级，4=最低优先级
+- supplementary_constraints 仅在确有必要时输出；没有就返回空列表
 
 ## 排序调整规则（在层级基础上微调）
 - 涉及心脏骤停/脑梗/大出血等 → 同层级内上调
@@ -247,8 +244,6 @@ def weight_adjustment_prompt(demands: List[Dict], city_context: Optional[Dict] =
     {{
       "demand_id": "REQ001",
       "demand_tier": "life_support",
-      "alpha": 20.0,
-      "beta": 0.1,
       "priority": 1,
       "window_rank": 1,
       "reasoning": "心脏骤停，CPR 进行中，黄金抢救窗口 < 4 分钟，老年患者 62 岁"
@@ -267,6 +262,6 @@ def weight_adjustment_prompt(demands: List[Dict], city_context: Optional[Dict] =
 
 字段说明：
 - `window_rank`：该需求在当前时间窗口内的调度优先级排名（1=最优先）
-- `reasoning`：简要说明排序和参数依据（≤50字）
+- `reasoning`：简要说明排序依据（≤50字）
 
 请严格按照 JSON 格式输出，不要添加额外文字。"""

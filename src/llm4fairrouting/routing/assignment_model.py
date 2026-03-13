@@ -19,7 +19,13 @@ from pyomo.environ import (
     value,
 )
 
-from llm4fairrouting.routing.domain import DemandEvent, Drone, DroneState, Point
+from llm4fairrouting.routing.domain import (
+    DemandEvent,
+    Drone,
+    DroneState,
+    Point,
+    priority_service_score,
+)
 
 
 class CplexSolver:
@@ -77,7 +83,14 @@ class CplexSolver:
         demand_required_supply = {d: demands[d].required_supply_idx for d in model.DEMANDS}
         model.demand_required_supply = Param(model.DEMANDS, initialize=demand_required_supply)
 
-        priority_weight = {d: 1.0 / demands[d].priority for d in model.DEMANDS}
+        priority_level = {d: max(1, int(demands[d].priority)) for d in model.DEMANDS}
+        max_priority_level = max(priority_level.values(), default=1)
+        unassigned_penalty = {
+            d: self.PENALTY_UNASSIGNED * priority_service_score(
+                priority_level[d], max_priority_level
+            )
+            for d in model.DEMANDS
+        }
 
         dist_drone_supply = {
             (u, s): self.dist_matrix[drone_pos[u], self.supply_indices[s]]
@@ -117,7 +130,7 @@ class CplexSolver:
         model.unassigned = Var(model.DEMANDS, within=Binary)
 
         def obj_rule(m):
-            total_weighted_cost = 0
+            total_assignment_cost = 0
             for u in m.DRONES:
                 for s in m.SUPPLY:
                     for d in m.DEMANDS:
@@ -132,9 +145,9 @@ class CplexSolver:
                             + noise_demand_station[(d, u)]
                         )
                         total_cost = dist + self.noise_weight * noise
-                        total_weighted_cost += total_cost * priority_weight[d] * m.x[u, s, d]
-            penalty = self.PENALTY_UNASSIGNED * sum(m.unassigned[d] for d in m.DEMANDS)
-            return total_weighted_cost + penalty
+                        total_assignment_cost += total_cost * m.x[u, s, d]
+            penalty = sum(unassigned_penalty[d] * m.unassigned[d] for d in m.DEMANDS)
+            return total_assignment_cost + penalty
 
         model.obj = Objective(rule=obj_rule, sense=minimize)
 

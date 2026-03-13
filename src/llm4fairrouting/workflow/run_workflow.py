@@ -472,7 +472,7 @@ def main():
         help="动态模拟中的无人机飞行速度（m/s）",
     )
     parser.add_argument("--noise-weight", type=float, default=env_float("LLM4FAIRROUTING_NOISE_WEIGHT", 0.5),
-                        help="噪声成本权重（>0 启用噪声优先级，按 1/priority 加权）")
+                        help="噪声成本权重（>0 时将噪声纳入目标函数；高优先级需求的未服务罚项更大）")
     args = parser.parse_args()
 
     # 确定 Module 1 数据来源

@@ -1,5 +1,5 @@
 """
-Module 3a: Weight Adjustment — 根据结构化需求，由 LLM 分配优先级和求解器权重。
+Module 3a: Priority Ranking — 根据结构化需求，由 LLM 分配优先级并生成补充约束建议。
 """
 
 import json
@@ -55,7 +55,7 @@ def _parse_json_response(text: str) -> Dict:
 
 
 # ============================================================================
-# 权重调整
+# 优先级调整
 # ============================================================================
 
 def adjust_weights(
@@ -65,7 +65,7 @@ def adjust_weights(
     city_context: Optional[Dict] = None,
     temperature: float = 0.0,
 ) -> Dict:
-    """调用 LLM 为一组需求分配优先级和求解器权重。"""
+    """调用 LLM 为一组需求分配优先级。"""
     from llm4fairrouting.llm.prompt_templates import (
         DRONE_SYSTEM_PROMPT,
         weight_adjustment_prompt,
@@ -74,7 +74,7 @@ def adjust_weights(
     print(f"  [Module 3a] {len(demands)} 条需求，调用 LLM 分配权重 ...")
 
     raw = _call_llm(client, model, DRONE_SYSTEM_PROMPT, prompt, temperature)
-    result = _parse_json_response(raw)
+    result = _normalize_weight_config(_parse_json_response(raw))
 
     n_configs = len(result.get("demand_configs", []))
     n_supp = len(result.get("supplementary_constraints", []))
@@ -83,15 +83,15 @@ def adjust_weights(
 
 
 # ============================================================================
-# 离线 / Mock 模式 — 基于需求层级的规则排序与权重映射
+# 离线 / Mock 模式 — 基于需求层级的规则排序
 # ============================================================================
 
-# 四层需求体系基础参数
-TIER_PARAMS = {
-    "life_support": {"alpha": 20.0, "beta": 0.1,  "priority": 1},
-    "critical":     {"alpha": 10.0, "beta": 0.3,  "priority": 1},
-    "regular":      {"alpha":  4.0, "beta": 1.0,  "priority": 2},
-    "consumer":     {"alpha":  1.0, "beta": 2.0,  "priority": 3},
+# 四层需求体系基础优先级（1=最高）
+TIER_PRIORITIES = {
+    "life_support": 1,
+    "critical": 2,
+    "regular": 3,
+    "consumer": 4,
 }
 
 # 层级排序权重（数值越小排名越靠前）
@@ -114,10 +114,42 @@ _URGENCY_TIER_MAP = {
 def _get_tier(demand: Dict) -> str:
     """从需求字典中获取 demand_tier，兼容旧版 urgency 字段。"""
     tier = demand.get("demand_tier") or demand.get("cargo", {}).get("demand_tier")
-    if tier and tier in TIER_PARAMS:
+    if tier and tier in TIER_PRIORITIES:
         return tier
     urgency = demand.get("urgency", "normal")
     return _URGENCY_TIER_MAP.get(urgency, "regular")
+
+
+def _normalize_priority(priority: object, default: int = 4) -> int:
+    try:
+        value = int(priority)
+    except (TypeError, ValueError):
+        value = default
+    return min(max(value, 1), 4)
+
+
+def _normalize_weight_config(result: Dict) -> Dict:
+    demand_configs = []
+    for rank, config in enumerate(result.get("demand_configs", []), start=1):
+        demand_config = {
+            "demand_id": str(config.get("demand_id", "")).strip(),
+            "priority": _normalize_priority(config.get("priority"), default=4),
+            "window_rank": int(config.get("window_rank", rank)),
+            "reasoning": str(config.get("reasoning", "")).strip(),
+        }
+        demand_tier = str(config.get("demand_tier", "")).strip()
+        if demand_tier:
+            demand_config["demand_tier"] = demand_tier
+        demand_configs.append(demand_config)
+
+    return {
+        "global_weights": result.get(
+            "global_weights",
+            {"w_distance": 1.0, "w_time": 1.0, "w_risk": 1.0},
+        ),
+        "demand_configs": demand_configs,
+        "supplementary_constraints": list(result.get("supplementary_constraints", [])),
+    }
 
 
 def _extract_vulnerability(demand: Dict) -> Dict:
@@ -151,14 +183,12 @@ def _extract_vulnerability(demand: Dict) -> Dict:
 
 
 def adjust_weights_offline(demands: List[Dict]) -> Dict:
-    """不调用 LLM，使用四层需求体系规则排序并分配权重。
+    """不调用 LLM，使用四层需求体系规则排序并分配优先级。
 
     Module 3 职责：
     1. 在时间窗口内对所有需求按层级 + 脆弱性信号排序 (window_rank)
-    2. 按层级分配基础 alpha/beta/priority，并根据信号微调
+    2. 按层级分配 priority，并根据信号微调
     """
-    import copy
-
     configs = []
     supplementary = []
 
@@ -188,45 +218,38 @@ def adjust_weights_offline(demands: List[Dict]) -> Dict:
     scored.sort(key=lambda x: x[0])
 
     for rank, (rank_score, d, tier, vuln, signals) in enumerate(scored, start=1):
-        params = copy.deepcopy(TIER_PARAMS.get(tier, TIER_PARAMS["regular"]))
+        priority = TIER_PRIORITIES.get(tier, TIER_PRIORITIES["regular"])
 
         reasoning_parts = [f"层级: {tier}"]
 
-        # Alpha uplift for extreme patient conditions
         patient_cond = str(signals.get("patient_condition", "") or "").lower()
         if any(kw in patient_cond for kw in ("骤停", "心梗", "大出血", "脑梗")):
-            params["alpha"] = min(20.0, params["alpha"] + 3.0)
+            priority = max(1, priority - 1)
             reasoning_parts.append("危急患者状态")
 
-        # Priority/beta adjustment for vulnerable populations
         if vuln["elderly_involved"] or vuln["vulnerable_community"]:
-            params["priority"] = max(1, params["priority"] - 1)
-            params["alpha"] = min(20.0, params["alpha"] + 1.5)
+            priority = max(1, priority - 1)
             reasoning_parts.append(f"老年/弱势社区 (比例 {vuln['elderly_ratio']:.0%})")
 
         if vuln["children_involved"]:
-            params["priority"] = max(1, params["priority"] - 1)
+            priority = max(1, priority - 1)
             reasoning_parts.append("儿童受益")
 
         # Consumer OTC with urgency → upgrade
         if tier == "consumer" and "otc_drug" in str(d.get("cargo", {}).get("type", "")):
             if "发烧" in patient_cond or "儿童" in patient_cond:
-                params["alpha"] = max(params["alpha"], 3.0)
-                params["priority"] = min(params["priority"], 2)
+                priority = min(priority, 3)
                 reasoning_parts.append("OTC急需(儿童发烧)，提升至regular级别")
 
         configs.append({
             "demand_id": d["demand_id"],
             "demand_tier": tier,
-            "alpha": round(params["alpha"], 1),
-            "beta": round(params["beta"], 2),
-            "priority": params["priority"],
+            "priority": priority,
             "window_rank": rank,
             "reasoning": "；".join(reasoning_parts),
         })
 
         # Supplementary constraints
-        nearby_poi = d.get("destination", {}).get("type", "")
         for sig in d.get("context_signals", []) + [signals.get("nearby_critical_facility", "")]:
             sig_str = str(sig or "").lower()
             if "学校" in sig_str or "kindergarten" in sig_str or "school" in sig_str:

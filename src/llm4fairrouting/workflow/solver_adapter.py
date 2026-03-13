@@ -7,7 +7,7 @@ Module 3b: Solver Adapter
 统一使用共享 routing 核心作为求解后端。
 
 求解模型特性（对齐 baseline）：
-- 目标函数: ``(distance + noise_weight * noise) * (1/priority)``
+- 目标函数: ``distance + noise_weight * noise + priority-scaled unassigned penalty``
 - 允许部分需求不被服务（unassigned 变量 + 大罚项 1e9）
 - 每架无人机单次求解最多接 1 个需求（single_task_per_drone）
 - 需求必须从指定供给点取货（supply_demand_matching）
@@ -834,8 +834,6 @@ def serialize_workflow_results(all_solutions: List[Dict]) -> List[Dict]:
                         "cargo_type_cn": cargo.get("type_cn", ""),
                         "weight_kg": cargo.get("weight_kg", 0.0),
                         "temperature_sensitive": cargo.get("temperature_sensitive", False),
-                        "alpha": config.get("alpha", 1.0),
-                        "beta": config.get("beta", 1.0),
                         "priority": config.get("priority", 3),
                         "llm_reasoning": config.get("reasoning", ""),
                         "elderly_involved": vuln.get("elderly_involved", False),
@@ -961,8 +959,6 @@ def serialize_workflow_results(all_solutions: List[Dict]) -> List[Dict]:
                     "cargo_type_cn": cargo.get("type_cn", ""),
                     "weight_kg": cargo.get("weight_kg", 0.0),
                     "temperature_sensitive": cargo.get("temperature_sensitive", False),
-                    "alpha": config.get("alpha", 1.0),
-                    "beta": config.get("beta", 1.0),
                     "priority": config.get("priority", 3),
                     "llm_reasoning": config.get("reasoning", ""),
                     "elderly_involved": vuln.get("elderly_involved", False),
