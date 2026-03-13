@@ -14,6 +14,7 @@ Module 1: Dialogue Generator — 从 daily_demand_events.csv 读取结构化需�
 """
 
 import json
+import hashlib
 import math
 import random
 from datetime import datetime, timedelta
@@ -80,6 +81,7 @@ MATERIAL_EN = {
 }
 
 PRIORITY_DEADLINE = {1: 15, 2: 30, 3: 60, 4: 120, 5: 240}
+DIALOGUE_PROFILE_VERSION = "v2"
 
 _SCENARIO_LABEL: Dict[Tuple[str, str], str] = {
     ("life_support", "vaccine"):         "Life-critical vaccine dispatch",
@@ -111,6 +113,144 @@ _REQUESTER_ROLE: Dict[str, str] = {
     "critical":     "icu_nurse",
     "regular":      "community_health_worker",
     "consumer":     "consumer",
+}
+
+_REQUESTER_ROLE_OPTIONS: Dict[str, List[str]] = {
+    "life_support": ["emergency_doctor", "paramedic", "triage_nurse"],
+    "critical": ["icu_nurse", "clinical_pharmacist", "ward_coordinator"],
+    "regular": ["community_health_worker", "clinic_manager", "pharmacy_staff"],
+    "consumer": ["consumer", "family_caregiver", "office_administrator"],
+}
+
+_REQUESTER_TITLES: Dict[str, str] = {
+    "emergency_doctor": "ER Physician",
+    "paramedic": "Paramedic",
+    "triage_nurse": "Triage Nurse",
+    "icu_nurse": "ICU Nurse",
+    "clinical_pharmacist": "Clinical Pharmacist",
+    "ward_coordinator": "Ward Coordinator",
+    "community_health_worker": "Community Health Worker",
+    "clinic_manager": "Clinic Manager",
+    "pharmacy_staff": "Pharmacy Staff",
+    "consumer": "Customer",
+    "family_caregiver": "Family Caregiver",
+    "office_administrator": "Office Administrator",
+}
+
+_DISPATCHER_TITLES: Dict[str, str] = {
+    "life_support": "Emergency Dispatch",
+    "critical": "Medical Logistics",
+    "regular": "Dispatch Coordinator",
+    "consumer": "Delivery Platform",
+}
+
+_TIME_OF_DAY_CONTEXT: Dict[str, List[str]] = {
+    "overnight": [
+        "This is the overnight shift and local stock is already depleted.",
+        "It is an overnight request, so the on-site team is working with a reduced backup stock.",
+    ],
+    "morning": [
+        "The morning intake wave has already consumed today's first stock batch.",
+        "This request is landing during the morning surge, so the usual shelf stock is gone.",
+    ],
+    "afternoon": [
+        "The afternoon care cycle pushed this item to the top of the local backlog.",
+        "This came up during the afternoon treatment block and cannot wait for the next van route.",
+    ],
+    "evening": [
+        "The evening handover is underway, so we need a clean and fast replenishment.",
+        "This is an evening request and the team needs the item before the next bedside round.",
+    ],
+}
+
+_BENEFICIARY_HINTS: Dict[str, List[str]] = {
+    "life_support": [
+        "A resuscitation team is already at the receiving point.",
+        "The bedside team is waiting at the landing zone right now.",
+    ],
+    "critical": [
+        "The care team will use it immediately on arrival.",
+        "Receiving staff and biomedical support are already on standby.",
+    ],
+    "regular": [
+        "The receiving desk can sign for it as soon as the drone lands.",
+        "Front-desk staff will take handoff once the drone arrives.",
+    ],
+    "consumer": [
+        "Please drop it at the community locker if possible.",
+        "A household member will collect it right after notification.",
+    ],
+}
+
+_HANDLING_NOTES: Dict[str, List[str]] = {
+    "aed": ["Shock-proof case is required for this flight."],
+    "blood_product": ["Keep the payload in validated cold-chain packaging."],
+    "thrombolytic": ["Cold-chain handling is mandatory for this dispatch."],
+    "ventilator": ["Secure the unit with reinforced brackets before takeoff."],
+    "icu_drug": ["Seal the medication kit and keep the chain-of-custody note attached."],
+    "vaccine": ["Use the insulated vaccine box and keep the cold-chain monitor active."],
+    "medicine": ["Package the medication kit for direct bedside handoff."],
+    "protective_suit": ["Bundle and seal the PPE cartons to speed up unloading."],
+    "mask": ["Standard sealed cartons are sufficient for this drop."],
+    "disinfectant": ["Use the leak-proof chemical container for transport."],
+    "food": ["Keep the thermal bag closed until handoff."],
+    "otc_drug": ["Pack the order in a standard tamper-evident pharmacy bag."],
+    "daily_supply": ["Standard parcel handling is enough for this order."],
+}
+
+_RECEIVER_NOTES: Dict[str, List[str]] = {
+    "life_support": [
+        "Please route straight to the emergency receiving pad.",
+        "Please use the closest emergency drop point for handoff.",
+    ],
+    "critical": [
+        "The nurse station will receive it at the clinical loading zone.",
+        "Please notify the ICU desk once final approach begins.",
+    ],
+    "regular": [
+        "Reception will collect it from the standard clinic landing point.",
+        "Please follow normal handoff at the community pickup spot.",
+    ],
+    "consumer": [
+        "A locker drop-off is preferred.",
+        "Please use the standard residential delivery point.",
+    ],
+}
+
+_SCENARIO_HINTS: Dict[Tuple[str, str], List[str]] = {
+    ("life_support", "aed"): [
+        "CPR is in progress and the backup AED cabinet is empty.",
+    ],
+    ("life_support", "blood_product"): [
+        "An active transfusion case needs immediate blood product support.",
+    ],
+    ("life_support", "cardiac_drug"): [
+        "The emergency cart is short on the cardiac rescue dose.",
+    ],
+    ("life_support", "thrombolytic"): [
+        "The stroke window is closing and the thrombolytic dose must arrive fast.",
+    ],
+    ("critical", "ventilator"): [
+        "A patient transfer requires a standby ventilator before the next procedure starts.",
+    ],
+    ("critical", "icu_drug"): [
+        "The ICU team needs a drug refill before the next administration round.",
+    ],
+    ("critical", "vaccine"): [
+        "The post-exposure window is narrow, so the vaccine must arrive promptly.",
+    ],
+    ("regular", "vaccine"): [
+        "The afternoon vaccination block will start soon.",
+    ],
+    ("regular", "medicine"): [
+        "Today's clinic queue is longer than expected and local stock ran low.",
+    ],
+    ("consumer", "food"): [
+        "This is part of a normal same-day household order.",
+    ],
+    ("consumer", "otc_drug"): [
+        "The order is for same-day symptom relief at home.",
+    ],
 }
 
 
@@ -365,6 +505,139 @@ def _pick_tier_template(tier: str, material: str, rng: random.Random) -> str:
     return rng.choice(templates)
 
 
+def _stable_seed(*parts: object) -> int:
+    payload = "||".join(str(part) for part in parts)
+    digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    return int(digest[:16], 16)
+
+
+def _choose(options: List[str], rng: random.Random, fallback: str = "") -> str:
+    if not options:
+        return fallback
+    return rng.choice(options)
+
+
+def _time_of_day_bucket(ts_hhmm: str) -> str:
+    hour = int(ts_hhmm.split(":", 1)[0])
+    if 0 <= hour < 6:
+        return "overnight"
+    if 6 <= hour < 12:
+        return "morning"
+    if 12 <= hour < 18:
+        return "afternoon"
+    return "evening"
+
+
+def _infer_quantity_units(material: str) -> str:
+    unit_map = {
+        "aed": "unit",
+        "ventilator": "unit",
+        "vaccine": "dose",
+        "blood_product": "pack",
+        "cardiac_drug": "dose",
+        "thrombolytic": "dose",
+        "icu_drug": "kit",
+        "medicine": "box",
+        "mask": "pack",
+        "protective_suit": "set",
+        "disinfectant": "bottle",
+        "food": "meal",
+        "otc_drug": "box",
+        "daily_supply": "package",
+    }
+    return unit_map.get(material, "unit")
+
+
+def _build_dialogue_profile(
+    event: Dict,
+    material: str,
+    tier: str,
+    station_name: str,
+    dest_id: str,
+    ts_hhmm: str,
+    deadline_minutes: int,
+) -> Dict[str, str]:
+    event_id = str(event.get("event_id", event.get("unique_id", dest_id)))
+    rng = random.Random(
+        _stable_seed(
+            DIALOGUE_PROFILE_VERSION,
+            event_id,
+            material,
+            tier,
+            station_name,
+            ts_hhmm,
+        )
+    )
+    requester_role = str(event.get("requester_role", "")).strip() or _choose(
+        _REQUESTER_ROLE_OPTIONS.get(tier, [_REQUESTER_ROLE.get(tier, "consumer")]),
+        rng,
+        fallback=_REQUESTER_ROLE.get(tier, "consumer"),
+    )
+    requester_title = _REQUESTER_TITLES.get(requester_role, "Requester")
+    dispatcher_title = _DISPATCHER_TITLES.get(tier, "Dispatch Coordinator")
+    time_context = str(event.get("time_context", "")).strip() or _choose(
+        _TIME_OF_DAY_CONTEXT.get(_time_of_day_bucket(ts_hhmm), []),
+        rng,
+        fallback="The local team needs a fast drone handoff.",
+    )
+    scenario_summary = str(event.get("scenario_hint", "")).strip() or _choose(
+        _SCENARIO_HINTS.get((tier, material), []),
+        rng,
+        fallback=f"Please move the {MATERIAL_EN.get(material, material)} request without delay.",
+    )
+    beneficiary_hint = str(event.get("beneficiary_hint", "")).strip() or _choose(
+        _BENEFICIARY_HINTS.get(tier, []),
+        rng,
+        fallback="Receiving staff are ready for handoff.",
+    )
+    handling_note = str(event.get("handling_notes", "")).strip() or _choose(
+        _HANDLING_NOTES.get(material, []),
+        rng,
+        fallback="Please follow standard packaging and handoff checks.",
+    )
+    receiver_note = str(event.get("receiver_notes", "")).strip() or _choose(
+        _RECEIVER_NOTES.get(tier, []),
+        rng,
+        fallback="Please use the standard receiving point.",
+    )
+    request_channel = str(event.get("request_channel", "")).strip() or {
+        "life_support": "emergency dispatch line",
+        "critical": "hospital logistics desk",
+        "regular": "clinic replenishment queue",
+        "consumer": "consumer delivery app",
+    }.get(tier, "dispatch channel")
+
+    if tier == "life_support":
+        opening = "Immediate support needed."
+        followup = "Team is in position and will receive the payload on touchdown."
+    elif tier == "critical":
+        opening = "Urgent clinical support needed."
+        followup = "The care team will take over the item as soon as it lands."
+    elif tier == "regular":
+        opening = "Routine replenishment request."
+        followup = "Reception will complete handoff once the drone arrives."
+    else:
+        opening = "Same-day order request."
+        followup = "Please send the app notification once the drop is complete."
+
+    return {
+        "requester_role": requester_role,
+        "requester_title": requester_title,
+        "dispatcher_title": dispatcher_title,
+        "time_context": time_context,
+        "scenario_summary": scenario_summary,
+        "beneficiary_hint": beneficiary_hint,
+        "handling_note": handling_note,
+        "receiver_note": receiver_note,
+        "request_channel": request_channel,
+        "opening": opening,
+        "followup": followup,
+        "station_name": station_name,
+        "dest_id": dest_id,
+        "deadline_minutes": str(deadline_minutes),
+    }
+
+
 # ============================================================================
 # 数据加载
 # ============================================================================
@@ -413,7 +686,7 @@ def _normalize_supply_type(supply_type: str) -> str:
 
 def _infer_material_type(supply_type: str, priority: int, unique_id: str = "") -> str:
     """Infer material type from supply_type and priority (for CSV without material_type)."""
-    rng = random.Random(hash(unique_id))
+    rng = random.Random(_stable_seed("material", unique_id, supply_type, priority))
     normalized_supply_type = _normalize_supply_type(supply_type)
     if normalized_supply_type == "medical":
         if priority == 1:
@@ -575,6 +848,7 @@ def _event_to_dialogue(
     dest_fid = event.get("demand_node_index", event.get("demand_node_id", f"D{dialogue_idx}"))
 
     tier = _map_priority_to_tier(priority)
+    deadline_minutes = int(event.get("delivery_deadline_minutes", PRIORITY_DEADLINE.get(priority, 60)))
 
     # Use supply point from CSV if available, otherwise find nearest station
     if event.get("supply_lon") is not None and event.get("supply_lat") is not None:
@@ -589,20 +863,31 @@ def _event_to_dialogue(
             "lat": dest_lat,
         }
 
+    profile = _build_dialogue_profile(
+        event=event,
+        material=original_material,
+        tier=tier,
+        station_name=station["name"],
+        dest_id=demand_node_id,
+        ts_hhmm=ts_hhmm,
+        deadline_minutes=deadline_minutes,
+    )
+
     if conversation is None:
         conversation = _generate_rule_conversation(
-            demand_node_id, station, original_material, qty_kg, priority, tier, ts_hhmm
+            demand_node_id,
+            station,
+            original_material,
+            qty_kg,
+            priority,
+            tier,
+            ts_hhmm,
+            profile=profile,
         )
 
-    rng = random.Random(hash((dest_lon, dest_lat)))
+    rng = random.Random(_stable_seed("demographics", dest_lon, dest_lat))
     elderly_ratio = round(rng.uniform(0.15, 0.60), 2)
     population = rng.randint(500, 8000)
-
-    scenario = _SCENARIO_LABEL.get(
-        (tier, original_material),
-        f"{DEMAND_TIERS[tier]} — {MATERIAL_EN.get(original_material, original_material)}",
-    )
-    requester_role = _REQUESTER_ROLE.get(tier, "community_health_worker")
 
     return {
         "dialogue_id": f"D{dialogue_idx:04d}",
@@ -622,10 +907,15 @@ def _event_to_dialogue(
             "nearby_poi": _infer_poi(original_material, priority, tier),
             "material_type": original_material,
             "quantity_kg": qty_kg,
-            "priority": priority,
-            "demand_tier": tier,
-            "scenario": scenario,
-            "requester_role": requester_role,
+            "requester_role": profile["requester_role"],
+            "requester_title": profile["requester_title"],
+            "request_channel": profile["request_channel"],
+            "delivery_deadline_minutes": deadline_minutes,
+            "scenario_summary": profile["scenario_summary"],
+            "beneficiary_hint": profile["beneficiary_hint"],
+            "handling_notes": profile["handling_note"],
+            "receiver_notes": profile["receiver_note"],
+            "dialogue_profile_version": DIALOGUE_PROFILE_VERSION,
             "demand_type": str(event.get("demand_type", "")),
             "supply_station_name": station["name"],
             "supply_type": _normalize_supply_type(str(event.get("supply_type", ""))),
@@ -641,8 +931,9 @@ def _generate_rule_conversation(
     priority: int,
     tier: Optional[str] = None,
     ts_hhmm: str = "09:00",
+    profile: Optional[Dict[str, str]] = None,
 ) -> str:
-    """Generate a multi-turn English dialogue from tier × material templates."""
+    """Generate a realistic multi-turn English dispatch dialogue."""
     if tier is None:
         tier = _map_priority_to_tier(priority)
     mat_en = MATERIAL_EN.get(material, material)
@@ -657,18 +948,62 @@ def _generate_rule_conversation(
     }
     uw = unit_weight.get(material, 0.5)
     qty = max(1, round(qty_kg / uw))
-
-    rng = random.Random(hash((dest_id, material, priority)))
-    tpl = _pick_tier_template(tier, material, rng)
-
-    return tpl.format(
-        t=ts_hhmm,
+    qty_unit = _infer_quantity_units(material)
+    qty_phrase = f"{qty} {qty_unit}{'' if qty == 1 else 's'}"
+    profile = profile or _build_dialogue_profile(
+        event={},
+        material=material,
+        tier=tier,
+        station_name=station["name"],
         dest_id=dest_id,
-        origin_name=station["name"],
-        mat_en=mat_en,
-        qty=qty,
-        kg=round(qty_kg, 1),
-        deadline=deadline,
+        ts_hhmm=ts_hhmm,
+        deadline_minutes=deadline,
+    )
+    deadline = int(profile.get("deadline_minutes", deadline))
+    kg = round(qty_kg, 1)
+
+    if tier == "life_support":
+        return (
+            f"[{ts_hhmm}] {profile['requester_title']} ({dest_id}): {profile['opening']} "
+            f"We need {qty_phrase} of {mat_en} ({kg} kg) from {station['name']} now. "
+            f"{profile['scenario_summary']} {profile['time_context']} "
+            f"Target delivery window: {deadline} min. {profile['beneficiary_hint']}\n"
+            f"[{ts_hhmm}] {profile['dispatcher_title']}: Copy. {profile['handling_note']} "
+            f"{station['name']} is loading immediately and routing direct to {dest_id}. "
+            f"ETA {deadline} min. {profile['receiver_note']}\n"
+            f"[{ts_hhmm}] {profile['requester_title']}: Understood. {profile['followup']}"
+        )
+    if tier == "critical":
+        return (
+            f"[{ts_hhmm}] {profile['requester_title']} ({dest_id}): {profile['opening']} "
+            f"Please dispatch {qty_phrase} of {mat_en} ({kg} kg) from {station['name']}. "
+            f"{profile['scenario_summary']} {profile['time_context']} "
+            f"We need arrival within {deadline} min. {profile['beneficiary_hint']}\n"
+            f"[{ts_hhmm}] {profile['dispatcher_title']}: Confirmed. {profile['handling_note']} "
+            f"The payload is being prepared at {station['name']}; planned ETA is {deadline} min. "
+            f"{profile['receiver_note']}\n"
+            f"[{ts_hhmm}] {profile['requester_title']}: Thank you. {profile['followup']}"
+        )
+    if tier == "regular":
+        return (
+            f"[{ts_hhmm}] {profile['requester_title']} ({dest_id}): {profile['opening']} "
+            f"We need {qty_phrase} of {mat_en} ({kg} kg) from {station['name']}. "
+            f"{profile['scenario_summary']} {profile['time_context']} "
+            f"A delivery window of about {deadline} min works for us. {profile['beneficiary_hint']}\n"
+            f"[{ts_hhmm}] {profile['dispatcher_title']}: Received. {profile['handling_note']} "
+            f"{station['name']} will dispatch on the next outbound flight. ETA {deadline} min. "
+            f"{profile['receiver_note']}\n"
+            f"[{ts_hhmm}] {profile['requester_title']}: Sounds good. {profile['followup']}"
+        )
+    return (
+        f"[{ts_hhmm}] {profile['requester_title']} ({profile['request_channel']} • {dest_id}): "
+        f"{profile['opening']} Please send {qty_phrase} of {mat_en} ({kg} kg) from {station['name']}. "
+        f"{profile['scenario_summary']} {profile['time_context']} "
+        f"Same-day delivery within {deadline} min is fine. {profile['beneficiary_hint']}\n"
+        f"[{ts_hhmm}] {profile['dispatcher_title']}: Order confirmed. {profile['handling_note']} "
+        f"{station['name']} has queued the parcel for drone dispatch. ETA about {deadline} min. "
+        f"{profile['receiver_note']}\n"
+        f"[{ts_hhmm}] {profile['requester_title']}: Perfect. {profile['followup']}"
     )
 
 
@@ -709,13 +1044,16 @@ def generate_dialogues_offline(
 ) -> List[Dict]:
     """将 demand_events 批量转换为对话格式（不调用 LLM）。"""
     dialogues = []
+    tier_counts: Dict[str, int] = {}
     for idx, event in enumerate(demand_events):
         dlg = _event_to_dialogue(event, stations, base_date, idx + 1)
         dialogues.append(dlg)
-    # summarize tier distribution
-    from collections import Counter
-    tier_counts = Counter(d["metadata"]["demand_tier"] for d in dialogues)
-    print(f"[Module 1] Offline generation: {len(dialogues)} dialogues, tier distribution: {dict(tier_counts)}")
+        tier = _map_priority_to_tier(int(event.get("priority", 4)))
+        tier_counts[tier] = tier_counts.get(tier, 0) + 1
+    print(
+        f"[Module 1] Offline generation complete: {len(dialogues)} dialogues, "
+        f"tier distribution {tier_counts}"
+    )
     return dialogues
 
 
@@ -745,25 +1083,31 @@ def generate_dialogues_online(
 
     for start in range(0, total, batch_size):
         batch = dialogues[start: start + batch_size]
+        batch_events = demand_events[start: start + batch_size]
         batch_context = []
-        for dlg in batch:
+        for dlg, event in zip(batch, batch_events):
             meta = dlg["metadata"]
+            seed_tier = _map_priority_to_tier(int(event.get("priority", 4)))
             batch_context.append({
                 "dialogue_id": dlg["dialogue_id"],
                 "timestamp": dlg["timestamp"],
-                "demand_tier": meta["demand_tier"],
-                "demand_tier_label": DEMAND_TIERS.get(meta["demand_tier"], ""),
-                "scenario": meta["scenario"],
+                "demand_tier": seed_tier,
+                "demand_tier_label": DEMAND_TIERS.get(seed_tier, ""),
+                "scenario_summary": meta.get("scenario_summary", ""),
                 "material_type": meta["material_type"],
                 "material_en": MATERIAL_EN.get(meta["material_type"], meta["material_type"]),
                 "quantity_kg": meta["quantity_kg"],
-                "priority": meta["priority"],
+                "delivery_deadline_minutes": meta.get("delivery_deadline_minutes", 60),
                 "origin_station": meta["supply_station_name"],
                 "dest_node": str(meta["destination_fid"]),
                 "dest_coords": meta["dest_coords"],
                 "dest_demographics": meta["dest_demographics"],
                 "nearby_poi": meta["nearby_poi"],
                 "requester_role": meta["requester_role"],
+                "request_channel": meta.get("request_channel", ""),
+                "beneficiary_hint": meta.get("beneficiary_hint", ""),
+                "handling_notes": meta.get("handling_notes", ""),
+                "receiver_notes": meta.get("receiver_notes", ""),
             })
 
         prompt = dialogue_generation_prompt(batch_context)
@@ -800,6 +1144,55 @@ def _parse_llm_batch_response(raw: str, batch: List[Dict]) -> Dict[str, str]:
         return {}
 
 
+def load_dialogues_from_file(path: str) -> List[Dict]:
+    with open(path, "r", encoding="utf-8") as f:
+        return [json.loads(line) for line in f if line.strip()]
+
+
+def _file_signature(path: Optional[str]) -> str:
+    if not path:
+        return "none"
+    resolved = Path(path)
+    if not resolved.exists():
+        return f"missing:{resolved}"
+    stat = resolved.stat()
+    return f"{resolved.resolve()}:{stat.st_size}:{stat.st_mtime_ns}"
+
+
+def build_dialogue_cache_path(
+    csv_path: str,
+    xlsx_path: Optional[str],
+    offline: bool,
+    model: str,
+    base_date: str,
+    n_events: Optional[int],
+    time_slots: Optional[List[int]],
+    temperature: float,
+    batch_size: int,
+    cache_dir: Optional[str] = None,
+) -> Path:
+    cache_root = Path(cache_dir) if cache_dir else PROJECT_ROOT / "data" / "cache" / "module1_dialogues"
+    cache_root.mkdir(parents=True, exist_ok=True)
+    cache_key = {
+        "version": DIALOGUE_PROFILE_VERSION,
+        "csv": _file_signature(csv_path),
+        "stations": _file_signature(xlsx_path),
+        "offline": bool(offline),
+        "model": model,
+        "base_date": base_date,
+        "n_events": n_events,
+        "time_slots": list(time_slots or []),
+        "temperature": temperature,
+        "batch_size": batch_size,
+    }
+    digest = hashlib.sha256(
+        json.dumps(cache_key, sort_keys=True).encode("utf-8")
+    ).hexdigest()[:16]
+    stem = Path(csv_path).stem.replace(" ", "_")
+    mode = "offline" if offline else "online"
+    return cache_root / f"{stem}_{mode}_{digest}.jsonl"
+
+
 # ============================================================================
 # 统一生成入口
 # ============================================================================
@@ -815,6 +1208,8 @@ def generate_dialogues(
     time_slots: Optional[List[int]] = None,
     temperature: float = 0.7,
     batch_size: int = 5,
+    reuse_cache: bool = True,
+    cache_dir: Optional[str] = None,
 ) -> List[Dict]:
     """Module 1 统一入口：加载数据并生成对话。
 
@@ -842,27 +1237,50 @@ def generate_dialogues(
     batch_size : int
         LLM 批处理大小（仅 online 模式生效）。
     """
+    cache_path = build_dialogue_cache_path(
+        csv_path=csv_path,
+        xlsx_path=xlsx_path,
+        offline=offline,
+        model=model,
+        base_date=base_date,
+        n_events=n_events,
+        time_slots=time_slots,
+        temperature=temperature,
+        batch_size=batch_size,
+        cache_dir=cache_dir,
+    )
+    if reuse_cache and cache_path.exists():
+        cached = load_dialogues_from_file(str(cache_path))
+        if cached:
+            print(f"[Module 1] Reusing cached dialogues from {cache_path}")
+            return cached
+
     stations: List[Dict] = []
     if xlsx_path:
         try:
             stations = load_stations(xlsx_path)
-            print(f"[Module 1] 加载 {len(stations)} 个站点")
+            print(f"[Module 1] Loaded {len(stations)} stations")
         except Exception as e:
-            print(f"[Module 1] 站点数据加载失败 ({e})，将使用 CSV 中的供给点信息")
+            print(f"[Module 1] Station load failed ({e}); using supply data from the CSV")
 
     events = load_demand_events(csv_path, n_events=n_events, time_slots=time_slots)
     if not events:
-        raise ValueError(f"未能从 {csv_path} 加载任何需求事件")
-    print(f"[Module 1] 加载 {len(events)} 条需求事件 (time_slots={time_slots}, n_events={n_events})")
+        raise ValueError(f"No demand events could be loaded from {csv_path}")
+    print(
+        f"[Module 1] Loaded {len(events)} demand events "
+        f"(time_slots={time_slots}, n_events={n_events})"
+    )
 
     if offline:
-        return generate_dialogues_offline(events, stations, base_date)
+        dialogues = generate_dialogues_offline(events, stations, base_date)
     else:
         if client is None:
-            raise ValueError("online 模式需要提供 OpenAI client")
-        return generate_dialogues_online(
+            raise ValueError("online mode requires an OpenAI client")
+        dialogues = generate_dialogues_online(
             events, stations, client, model, base_date, temperature, batch_size
         )
+    save_dialogues(dialogues, str(cache_path))
+    return dialogues
 
 
 # ============================================================================
@@ -875,7 +1293,7 @@ def save_dialogues(dialogues: List[Dict], output_path: str) -> None:
     with open(output_path, "w", encoding="utf-8") as f:
         for dlg in dialogues:
             f.write(json.dumps(dlg, ensure_ascii=False) + "\n")
-    print(f"[Module 1] 对话保存至 {output_path} ({len(dialogues)} 条)")
+    print(f"[Module 1] Saved {len(dialogues)} dialogues to {output_path}")
 
 
 # ============================================================================

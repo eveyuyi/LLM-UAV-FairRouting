@@ -26,8 +26,11 @@ from llm4fairrouting.llm.dialogue_generation import (
     _infer_poi,
     _map_priority_to_tier,
     _pick_tier_template,
+    build_dialogue_cache_path,
     generate_dialogues_offline,
+    generate_dialogues,
     load_demand_events,
+    load_dialogues_from_file,
     load_stations,
     save_dialogues,
 )
@@ -200,10 +203,12 @@ class TestEventToDialogue:
         required = [
             "origin_fid", "destination_fid", "origin_coords", "dest_coords",
             "dest_demographics", "nearby_poi", "material_type", "quantity_kg",
-            "priority",
+            "delivery_deadline_minutes", "scenario_summary", "requester_role",
         ]
         for field in required:
             assert field in meta, f"缺少字段: {field}"
+        assert "priority" not in meta
+        assert "demand_tier" not in meta
 
     def test_custom_conversation(self):
         dlg = _event_to_dialogue(
@@ -319,6 +324,57 @@ class TestSaveDialogues:
             nested = str(Path(tmpdir) / "subdir" / "output.jsonl")
             save_dialogues(dialogues, nested)
             assert Path(nested).exists()
+
+
+def test_generate_dialogues_reuses_cache(tmp_path):
+    csv_path = tmp_path / "daily_demand_events.csv"
+    pd.DataFrame([
+        {
+            "time": 0.0,
+            "demand_fid": "DEM_1",
+            "demand_lon": 113.90,
+            "demand_lat": 22.80,
+            "priority": 2,
+            "supply_fid": "MED_1",
+            "supply_lon": 113.80,
+            "supply_lat": 22.70,
+            "supply_type": "medical",
+            "material_weight": 3.2,
+            "unique_id": "DEM_000_00",
+        }
+    ]).to_csv(csv_path, index=False, encoding="utf-8-sig")
+
+    cache_dir = tmp_path / "cache"
+    dialogues_first = generate_dialogues(
+        csv_path=str(csv_path),
+        xlsx_path=None,
+        offline=True,
+        cache_dir=str(cache_dir),
+    )
+    cache_path = build_dialogue_cache_path(
+        csv_path=str(csv_path),
+        xlsx_path=None,
+        offline=True,
+        model="gpt-4o-mini",
+        base_date="2024-03-15",
+        n_events=None,
+        time_slots=None,
+        temperature=0.7,
+        batch_size=5,
+        cache_dir=str(cache_dir),
+    )
+
+    assert cache_path.exists()
+    cached_dialogues = load_dialogues_from_file(str(cache_path))
+    assert cached_dialogues == dialogues_first
+
+    dialogues_second = generate_dialogues(
+        csv_path=str(csv_path),
+        xlsx_path=None,
+        offline=True,
+        cache_dir=str(cache_dir),
+    )
+    assert dialogues_second == dialogues_first
 
 
 # ============================================================================

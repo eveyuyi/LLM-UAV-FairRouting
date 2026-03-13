@@ -103,8 +103,8 @@ def generate_demand_events(
     demand_point_counter = {point.id: 0 for point in demand_points}
 
     if verbose:
-        print(f"\n开始生成 {num_events} 个需求...")
-        print(f"供给点数量: {n_supply}, 需求点数量: {len(demand_points)}")
+        print(f"\nGenerating {num_events} demand events...")
+        print(f"Supply points: {n_supply}, demand points: {len(demand_points)}")
 
     for i in range(num_events):
         d_idx = rng.randrange(len(demand_points))
@@ -135,20 +135,20 @@ def generate_demand_events(
     events.sort(key=lambda item: item.time)
 
     if verbose:
-        print(f"\n生成 {num_events} 个需求，优先级分别为: {[ev.priority for ev in events]}")
-        print("\n需求详情（按时间顺序）:")
+        print(f"\nGenerated {num_events} demand events with priorities: {[ev.priority for ev in events]}")
+        print("\nDemand details (sorted by time):")
         print("-" * 80)
         for ev in events:
             print(
-                f"  {ev.unique_id}: {ev.demand_point_id} (节点{ev.node_idx}) | "
-                f"时间={ev.time:.3f}h | 重量={ev.weight}kg | "
-                f"优先级={ev.priority} | 必须从 S{ev.required_supply_idx + 1} 取货"
+                f"  {ev.unique_id}: {ev.demand_point_id} (node {ev.node_idx}) | "
+                f"time={ev.time:.3f}h | weight={ev.weight}kg | "
+                f"priority={ev.priority} | pickup from S{ev.required_supply_idx + 1}"
             )
 
-        print("\n需求点分布统计:")
+        print("\nDemand-point distribution:")
         for demand_id, count in demand_point_counter.items():
             if count > 0:
-                print(f"  {demand_id}: {count} 个需求")
+                print(f"  {demand_id}: {count} events")
 
     return events
 
@@ -372,6 +372,26 @@ def generate_daily_demand_csv(
     return df
 
 
+def precompute_dialogue_cache(
+    csv_path: str,
+    stations_file: str | None = None,
+    base_date: str = "2024-03-15",
+    dialogue_output: str | None = None,
+) -> None:
+    """Warm Module 1 dialogue cache for a generated demand-event CSV."""
+    from llm4fairrouting.llm.dialogue_generation import generate_dialogues, save_dialogues
+
+    dialogues = generate_dialogues(
+        csv_path=csv_path,
+        xlsx_path=stations_file,
+        offline=True,
+        base_date=base_date,
+        reuse_cache=True,
+    )
+    if dialogue_output:
+        save_dialogues(dialogues, dialogue_output)
+
+
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Generate a full-day daily_demand_events.csv from building_information.csv."
@@ -385,6 +405,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--medical-ratio", type=float, default=0.2, help="Fraction of demands routed to medical supplies")
     parser.add_argument("--num-supply-medical", type=int, default=5, help="Number of medical supply points to use")
     parser.add_argument("--num-supply-commercial", type=int, default=5, help="Number of commercial supply points to use")
+    parser.add_argument("--build-dialogue-cache", action="store_true", help="Also precompute Module 1 dialogue cache for the generated CSV")
+    parser.add_argument("--dialogue-output", default=None, help="Optional JSONL path for a materialized dialogue file")
+    parser.add_argument("--stations", default=None, help="Optional station file used when precomputing dialogues")
+    parser.add_argument("--base-date", default="2024-03-15", help="Base date used for dialogue timestamps")
     return parser
 
 
@@ -402,8 +426,16 @@ def main() -> None:
         num_supply_commercial=args.num_supply_commercial,
     )
 
-    print(f"需求数据已保存至 {args.output}")
-    print(f"生成需求总数: {len(df)}")
+    if args.build_dialogue_cache or args.dialogue_output:
+        precompute_dialogue_cache(
+            csv_path=args.output,
+            stations_file=args.stations,
+            base_date=args.base_date,
+            dialogue_output=args.dialogue_output,
+        )
+
+    print(f"Demand events saved to {args.output}")
+    print(f"Generated {len(df)} demand events")
     if not df.empty:
         print(df.head(10).to_string(index=False))
 

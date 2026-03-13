@@ -1,13 +1,13 @@
 """
-端到端 workflow runner — 串联 Module 1 → Module 2 → Module 3。
+End-to-end workflow runner connecting Module 1 -> Module 2 -> Module 3.
 
-支持两种运行模式:
-  --offline   不调用 LLM，使用规则数据跑通全流程
-  (默认)      调用 LLM API 进行对话生成 + context extraction + weight adjustment
+Supported modes:
+  --offline   Run the full workflow without calling an LLM
+  default     Use the LLM for dialogue generation, extraction, and ranking
 
-Module 1 数据来源（优先级由高到低）:
-  1. --csv + --stations  从 daily_demand_events.csv 生成对话（推荐）
-  2. --dialogues         直接加载已有 JSONL 对话文件（兼容旧流程）
+Module 1 input priority:
+  1. --csv + --stations  Build or reuse dialogues from daily_demand_events.csv
+  2. --dialogues         Load an existing dialogue JSONL file
 """
 
 import argparse
@@ -174,11 +174,11 @@ def run_workflow(
         # Step 1: Module 1 — 生成对话
         # ----------------------------------------------------------------
         print("=" * 60)
-        print("Step 1: 对话生成 (Module 1)")
+        print("Step 1: Dialogue Generation (Module 1)")
         print("=" * 60)
 
         if csv_path:
-            # 从 CSV 生成对话（stations_path 可选）
+            # Generate or reuse dialogues from the CSV
             from llm4fairrouting.llm.dialogue_generation import generate_dialogues
 
             dialogues = generate_dialogues(
@@ -198,17 +198,17 @@ def run_workflow(
 
             save_dialogues(dialogues, str(dlg_out))
         elif dialogue_path:
-            # 兼容旧路径：直接加载 JSONL 对话文件
+            # Compatibility path: load an existing dialogue JSONL file
             with open(dialogue_path, "r", encoding="utf-8") as f:
                 dialogues = [json.loads(l.strip()) for l in f if l.strip()]
-            print(f"  加载 {len(dialogues)} 条对话（来自文件: {dialogue_path}）")
+            print(f"  Loaded {len(dialogues)} dialogues from {dialogue_path}")
         else:
             raise ValueError(
-                "必须提供 csv_path（从 CSV 生成对话）"
-                " 或 dialogue_path（直接加载 JSONL 文件）"
+                "Either csv_path (generate or reuse dialogues from CSV) "
+                "or dialogue_path (load JSONL directly) must be provided."
             )
 
-        print(f"  共 {len(dialogues)} 条对话")
+        print(f"  Total dialogues: {len(dialogues)}")
 
         # ----------------------------------------------------------------
         # Step 2: Module 2 — 按窗口提取需求
@@ -231,16 +231,16 @@ def run_workflow(
         demands_path = run_dir / "extracted_demands.json"
         with open(demands_path, "w", encoding="utf-8") as f:
             json.dump(window_results, f, ensure_ascii=False, indent=2)
-        print(f"  需求保存至 {demands_path}")
+        print(f"  Saved extracted demands to {demands_path}")
 
         total_demands = sum(len(w.get("demands", [])) for w in window_results)
-        print(f"  共提取 {total_demands} 条需求，分布于 {len(window_results)} 个窗口")
+        print(f"  Extracted {total_demands} demands across {len(window_results)} windows")
 
         # ----------------------------------------------------------------
         # Step 3: Module 3 — 逐窗口调整权重 + 求解
         # ----------------------------------------------------------------
         print("\n" + "=" * 60)
-        print("Step 3: Weight Adjustment + Solve (Module 3)")
+        print("Step 3: Priority Ranking + Solve (Module 3)")
         print("=" * 60)
 
         all_solutions = []
@@ -252,10 +252,10 @@ def run_workflow(
             demands = window.get("demands", [])
 
             if not demands:
-                print(f"\n  窗口 {tw}: 无需求，跳过")
+                print(f"\n  Window {tw}: no demands, skipping")
                 continue
 
-            print(f"\n  ---- 窗口 {tw}: {len(demands)} 条需求 ----")
+            print(f"\n  ---- Window {tw}: {len(demands)} demands ----")
 
             # 3a: 权重调整
             if offline:
@@ -271,7 +271,7 @@ def run_workflow(
             weight_configs_by_window[tw] = weight_config
 
             if skip_solver:
-                print(f"  跳过求解 (--skip-solver)")
+                print("  Solver skipped (--skip-solver)")
                 all_solutions.append(
                     {
                         "time_window": tw,
@@ -322,7 +322,7 @@ def run_workflow(
             )
 
         print(f"\n{'=' * 60}")
-        print("Workflow 完成！结果保存至:")
+        print("Workflow finished. Outputs:")
         print(f"  Run directory   : {run_dir}")
         print(f"  Weight configs  : {weight_configs_dir}")
         print(f"  Workflow results: {summary_path}")
