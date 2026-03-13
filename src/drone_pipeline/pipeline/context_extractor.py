@@ -108,13 +108,14 @@ def _enrich_demands_with_metadata(demands: List[Dict], dialogues: List[Dict]) ->
     Module 2 的 LLM 只看对话文本，不知道坐标。但 solver 需要精确坐标，
     因此在 LLM 返回后由代码把坐标从 metadata 注入，不影响 LLM 的语义理解。
     """
-    dlg_lookup = {d["dialogue_id"]: d["metadata"] for d in dialogues}
+    dlg_lookup = {d["dialogue_id"]: d for d in dialogues}
 
     for demand in demands:
         src_id = demand.get("source_dialogue_id")
         if not src_id or src_id not in dlg_lookup:
             continue
-        meta = dlg_lookup[src_id]
+        dialogue = dlg_lookup[src_id]
+        meta = dialogue["metadata"]
 
         origin = demand.setdefault("origin", {})
         origin["fid"]    = meta.get("origin_fid", "")
@@ -127,6 +128,8 @@ def _enrich_demands_with_metadata(demands: List[Dict], dialogues: List[Dict]) ->
         # Also surface demand_tier from metadata as a cross-check signal
         if not demand.get("demand_tier") and meta.get("demand_tier"):
             demand.setdefault("cargo", {})["demand_tier_hint"] = meta["demand_tier"]
+
+        demand["request_timestamp"] = dialogue.get("timestamp")
 
     return demands
 
@@ -258,6 +261,7 @@ def extract_demands_offline(dialogues: List[Dict], window_minutes: int = 5) -> L
             demands.append({
                 "demand_id": f"REQ{len(demands)+1:03d}",
                 "source_dialogue_id": d["dialogue_id"],
+                "request_timestamp": d.get("timestamp"),
                 "origin": {
                     "fid": meta["origin_fid"],
                     "coords": meta["origin_coords"],

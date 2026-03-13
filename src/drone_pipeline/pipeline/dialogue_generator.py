@@ -26,7 +26,12 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 if TYPE_CHECKING:
     from openai import OpenAI
 
-from drone_pipeline.seed_data import DEMAND_EVENTS_FILENAME, DEMAND_EVENTS_PATH, STATION_DATA_FILENAME
+from drone_pipeline.seed_data import (
+    DEMAND_EVENTS_FILENAME,
+    DEMAND_EVENTS_PATH,
+    STATION_DATA_FILENAME,
+    STATION_DATA_PATH,
+)
 from drone_pipeline.utils.station_data import load_station_data
 
 
@@ -919,8 +924,8 @@ def main():
     )
     parser.add_argument(
         "--stations", type=str,
-        default=None,
-        help=f"{STATION_DATA_FILENAME} 路径（CSV 含供给点信息时可省略）",
+        default=str(STATION_DATA_PATH),
+        help=f"{STATION_DATA_FILENAME} 路径（默认使用项目 seed 数据）",
     )
     parser.add_argument(
         "--output", type=str,
