@@ -200,10 +200,12 @@ class TestEventToDialogue:
         required = [
             "origin_fid", "destination_fid", "origin_coords", "dest_coords",
             "dest_demographics", "nearby_poi", "material_type", "quantity_kg",
-            "priority",
+            "delivery_deadline_minutes", "scenario_summary", "requester_role",
         ]
         for field in required:
             assert field in meta, f"缺少字段: {field}"
+        assert "priority" not in meta
+        assert "demand_tier" not in meta
 
     def test_custom_conversation(self):
         dlg = _event_to_dialogue(
@@ -319,6 +321,7 @@ class TestSaveDialogues:
             nested = str(Path(tmpdir) / "subdir" / "output.jsonl")
             save_dialogues(dialogues, nested)
             assert Path(nested).exists()
+
 
 
 # ============================================================================

@@ -103,8 +103,8 @@ def generate_demand_events(
     demand_point_counter = {point.id: 0 for point in demand_points}
 
     if verbose:
-        print(f"\n开始生成 {num_events} 个需求...")
-        print(f"供给点数量: {n_supply}, 需求点数量: {len(demand_points)}")
+        print(f"\nGenerating {num_events} demand events...")
+        print(f"Supply points: {n_supply}, demand points: {len(demand_points)}")
 
     for i in range(num_events):
         d_idx = rng.randrange(len(demand_points))
@@ -135,20 +135,20 @@ def generate_demand_events(
     events.sort(key=lambda item: item.time)
 
     if verbose:
-        print(f"\n生成 {num_events} 个需求，优先级分别为: {[ev.priority for ev in events]}")
-        print("\n需求详情（按时间顺序）:")
+        print(f"\nGenerated {num_events} demand events with priorities: {[ev.priority for ev in events]}")
+        print("\nDemand details (sorted by time):")
         print("-" * 80)
         for ev in events:
             print(
-                f"  {ev.unique_id}: {ev.demand_point_id} (节点{ev.node_idx}) | "
-                f"时间={ev.time:.3f}h | 重量={ev.weight}kg | "
-                f"优先级={ev.priority} | 必须从 S{ev.required_supply_idx + 1} 取货"
+                f"  {ev.unique_id}: {ev.demand_point_id} (node {ev.node_idx}) | "
+                f"time={ev.time:.3f}h | weight={ev.weight}kg | "
+                f"priority={ev.priority} | pickup from S{ev.required_supply_idx + 1}"
             )
 
-        print("\n需求点分布统计:")
+        print("\nDemand-point distribution:")
         for demand_id, count in demand_point_counter.items():
             if count > 0:
-                print(f"  {demand_id}: {count} 个需求")
+                print(f"  {demand_id}: {count} events")
 
     return events
 
@@ -402,8 +402,8 @@ def main() -> None:
         num_supply_commercial=args.num_supply_commercial,
     )
 
-    print(f"需求数据已保存至 {args.output}")
-    print(f"生成需求总数: {len(df)}")
+    print(f"Demand events saved to {args.output}")
+    print(f"Generated {len(df)} demand events")
     if not df.empty:
         print(df.head(10).to_string(index=False))
 
