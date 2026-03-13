@@ -343,17 +343,3 @@ def build_realistic_distance_and_noise_matrices(
     print(f"非零噪声路径数: {np.sum(noise_matrix > 0) // 2}条")
 
     return dist_matrix, noise_matrix
-
-
-def calculate_distance_matrix(points: List[Point]) -> np.ndarray:
-    n = len(points)
-    dist_matrix = np.zeros((n, n))
-    for i in range(n):
-        for j in range(i + 1, n):
-            dx = points[i].x - points[j].x
-            dy = points[i].y - points[j].y
-            dz = points[i].z - points[j].z
-            dist = math.sqrt(dx * dx + dy * dy + dz * dz)
-            dist_matrix[i, j] = dist
-            dist_matrix[j, i] = dist
-    return dist_matrix

@@ -3,7 +3,6 @@ Module 3a: Priority Ranking — 根据结构化需求，由 LLM 分配优先级�
 """
 
 import json
-import time
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -12,46 +11,11 @@ from typing import TYPE_CHECKING, Dict, List, Optional
 if TYPE_CHECKING:
     from openai import OpenAI
 
-
-# ============================================================================
-# LLM 调用 (复用 demand_extraction 中的模式)
-# ============================================================================
-
-def _call_llm(
-    client: "OpenAI",
-    model: str,
-    system_prompt: str,
-    user_prompt: str,
-    temperature: float = 0.0,
-    max_retries: int = 3,
-) -> str:
-    last_err = None
-    for attempt in range(1, max_retries + 1):
-        try:
-            resp = client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                temperature=temperature,
-            )
-            return resp.choices[0].message.content or ""
-        except Exception as e:
-            last_err = e
-            print(f"  [LLM] attempt {attempt}/{max_retries} failed: {e}")
-            if attempt < max_retries:
-                time.sleep(2.0)
-    raise RuntimeError(f"LLM call failed after {max_retries} attempts: {last_err}")
-
-
-def _parse_json_response(text: str) -> Dict:
-    cleaned = text.strip()
-    if "```json" in cleaned:
-        cleaned = cleaned.split("```json", 1)[1]
-    if "```" in cleaned:
-        cleaned = cleaned.split("```", 1)[0]
-    return json.loads(cleaned.strip())
+from llm4fairrouting.llm.client_utils import (
+    call_llm,
+    create_openai_client,
+    parse_json_response,
+)
 
 
 # ============================================================================
@@ -73,8 +37,8 @@ def adjust_weights(
     prompt = weight_adjustment_prompt(demands, city_context)
     print(f"  [Module 3a] {len(demands)} 条需求，调用 LLM 分配权重 ...")
 
-    raw = _call_llm(client, model, DRONE_SYSTEM_PROMPT, prompt, temperature)
-    result = _normalize_weight_config(_parse_json_response(raw))
+    raw = call_llm(client, model, DRONE_SYSTEM_PROMPT, prompt, temperature)
+    result = _normalize_weight_config(parse_json_response(raw))
 
     n_configs = len(result.get("demand_configs", []))
     n_supp = len(result.get("supplementary_constraints", []))
@@ -300,12 +264,7 @@ def main():
         if args.offline:
             result = adjust_weights_offline(demands)
         else:
-            import os
-            base = args.api_base or os.getenv("LLMOPT_API_BASE_URL", "http://35.220.164.252:3888/v1/")
-            key = args.api_key or os.getenv("LLMOPT_API_KEY")
-            if not key:
-                raise ValueError("需要 API key")
-            client = OpenAI(base_url=base, api_key=key)
+            client = create_openai_client(args.api_base, args.api_key)
             result = adjust_weights(demands, client, args.model)
 
         result["time_window"] = tw

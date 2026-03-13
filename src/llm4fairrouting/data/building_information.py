@@ -136,11 +136,3 @@ def load_building_partitions(file_path: str) -> tuple[pd.DataFrame, pd.DataFrame
     hospitals = df[df["land_use_type"] == HEALTHCARE_LAND_USE].copy()
     residences = df[df["land_use_type"] == RESIDENTIAL_LAND_USE].copy()
     return hospitals, residences, df
-
-
-def export_normalized_building_csv(source_path: str, output_path: str) -> pd.DataFrame:
-    normalized = load_building_data(source_path)
-    output = Path(output_path)
-    output.parent.mkdir(parents=True, exist_ok=True)
-    normalized.to_csv(output, index=False, encoding="utf-8", float_format="%.15f")
-    return normalized

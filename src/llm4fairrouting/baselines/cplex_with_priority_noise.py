@@ -10,6 +10,9 @@ import pandas as pd
 from scipy.spatial import cKDTree
 
 from llm4fairrouting.data.building_information import load_building_partitions
+from llm4fairrouting.data.demand_event_generation import (
+    generate_demand_events as generate_shared_demand_events,
+)
 from llm4fairrouting.data.seed_paths import BUILDING_DATA_PATH, STATION_DATA_PATH
 from llm4fairrouting.data.stations import load_station_data
 from llm4fairrouting.routing.domain import DemandEvent, Point, create_drones
@@ -19,7 +22,6 @@ from llm4fairrouting.routing.path_costs import (
     build_realistic_distance_and_noise_matrices,
     create_obstacles_from_buildings,
 )
-from llm4fairrouting.routing.simulator import FinalDroneSimulator
 
 
 def create_points(
@@ -75,63 +77,18 @@ def generate_demand_events(
     sim_duration: float = 2.0,
 ) -> List[DemandEvent]:
     """Generate the same randomized demo demand stream used by the original baseline."""
-    del sim_duration
-
-    events = []
-    n_supply = len(supply_points)
-    n_demand = len(demand_points)
-
-    priorities = list(range(1, num_events + 1))
-    random.shuffle(priorities)
-    demand_point_counter = {f"D{i + 1}": 0 for i in range(n_demand)}
-
-    print(f"\n开始生成 {num_events} 个需求...")
-    print(f"供给点数量: {n_supply}, 需求点数量: {n_demand}")
-
-    for i in range(num_events):
-        d_idx = random.randint(0, n_demand - 1)
-        node_idx = d_idx + n_supply
-        demand_point_id = demand_points[d_idx].id
-
-        demand_point_counter[demand_point_id] += 1
-        occurrence = demand_point_counter[demand_point_id]
-        required_supply_idx = random.randint(0, n_supply - 1)
-        t = round(0.1 + random.random() * 1.4, 3)
-        weight = round(5.0 + random.random() * 25.0, 1)
-        priority = priorities[i]
-        unique_id = f"DEM_{demand_point_id}_{occurrence:02d}"
-
-        events.append(DemandEvent(
-            time=t,
-            node_idx=node_idx,
-            weight=weight,
-            unique_id=unique_id,
-            priority=priority,
-            required_supply_idx=required_supply_idx,
-            demand_point_id=demand_point_id,
-        ))
-
-    events.sort(key=lambda item: item.time)
-
-    print(f"\n生成 {num_events} 个需求，优先级分别为: {[ev.priority for ev in events]}")
-    print("\n需求详情（按时间顺序）:")
-    print("-" * 80)
-    for ev in events:
-        print(
-            f"  {ev.unique_id}: {ev.demand_point_id} (节点{ev.node_idx}) | "
-            f"时间={ev.time:.3f}h | 重量={ev.weight}kg | "
-            f"优先级={ev.priority} | 必须从 S{ev.required_supply_idx + 1} 取货"
-        )
-
-    print("\n需求点分布统计:")
-    for demand_id, count in demand_point_counter.items():
-        if count > 0:
-            print(f"  {demand_id}: {count} 个需求")
-
-    return events
+    return generate_shared_demand_events(
+        demand_points=demand_points,
+        supply_points=supply_points,
+        num_events=num_events,
+        sim_duration=sim_duration,
+        verbose=True,
+    )
 
 
 def main():
+    from llm4fairrouting.routing.simulator import FinalDroneSimulator
+
     print("=" * 70)
     print("无人机动态配送 - 基于RRT真实路径和噪声矩阵")
     print("=" * 70)

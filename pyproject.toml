@@ -26,6 +26,7 @@ dev = [
 [project.scripts]
 llm4fairrouting-dialogue = "llm4fairrouting.llm.dialogue_generation:main"
 llm4fairrouting-demand = "llm4fairrouting.llm.demand_extraction:main"
+llm4fairrouting-demand-events = "llm4fairrouting.data.demand_event_generation:main"
 llm4fairrouting-priority = "llm4fairrouting.llm.priority_inference:main"
 llm4fairrouting-solver = "llm4fairrouting.workflow.solver_adapter:main"
 llm4fairrouting-workflow = "llm4fairrouting.workflow.run_workflow:main"

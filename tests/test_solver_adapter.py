@@ -2,7 +2,7 @@ from llm4fairrouting.workflow.solver_adapter import (
     _parse_window_bounds,
     _select_station_dicts,
     demands_to_solver_inputs,
-    solve_window_demands,
+    solve_windows_dynamically,
 )
 
 
@@ -56,7 +56,7 @@ def test_parse_window_bounds_handles_24_hour_end():
     assert (end_dt - start_dt).total_seconds() == 300
 
 
-def test_solve_window_demands_returns_early_when_all_demands_overweight():
+def test_solve_windows_dynamically_returns_early_when_all_demands_overweight():
     overweight_demands = [
         {
             "demand_id": "REQ999",
@@ -72,11 +72,11 @@ def test_solve_window_demands_returns_early_when_all_demands_overweight():
         "supplementary_constraints": [],
     }
 
-    result = solve_window_demands(
-        time_window="2024-03-15T09:00-09:05",
-        demands=overweight_demands,
-        weight_config=weight_config,
+    results = solve_windows_dynamically(
+        windows=[{"time_window": "2024-03-15T09:00-09:05", "demands": overweight_demands}],
+        weight_configs={"2024-03-15T09:00-09:05": weight_config},
         stations_path=None,
+        building_path=None,
         max_solver_stations=3,
         time_limit=1,
         max_drones_per_station=1,
@@ -84,6 +84,7 @@ def test_solve_window_demands_returns_early_when_all_demands_overweight():
         max_range=1000.0,
         noise_weight=0.0,
     )
+    result = results[0]
 
     assert result["solution"] is None
     assert result["n_demands_filtered"] == 1

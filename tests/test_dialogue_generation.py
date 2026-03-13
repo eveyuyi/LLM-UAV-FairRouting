@@ -7,8 +7,11 @@ Module 1 单元测试 — llm/dialogue_generation.py
 
 import json
 import math
+import random
 import tempfile
 from pathlib import Path
+
+import pandas as pd
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -19,8 +22,10 @@ from llm4fairrouting.llm.dialogue_generation import (
     _find_nearest_station,
     _generate_rule_conversation,
     _haversine,
+    _infer_material_type,
     _infer_poi,
-    _pick_template,
+    _map_priority_to_tier,
+    _pick_tier_template,
     generate_dialogues_offline,
     load_demand_events,
     load_stations,
@@ -103,15 +108,15 @@ class TestFindNearestStation:
 
 class TestPickTemplate:
     def test_priority1_ventilator(self):
-        tpl = _pick_template(1, "ventilator")
+        tpl = _pick_tier_template(_map_priority_to_tier(1), "ventilator", random.Random(1))
         assert "ICU" in tpl or "min" in tpl
 
     def test_priority2_vaccine(self):
-        tpl = _pick_template(2, "vaccine")
+        tpl = _pick_tier_template(_map_priority_to_tier(2), "vaccine", random.Random(2))
         assert "{dest_id}" in tpl
 
     def test_fallback_for_unknown(self):
-        tpl = _pick_template(99, "unknown_material")
+        tpl = _pick_tier_template(_map_priority_to_tier(99), "unknown_material", random.Random(3))
         assert "{origin_name}" in tpl
 
 
@@ -254,6 +259,43 @@ class TestGenerateDialoguesOffline:
     def test_empty_events_returns_empty(self):
         dialogues = generate_dialogues_offline([], SAMPLE_STATIONS)
         assert dialogues == []
+
+
+def test_load_demand_events_normalizes_supply_type_to_english(tmp_path):
+    csv_path = tmp_path / "daily_demand_events.csv"
+    pd.DataFrame([
+        {
+            "time": 0.0,
+            "demand_fid": "DEM_1",
+            "demand_lon": 113.90,
+            "demand_lat": 22.80,
+            "priority": 2,
+            "supply_fid": "MED_1",
+            "supply_lon": 113.80,
+            "supply_lat": 22.70,
+            "supply_type": "医疗",
+            "material_weight": 3.2,
+            "unique_id": "DEM_000_00",
+        },
+        {
+            "time": 0.0833,
+            "demand_fid": "DEM_2",
+            "demand_lon": 113.91,
+            "demand_lat": 22.81,
+            "priority": 4,
+            "supply_fid": "COM_1",
+            "supply_lon": 113.81,
+            "supply_lat": 22.71,
+            "supply_type": "commercial",
+            "material_weight": 1.8,
+            "unique_id": "DEM_001_00",
+        },
+    ]).to_csv(csv_path, index=False, encoding="utf-8-sig")
+
+    events = load_demand_events(str(csv_path))
+
+    assert [event["supply_type"] for event in events] == ["medical", "commercial"]
+    assert _infer_material_type(events[0]["supply_type"], 2, "a") in {"ventilator", "icu_drug"}
 
 
 # ============================================================================

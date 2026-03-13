@@ -16,7 +16,6 @@ Module 1: Dialogue Generator — 从 daily_demand_events.csv 读取结构化需�
 import json
 import math
 import random
-import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -33,6 +32,11 @@ from llm4fairrouting.data.seed_paths import (
     STATION_DATA_PATH,
 )
 from llm4fairrouting.data.stations import load_station_data
+from llm4fairrouting.llm.client_utils import (
+    call_llm,
+    create_openai_client,
+    parse_json_response,
+)
 
 
 # ============================================================================
@@ -46,6 +50,15 @@ DEMAND_TIERS = {
     "critical":     "Critical Medical Supply",
     "regular":      "Routine Medical Supply",
     "consumer":     "Consumer On-Demand Delivery",
+}
+
+SUPPLY_TYPE_ALIASES = {
+    "medical": "medical",
+    "medical_supply": "medical",
+    "医疗": "medical",
+    "commercial": "commercial",
+    "commercial_supply": "commercial",
+    "商业": "commercial",
 }
 
 # English material names (used in conversation templates)
@@ -64,15 +77,6 @@ MATERIAL_EN = {
     "food":            "food/meal",
     "otc_drug":        "OTC medication",
     "daily_supply":    "daily supplies",
-}
-
-# Keep Chinese names for backward-compat (not used in templates any more)
-MATERIAL_CN = {
-    "vaccine": "疫苗", "medicine": "药品", "protective_suit": "防护服",
-    "mask": "口罩", "disinfectant": "消毒液", "ventilator": "呼吸机",
-    "aed": "自动除颤仪", "cardiac_drug": "心脏急救药", "blood_product": "血液制品",
-    "thrombolytic": "溶栓药物", "icu_drug": "重症药物",
-    "food": "餐食", "otc_drug": "非处方药", "daily_supply": "日用品",
 }
 
 PRIORITY_DEADLINE = {1: 15, 2: 30, 3: 60, 4: 120, 5: 240}
@@ -361,13 +365,6 @@ def _pick_tier_template(tier: str, material: str, rng: random.Random) -> str:
     return rng.choice(templates)
 
 
-def _pick_template(priority: int, material: str) -> str:
-    """兼容旧测试/调用方的模板选择入口。"""
-    tier = _map_priority_to_tier(priority)
-    rng = random.Random(hash((priority, material)))
-    return _pick_tier_template(tier, material, rng)
-
-
 # ============================================================================
 # 数据加载
 # ============================================================================
@@ -406,15 +403,19 @@ def load_stations(station_path: str) -> List[Dict]:
     return stations
 
 
-def _infer_material_type(supply_type: str, priority: int, unique_id: str = "") -> str:
-    """Infer material type from supply_type and priority (for CSV without material_type).
+def _normalize_supply_type(supply_type: str) -> str:
+    raw = str(supply_type).strip()
+    if not raw:
+        return ""
+    normalized = raw.lower().replace("-", "_").replace(" ", "_")
+    return SUPPLY_TYPE_ALIASES.get(raw, SUPPLY_TYPE_ALIASES.get(normalized, normalized))
 
-    Medical (医疗) supply types map to clinical materials;
-    Commercial (商业) supply types map to consumer goods.
-    Priority determines urgency tier but not material category.
-    """
+
+def _infer_material_type(supply_type: str, priority: int, unique_id: str = "") -> str:
+    """Infer material type from supply_type and priority (for CSV without material_type)."""
     rng = random.Random(hash(unique_id))
-    if supply_type == "医疗":
+    normalized_supply_type = _normalize_supply_type(supply_type)
+    if normalized_supply_type == "medical":
         if priority == 1:
             return rng.choice(["cardiac_drug", "blood_product", "aed", "thrombolytic"])
         elif priority == 2:
@@ -423,7 +424,7 @@ def _infer_material_type(supply_type: str, priority: int, unique_id: str = "") -
             return rng.choice(["vaccine", "medicine", "protective_suit"])
         else:
             return rng.choice(["medicine", "vaccine"])
-    else:  # 商业 or other
+    else:
         if priority == 1:
             return rng.choice(["medicine", "protective_suit", "disinfectant"])
         elif priority == 2:
@@ -456,6 +457,9 @@ def load_demand_events(
         raise ImportError("需要 pandas: pip install pandas")
 
     df = pd.read_csv(csv_path, encoding="utf-8-sig")
+
+    if "supply_type" in df.columns:
+        df["supply_type"] = df["supply_type"].map(_normalize_supply_type)
 
     # Auto-detect new CSV format: has "time" (float hours) instead of "time_slot" (int)
     if "time" in df.columns and "time_slot" not in df.columns:
@@ -521,8 +525,8 @@ def _find_nearest_station(lon: float, lat: float, stations: List[Dict]) -> Dict:
 def _supply_to_station(event: Dict) -> Dict:
     """Build a station-like dict from CSV supply point info."""
     supply_fid = str(event.get("supply_fid", ""))
-    supply_type = str(event.get("supply_type", ""))
-    if supply_type == "医疗":
+    supply_type = _normalize_supply_type(str(event.get("supply_type", "")))
+    if supply_type == "medical":
         name = f"Medical Supply Center {supply_fid}"
     else:
         name = f"Commercial Distribution Hub {supply_fid}"
@@ -624,7 +628,7 @@ def _event_to_dialogue(
             "requester_role": requester_role,
             "demand_type": str(event.get("demand_type", "")),
             "supply_station_name": station["name"],
-            "supply_type": str(event.get("supply_type", "")),
+            "supply_type": _normalize_supply_type(str(event.get("supply_type", ""))),
         },
     }
 
@@ -715,38 +719,6 @@ def generate_dialogues_offline(
     return dialogues
 
 
-# ============================================================================
-# 主入口：在线（LLM）生成
-# ============================================================================
-
-def _call_llm(
-    client: "OpenAI",
-    model: str,
-    system_prompt: str,
-    user_prompt: str,
-    temperature: float = 0.7,
-    max_retries: int = 3,
-) -> str:
-    last_err = None
-    for attempt in range(1, max_retries + 1):
-        try:
-            resp = client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                temperature=temperature,
-            )
-            return resp.choices[0].message.content or ""
-        except Exception as e:
-            last_err = e
-            print(f"  [LLM] attempt {attempt}/{max_retries} failed: {e}")
-            if attempt < max_retries:
-                time.sleep(2.0)
-    raise RuntimeError(f"LLM call failed after {max_retries} attempts: {last_err}")
-
-
 def generate_dialogues_online(
     demand_events: List[Dict],
     stations: List[Dict],
@@ -798,7 +770,7 @@ def generate_dialogues_online(
         print(f"  [Module 1] batch {start // batch_size + 1}: {len(batch)} items, calling LLM ...")
 
         try:
-            raw = _call_llm(client, model, DRONE_SYSTEM_PROMPT, prompt, temperature)
+            raw = call_llm(client, model, DRONE_SYSTEM_PROMPT, prompt, temperature)
             llm_texts = _parse_llm_batch_response(raw, batch)
         except Exception as e:
             print(f"  [Module 1] LLM failed, falling back to rule-based text: {e}")
@@ -820,13 +792,8 @@ def _parse_llm_batch_response(raw: str, batch: List[Dict]) -> Dict[str, str]:
         {"dialogues": [{"dialogue_id": "D0001", "conversation": "..."}, ...]}
     """
     cleaned = raw.strip()
-    if "```json" in cleaned:
-        cleaned = cleaned.split("```json", 1)[1]
-    if "```" in cleaned:
-        cleaned = cleaned.split("```", 1)[0]
-
     try:
-        obj = json.loads(cleaned.strip())
+        obj = parse_json_response(cleaned)
         items = obj.get("dialogues", [])
         return {item["dialogue_id"]: item["conversation"] for item in items}
     except Exception:
@@ -917,7 +884,6 @@ def save_dialogues(dialogues: List[Dict], output_path: str) -> None:
 
 def main():
     import argparse
-    import os
 
     parser = argparse.ArgumentParser(description="Module 1: Dialogue Generator")
     parser.add_argument(
@@ -949,12 +915,7 @@ def main():
 
     client = None
     if not args.offline:
-        from openai import OpenAI
-        base = args.api_base or os.getenv("LLMOPT_API_BASE_URL", "http://35.220.164.252:3888/v1/")
-        key = args.api_key or os.getenv("LLMOPT_API_KEY")
-        if not key:
-            raise ValueError("需要 API key: 设置 LLMOPT_API_KEY 或 --api-key")
-        client = OpenAI(base_url=base, api_key=key)
+        client = create_openai_client(args.api_base, args.api_key)
 
     dialogues = generate_dialogues(
         csv_path=args.csv,
