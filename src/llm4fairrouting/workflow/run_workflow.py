@@ -20,6 +20,15 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 from typing import Dict, List, Optional
 
+from llm4fairrouting.config.runtime_env import (
+    env_bool,
+    env_float,
+    env_int,
+    env_int_list,
+    env_optional_int,
+    env_text,
+    prepare_env_file,
+)
 from llm4fairrouting.llm.demand_extraction import (
     extract_all_demands,
     extract_demands_offline,
@@ -340,6 +349,7 @@ def run_workflow(
 # ============================================================================
 
 def main():
+    active_env_file = prepare_env_file(PROJECT_ROOT)
     parser = argparse.ArgumentParser(
         description="llm4fairrouting Workflow Runner (Module 1 → 2 → 3)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -354,62 +364,114 @@ def main():
   python -m llm4fairrouting.workflow.run_workflow --api-key YOUR_KEY --n-events 10
 """,
     )
+    parser.add_argument(
+        "--env-file",
+        type=str,
+        default=str(active_env_file) if active_env_file else None,
+        help="环境配置文件路径；默认自动读取项目根目录下的 .env",
+    )
 
     # Module 1 数据来源（二选一）
     src_group = parser.add_argument_group("Module 1 数据来源")
     src_group.add_argument(
         "--csv", type=str,
-        default=str(DEMAND_EVENTS_PATH),
+        default=env_text("LLM4FAIRROUTING_CSV", str(DEMAND_EVENTS_PATH)),
         help=f"需求事件 CSV 路径（默认 {DEMAND_EVENTS_FILENAME}）",
     )
     src_group.add_argument(
         "--stations", type=str,
-        default=str(STATION_DATA_PATH),
+        default=env_text("LLM4FAIRROUTING_STATIONS", str(STATION_DATA_PATH)),
         help=f"{STATION_DATA_FILENAME} 站点数据路径（默认使用项目 seed 数据）",
     )
     src_group.add_argument(
-        "--dialogues", type=str, default=None,
+        "--dialogues", type=str, default=env_text("LLM4FAIRROUTING_DIALOGUES"),
         help="[兼容] 直接加载已有 JSONL 对话文件（不指定时使用 --csv + --stations）",
     )
 
     parser.add_argument(
         "--output-dir", type=str,
-        default=str(PROJECT_ROOT / "results"),
+        default=env_text("LLM4FAIRROUTING_OUTPUT_DIR", str(PROJECT_ROOT / "results")),
         help="输出根目录（每次运行自动创建带时间戳的子目录）",
     )
     parser.add_argument(
         "--building-data",
         type=str,
-        default=str(BUILDING_DATA_PATH),
+        default=env_text("LLM4FAIRROUTING_BUILDING_DATA", str(BUILDING_DATA_PATH)),
         help=f"{BUILDING_DATA_FILENAME} 建筑物数据路径（用于真实距离/噪声矩阵）",
     )
-    parser.add_argument("--offline", action="store_true", help="离线模式，不调用 LLM")
-    parser.add_argument("--skip-solver", action="store_true", help="跳过 CPLEX 求解")
-    parser.add_argument("--api-base", type=str, default=None)
-    parser.add_argument("--api-key", type=str, default=None)
-    parser.add_argument("--model", type=str, default="gpt-4o-mini")
-    parser.add_argument("--temperature", type=float, default=0.0)
-    parser.add_argument("--window", type=int, default=5, help="时间窗口（分钟），默认 5 以匹配需求事件的 5 分钟粒度")
-    parser.add_argument("--time-limit", type=int, default=10, help="求解器时间限制（秒）")
-    parser.add_argument("--n-events", type=int, default=None, help="最多处理的事件数")
-    parser.add_argument("--time-slots", type=int, nargs="+", default=None,
+    parser.add_argument(
+        "--offline",
+        action=argparse.BooleanOptionalAction,
+        default=env_bool("LLM4FAIRROUTING_OFFLINE", False),
+        help="离线模式，不调用 LLM",
+    )
+    parser.add_argument(
+        "--skip-solver",
+        action=argparse.BooleanOptionalAction,
+        default=env_bool("LLM4FAIRROUTING_SKIP_SOLVER", False),
+        help="跳过 CPLEX 求解",
+    )
+    parser.add_argument(
+        "--api-base",
+        type=str,
+        default=env_text("LLM4FAIRROUTING_API_BASE"),
+    )
+    parser.add_argument(
+        "--api-key",
+        type=str,
+        default=env_text("LLM4FAIRROUTING_API_KEY"),
+    )
+    parser.add_argument(
+        "--model",
+        type=str,
+        default=env_text("LLM4FAIRROUTING_MODEL", "gpt-4o-mini"),
+    )
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=env_float("LLM4FAIRROUTING_TEMPERATURE", 0.0),
+    )
+    parser.add_argument(
+        "--window",
+        type=int,
+        default=env_int("LLM4FAIRROUTING_WINDOW", 5),
+        help="时间窗口（分钟），默认 5 以匹配需求事件的 5 分钟粒度",
+    )
+    parser.add_argument(
+        "--time-limit",
+        type=int,
+        default=env_int("LLM4FAIRROUTING_TIME_LIMIT", 10),
+        help="求解器时间限制（秒）",
+    )
+    parser.add_argument(
+        "--n-events",
+        type=int,
+        default=env_optional_int("LLM4FAIRROUTING_N_EVENTS"),
+        help="最多处理的事件数",
+    )
+    parser.add_argument("--time-slots", type=int, nargs="+", default=env_int_list("LLM4FAIRROUTING_TIME_SLOTS"),
                         help="仅处理指定 time_slot（空格分隔）")
-    parser.add_argument("--base-date", type=str, default="2024-03-15", help="基准日期")
-    parser.add_argument("--dialogue-batch-size", type=int, default=5,
+    parser.add_argument(
+        "--base-date",
+        type=str,
+        default=env_text("LLM4FAIRROUTING_BASE_DATE", "2024-03-15"),
+        help="基准日期",
+    )
+    parser.add_argument("--dialogue-batch-size", type=int, default=env_int("LLM4FAIRROUTING_DIALOGUE_BATCH_SIZE", 5),
                         help="LLM 对话生成批大小")
     parser.add_argument(
         "--max-solver-stations",
         type=int,
-        default=1,
+        default=env_int("LLM4FAIRROUTING_MAX_SOLVER_STATIONS", 1),
         help="求解时最多使用多少个真实站点；默认 1 以对齐 baseline demo，0 表示使用全部",
     )
     parser.add_argument(
         "--drone-speed",
         type=float,
-        default=60.0,
+        default=env_float("LLM4FAIRROUTING_DRONE_SPEED", 60.0),
         help="动态模拟中的无人机飞行速度（m/s）",
     )
-    parser.add_argument("--noise-weight", type=float, default=0.5,
+    parser.add_argument("--noise-weight", type=float, default=env_float("LLM4FAIRROUTING_NOISE_WEIGHT", 0.5),
                         help="噪声成本权重（>0 启用噪声优先级，按 1/priority 加权）")
     args = parser.parse_args()
 

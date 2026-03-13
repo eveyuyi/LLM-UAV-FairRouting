@@ -32,6 +32,21 @@ Run the integrated workflow:
 python -m llm4fairrouting.workflow.run_workflow --offline --skip-solver
 ```
 
+You can also keep your API key and common experiment parameters in a local `.env`
+file. Copy [`.env.example`](/Users/eveyu/Downloads/githubs/drone-delivery-pipeline/.env.example) to `.env`,
+fill in the values once, then run:
+
+```bash
+./scripts/run_workflow.sh
+```
+
+The workflow CLI auto-loads `.env` from the project root, so even without the
+helper script you can shorten manual runs to:
+
+```bash
+PYTHONPATH=src conda run -n gpt_academic python -m llm4fairrouting.workflow.run_workflow
+```
+
 Run each module independently:
 
 ```bash
