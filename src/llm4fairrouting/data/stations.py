@@ -296,11 +296,3 @@ def normalize_station_workbook(file_path: str) -> pd.DataFrame:
 
 def load_station_data(file_path: str) -> pd.DataFrame:
     return normalize_station_workbook(file_path)
-
-
-def export_normalized_station_csv(source_path: str, output_path: str) -> pd.DataFrame:
-    normalized = load_station_data(source_path)
-    output = Path(output_path)
-    output.parent.mkdir(parents=True, exist_ok=True)
-    normalized.to_csv(output, index=False, encoding="utf-8")
-    return normalized

@@ -66,15 +66,6 @@ MATERIAL_EN = {
     "daily_supply":    "daily supplies",
 }
 
-# Keep Chinese names for backward-compat (not used in templates any more)
-MATERIAL_CN = {
-    "vaccine": "疫苗", "medicine": "药品", "protective_suit": "防护服",
-    "mask": "口罩", "disinfectant": "消毒液", "ventilator": "呼吸机",
-    "aed": "自动除颤仪", "cardiac_drug": "心脏急救药", "blood_product": "血液制品",
-    "thrombolytic": "溶栓药物", "icu_drug": "重症药物",
-    "food": "餐食", "otc_drug": "非处方药", "daily_supply": "日用品",
-}
-
 PRIORITY_DEADLINE = {1: 15, 2: 30, 3: 60, 4: 120, 5: 240}
 
 _SCENARIO_LABEL: Dict[Tuple[str, str], str] = {

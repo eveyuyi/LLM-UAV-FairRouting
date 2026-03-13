@@ -38,12 +38,17 @@ Copy the example environment file first:
 cp .env.example .env
 ```
 
-Run the workflow with:
+Run the llm4fairrouting workflow with:
 
 ```bash
 ./scripts/run_workflow.sh
 ```
 
+Run the baseline with:
+
+```
+PYTHONPATH=src python -m llm4fairrouting.baselines.cplex_with_priority_noise
+```
 
 
 ## Repository Layout
