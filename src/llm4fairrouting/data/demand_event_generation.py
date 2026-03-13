@@ -18,6 +18,8 @@ from llm4fairrouting.data.seed_paths import BUILDING_DATA_PATH, DEMAND_EVENTS_PA
 from llm4fairrouting.routing.domain import DemandEvent, Point
 
 COMMERCIAL_LAND_USE = "commercial_service_land"
+MEDICAL_SUPPLY_TYPE = "medical"
+COMMERCIAL_SUPPLY_TYPE = "commercial"
 OUTPUT_COLUMNS = [
     "time",
     "demand_fid",
@@ -31,8 +33,9 @@ OUTPUT_COLUMNS = [
     "material_weight",
     "unique_id",
 ]
-DEFAULT_PRIORITIES = (1, 2, 3, 4)
-DEFAULT_PRIORITY_PROBS = (0.25, 0.25, 0.25, 0.25)
+DEFAULT_MEDICAL_PRIORITIES = (1, 2, 3)
+DEFAULT_MEDICAL_PRIORITY_PROBS = (1 / 3, 1 / 3, 1 / 3)
+DEFAULT_COMMERCIAL_PRIORITY = 4
 
 PrioritySampler = Callable[[int, random.Random, int], int]
 TimeSampler = Callable[[int, random.Random, float], float]
@@ -180,28 +183,31 @@ def _build_supply_points(
     num_supply_commercial: int,
 ) -> tuple[list[Point], dict[str, list[int]]]:
     supply_points: list[Point] = []
-    group_indices = {"医疗": [], "商业": []}
+    group_indices = {
+        MEDICAL_SUPPLY_TYPE: [],
+        COMMERCIAL_SUPPLY_TYPE: [],
+    }
 
     selected_medical = medical_df.head(min(num_supply_medical, len(medical_df)))
     for idx, row in selected_medical.iterrows():
-        group_indices["医疗"].append(len(supply_points))
+        group_indices[MEDICAL_SUPPLY_TYPE].append(len(supply_points))
         supply_points.append(Point(
             id=f"MED_{idx}",
             lon=float(row["longitude"]),
             lat=float(row["latitude"]),
             alt=0.0,
-            type="医疗",
+            type=MEDICAL_SUPPLY_TYPE,
         ))
 
     selected_commercial = commercial_df.head(min(num_supply_commercial, len(commercial_df)))
     for idx, row in selected_commercial.iterrows():
-        group_indices["商业"].append(len(supply_points))
+        group_indices[COMMERCIAL_SUPPLY_TYPE].append(len(supply_points))
         supply_points.append(Point(
             id=f"COM_{idx}",
             lon=float(row["longitude"]),
             lat=float(row["latitude"]),
             alt=0.0,
-            type="商业",
+            type=COMMERCIAL_SUPPLY_TYPE,
         ))
 
     if not supply_points:
@@ -263,8 +269,9 @@ def generate_daily_demand_dataframe(
     demands_per_window_min: int = 4,
     demands_per_window_max: int = 10,
     medical_ratio: float = 0.2,
-    priorities: Sequence[int] = DEFAULT_PRIORITIES,
-    priority_probs: Sequence[float] = DEFAULT_PRIORITY_PROBS,
+    medical_priorities: Sequence[int] = DEFAULT_MEDICAL_PRIORITIES,
+    medical_priority_probs: Sequence[float] = DEFAULT_MEDICAL_PRIORITY_PROBS,
+    commercial_priority: int = DEFAULT_COMMERCIAL_PRIORITY,
     num_supply_medical: int = 5,
     num_supply_commercial: int = 5,
 ) -> pd.DataFrame:
@@ -277,10 +284,10 @@ def generate_daily_demand_dataframe(
         raise ValueError("Invalid per-window demand range.")
     if not 0.0 <= medical_ratio <= 1.0:
         raise ValueError("medical_ratio must be between 0 and 1.")
-    if not priorities:
-        raise ValueError("priorities must not be empty.")
-    if len(priorities) != len(priority_probs):
-        raise ValueError("priorities and priority_probs must have the same length.")
+    if not medical_priorities:
+        raise ValueError("medical_priorities must not be empty.")
+    if len(medical_priorities) != len(medical_priority_probs):
+        raise ValueError("medical_priorities and medical_priority_probs must have the same length.")
 
     rng = random.Random(seed)
     buildings_df = load_building_data(building_file)
@@ -297,9 +304,9 @@ def generate_daily_demand_dataframe(
     )
     demand_points = _build_demand_points(residential_df)
 
-    if medical_ratio > 0.0 and not supply_groups["医疗"]:
+    if medical_ratio > 0.0 and not supply_groups[MEDICAL_SUPPLY_TYPE]:
         raise ValueError("medical_ratio > 0 requires at least one medical supply point.")
-    if medical_ratio < 1.0 and not supply_groups["商业"]:
+    if medical_ratio < 1.0 and not supply_groups[COMMERCIAL_SUPPLY_TYPE]:
         raise ValueError("medical_ratio < 1 requires at least one commercial supply point.")
 
     all_events: list[DemandEvent] = []
@@ -313,10 +320,15 @@ def generate_daily_demand_dataframe(
 
         window_time = round(window_idx * window_duration_hours, 4)
         supply_labels = [
-            "医疗" if rng.random() < medical_ratio else "商业"
+            MEDICAL_SUPPLY_TYPE if rng.random() < medical_ratio else COMMERCIAL_SUPPLY_TYPE
             for _ in range(num_demands)
         ]
-        window_priorities = rng.choices(priorities, weights=priority_probs, k=num_demands)
+        window_priorities = [
+            int(rng.choices(medical_priorities, weights=medical_priority_probs, k=1)[0])
+            if label == MEDICAL_SUPPLY_TYPE
+            else int(commercial_priority)
+            for label in supply_labels
+        ]
 
         def priority_sampler(i: int, _rng: random.Random, _num_events: int) -> int:
             return int(window_priorities[i])

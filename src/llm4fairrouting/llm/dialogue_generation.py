@@ -52,6 +52,15 @@ DEMAND_TIERS = {
     "consumer":     "Consumer On-Demand Delivery",
 }
 
+SUPPLY_TYPE_ALIASES = {
+    "medical": "medical",
+    "medical_supply": "medical",
+    "医疗": "medical",
+    "commercial": "commercial",
+    "commercial_supply": "commercial",
+    "商业": "commercial",
+}
+
 # English material names (used in conversation templates)
 MATERIAL_EN = {
     "vaccine":         "vaccine",
@@ -394,15 +403,19 @@ def load_stations(station_path: str) -> List[Dict]:
     return stations
 
 
-def _infer_material_type(supply_type: str, priority: int, unique_id: str = "") -> str:
-    """Infer material type from supply_type and priority (for CSV without material_type).
+def _normalize_supply_type(supply_type: str) -> str:
+    raw = str(supply_type).strip()
+    if not raw:
+        return ""
+    normalized = raw.lower().replace("-", "_").replace(" ", "_")
+    return SUPPLY_TYPE_ALIASES.get(raw, SUPPLY_TYPE_ALIASES.get(normalized, normalized))
 
-    Medical (医疗) supply types map to clinical materials;
-    Commercial (商业) supply types map to consumer goods.
-    Priority determines urgency tier but not material category.
-    """
+
+def _infer_material_type(supply_type: str, priority: int, unique_id: str = "") -> str:
+    """Infer material type from supply_type and priority (for CSV without material_type)."""
     rng = random.Random(hash(unique_id))
-    if supply_type == "医疗":
+    normalized_supply_type = _normalize_supply_type(supply_type)
+    if normalized_supply_type == "medical":
         if priority == 1:
             return rng.choice(["cardiac_drug", "blood_product", "aed", "thrombolytic"])
         elif priority == 2:
@@ -411,7 +424,7 @@ def _infer_material_type(supply_type: str, priority: int, unique_id: str = "") -
             return rng.choice(["vaccine", "medicine", "protective_suit"])
         else:
             return rng.choice(["medicine", "vaccine"])
-    else:  # 商业 or other
+    else:
         if priority == 1:
             return rng.choice(["medicine", "protective_suit", "disinfectant"])
         elif priority == 2:
@@ -444,6 +457,9 @@ def load_demand_events(
         raise ImportError("需要 pandas: pip install pandas")
 
     df = pd.read_csv(csv_path, encoding="utf-8-sig")
+
+    if "supply_type" in df.columns:
+        df["supply_type"] = df["supply_type"].map(_normalize_supply_type)
 
     # Auto-detect new CSV format: has "time" (float hours) instead of "time_slot" (int)
     if "time" in df.columns and "time_slot" not in df.columns:
@@ -509,8 +525,8 @@ def _find_nearest_station(lon: float, lat: float, stations: List[Dict]) -> Dict:
 def _supply_to_station(event: Dict) -> Dict:
     """Build a station-like dict from CSV supply point info."""
     supply_fid = str(event.get("supply_fid", ""))
-    supply_type = str(event.get("supply_type", ""))
-    if supply_type == "医疗":
+    supply_type = _normalize_supply_type(str(event.get("supply_type", "")))
+    if supply_type == "medical":
         name = f"Medical Supply Center {supply_fid}"
     else:
         name = f"Commercial Distribution Hub {supply_fid}"
@@ -612,7 +628,7 @@ def _event_to_dialogue(
             "requester_role": requester_role,
             "demand_type": str(event.get("demand_type", "")),
             "supply_station_name": station["name"],
-            "supply_type": str(event.get("supply_type", "")),
+            "supply_type": _normalize_supply_type(str(event.get("supply_type", ""))),
         },
     }
 

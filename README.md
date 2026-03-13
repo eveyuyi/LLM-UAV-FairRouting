@@ -50,6 +50,18 @@ Run the baseline with:
 PYTHONPATH=src python -m llm4fairrouting.baselines.cplex_with_priority_noise
 ```
 
+Generate `data/seed/daily_demand_events.csv` with:
+
+```bash
+llm4fairrouting-demand-events
+```
+
+If the package is not installed in editable mode yet, use:
+
+```bash
+PYTHONPATH=src python -m llm4fairrouting.data.demand_event_generation
+```
+
 
 ## Repository Layout
 
@@ -72,6 +84,22 @@ PYTHONPATH=src python -m llm4fairrouting.baselines.cplex_with_priority_noise
 | Module 1 | `src/llm4fairrouting/llm/dialogue_generation.py` | Generate dialogue-style requests from structured demand events | `data/seed/daily_demand_events.csv`, optional station file | `generated_dialogues.jsonl` |
 | Module 2 | `src/llm4fairrouting/llm/demand_extraction.py` | Extract structured delivery demands from dialogues by time window | `generated_dialogues.jsonl` | `extracted_demands.json` |
 | Module 3 | `src/llm4fairrouting/llm/priority_inference.py`, `src/llm4fairrouting/workflow/solver_adapter.py` | Infer per-demand priority settings and solve routing windows | `extracted_demands.json`, weight configs, station/building data | `weight_configs.json` / `weight_configs/`, `solver_results.json`, `workflow_results.json` |
+
+### Demand Event Generation
+
+- File: `src/llm4fairrouting/data/demand_event_generation.py`
+- Role: generates seed demand events from `building_information.csv` and writes `data/seed/daily_demand_events.csv`
+- Defaults:
+  - 5-minute windows across a full day
+  - 4-10 demands per window
+  - `medical_ratio=0.2`, so about 20% `medical` and 80% `commercial`
+  - `medical` demands use priorities `1/2/3` with equal probability; `commercial` demands use priority `4`
+  - CSV output uses normalized English values such as `medical` and `commercial`
+- Run:
+
+```bash
+llm4fairrouting-demand-events --input data/seed/building_information.csv --output data/seed/daily_demand_events.csv
+```
 
 #### Module 1
 
@@ -148,5 +176,4 @@ The routing core is shared by the workflow and the baseline:
 - `src/llm4fairrouting/routing/assignment_model.py`: Pyomo/CPLEX assignment model
 - `src/llm4fairrouting/routing/simulator.py`: dynamic simulator for time-evolving demand and drone execution
 - `src/llm4fairrouting/routing/serialization.py`: serialization helpers for simulation and workflow results
-
 
