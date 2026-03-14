@@ -2,6 +2,7 @@ from llm4fairrouting.workflow.solver_adapter import (
     _parse_window_bounds,
     _select_station_dicts,
     demands_to_solver_inputs,
+    serialize_workflow_results,
     solve_windows_dynamically,
 )
 
@@ -89,3 +90,46 @@ def test_solve_windows_dynamically_returns_early_when_all_demands_overweight():
     assert result["solution"] is None
     assert result["n_demands_filtered"] == 1
     assert result["feasible_demands"] == []
+
+
+def test_serialize_workflow_results_keeps_dynamic_drone_path_details():
+    all_solutions = [
+        {
+            "time_window": "2024-03-15T09:00-09:05",
+            "weight_config": {
+                "global_weights": {"w_distance": 1.0, "w_time": 1.0, "w_risk": 1.0},
+                "demand_configs": [],
+                "supplementary_constraints": [],
+            },
+            "feasible_demands": [],
+            "n_demands_total": 0,
+            "n_demands_filtered": 0,
+            "solution": {
+                "solve_mode": "dynamic_periodic",
+                "solve_status": "completed",
+                "solve_time_s": 0.1,
+                "drone_speed_ms": 60.0,
+                "snapshot_time_h": 0.0,
+                "snapshot_time_window_end": "2024-03-15T09:05:00",
+                "busy_drones": [],
+                "total_distance": 1200.0,
+                "total_noise_impact": 5.0,
+                "objective_value": None,
+                "demand_event_results": {},
+                "drone_path_details": [
+                    {
+                        "drone_id": "U11",
+                        "path_node_ids": ["L1", "S_COM_A", "D_DEM_1", "L1"],
+                        "path_str": "L1 -> S_COM_A -> D_DEM_1 -> L1",
+                        "n_nodes_visited": 4,
+                    }
+                ],
+            },
+            "n_supply": 1,
+        }
+    ]
+
+    serialized = serialize_workflow_results(all_solutions)
+
+    assert serialized[0]["drone_path_details"][0]["drone_id"] == "U11"
+    assert serialized[0]["drone_path_details"][0]["path_str"] == "L1 -> S_COM_A -> D_DEM_1 -> L1"

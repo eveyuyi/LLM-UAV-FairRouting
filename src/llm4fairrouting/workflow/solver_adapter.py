@@ -352,7 +352,7 @@ def solve_windows_dynamically(
         )
         from llm4fairrouting.routing.path_costs import (
             FLIGHT_HEIGHT as _FLIGHT_HEIGHT,
-            build_realistic_distance_and_noise_matrices,
+            build_lazy_distance_and_noise_matrices,
             create_obstacles_from_buildings,
         )
         from llm4fairrouting.routing.simulator import (
@@ -489,7 +489,7 @@ def solve_windows_dynamically(
 
     residential_positions_np = np.array(residential_positions, dtype=float)
     residential_tree = cKDTree(residential_positions_np)
-    dist_matrix, noise_cost_matrix = build_realistic_distance_and_noise_matrices(
+    dist_matrix, noise_cost_matrix = build_lazy_distance_and_noise_matrices(
         task_points=all_points,
         obstacles_raw=obstacles_raw,
         residential_positions=residential_positions_np,
@@ -557,6 +557,8 @@ def solve_windows_dynamically(
 
     last_event_time_h = max(record["event_time_h"] for record in event_records)
     simulator.run_until_complete(last_event_time_h + DEFAULT_SIMULATION_PADDING_H)
+    simulator.print_summary()
+    final_drone_paths = simulator.get_drone_path_details()
 
     demand_event_lookup = {event.unique_id: event for event in demand_events}
     simulation_completed = simulator.is_complete()
@@ -607,6 +609,7 @@ def solve_windows_dynamically(
                 "total_noise_impact": snapshot["total_noise_impact"],
                 "objective_value": None,
                 "demand_event_results": demand_event_results,
+                "drone_path_details": final_drone_paths,
             },
             "n_supply": n_supply,
         })
@@ -734,6 +737,7 @@ def serialize_workflow_results(all_solutions: List[Dict]) -> List[Dict]:
                     if feasible_demands else 0.0
                 )
                 entry["per_demand_results"] = per_demand
+                entry["drone_path_details"] = list(solution.get("drone_path_details", []))
 
                 drone_groups: Dict[str, List[Dict]] = {}
                 for demand_result in per_demand:
@@ -884,6 +888,7 @@ def serialize_workflow_results(all_solutions: List[Dict]) -> List[Dict]:
                 })
 
             entry["per_drone_details"] = per_drone
+            entry["drone_path_details"] = per_drone
 
         serializable.append(entry)
 

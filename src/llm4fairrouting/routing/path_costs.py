@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+import hashlib
 import math
 import random
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 
 import numpy as np
 import pandas as pd
@@ -133,13 +135,21 @@ class FastRRTPlanner:
                 return False
         return True
 
-    def _random_sample(self) -> np.ndarray:
-        x = random.uniform(self.bounds[0], self.bounds[1])
-        y = random.uniform(self.bounds[2], self.bounds[3])
-        z = random.uniform(self.bounds[4], self.bounds[5])
+    def _random_sample(self, rng: random.Random) -> np.ndarray:
+        x = rng.uniform(self.bounds[0], self.bounds[1])
+        y = rng.uniform(self.bounds[2], self.bounds[3])
+        z = rng.uniform(self.bounds[4], self.bounds[5])
         return np.array([x, y, z])
 
-    def plan(self, start: np.ndarray, goal: np.ndarray) -> Tuple[float, List[np.ndarray]]:
+    def plan(
+        self,
+        start: np.ndarray,
+        goal: np.ndarray,
+        rng: random.Random | None = None,
+    ) -> Tuple[float, List[np.ndarray]]:
+        if rng is None:
+            rng = random.Random()
+
         if self._collision_free(start, goal):
             return np.linalg.norm(goal - start), [start, goal]
 
@@ -149,10 +159,10 @@ class FastRRTPlanner:
         tree = cKDTree([start])
 
         for _ in range(self.max_iter):
-            if random.random() < self.goal_bias:
+            if rng.random() < self.goal_bias:
                 sample = goal
             else:
-                sample = self._random_sample()
+                sample = self._random_sample(rng)
 
             dist, idx = tree.query(sample, k=1)
             nearest = nodes[idx]
@@ -224,6 +234,15 @@ def compute_path_noise_impact(
     return len(affected)
 
 
+def _stable_pair_seed(a: Point, b: Point) -> int:
+    pair_tokens = sorted([
+        f"{a.id}|{a.lon:.8f}|{a.lat:.8f}|{a.alt:.3f}",
+        f"{b.id}|{b.lon:.8f}|{b.lat:.8f}|{b.alt:.3f}",
+    ])
+    digest = hashlib.sha256("::".join(pair_tokens).encode("utf-8")).digest()
+    return int.from_bytes(digest[:8], "big", signed=False)
+
+
 def create_obstacles_from_buildings(
     building_df: pd.DataFrame,
     selected_coords: set,
@@ -248,7 +267,19 @@ def create_obstacles_from_buildings(
     return obstacles
 
 
-def build_realistic_distance_and_noise_matrices(
+@dataclass
+class _PathPlanningContext:
+    task_points: List[Point]
+    positions: List[np.ndarray]
+    planner: FastRRTPlanner
+    residential_positions: np.ndarray
+    residential_tree: cKDTree
+    noise_threshold: float
+    flight_height: float
+    search_radius: float
+
+
+def _prepare_path_planning_context(
     task_points: List[Point],
     obstacles_raw: List[dict],
     residential_positions: np.ndarray,
@@ -256,22 +287,13 @@ def build_realistic_distance_and_noise_matrices(
     ref_lat: float,
     ref_lon: float,
     flight_height: float,
-    obstacle_radius: float = 20.0,
-    rrt_step_size: float = 30.0,
-    rrt_max_iter: int = 30000,
-    rrt_goal_bias: float = 0.15,
-    grid_cell_size: float = 100.0,
-    noise_threshold: float = NOISE_THRESHOLD,
-    search_radius: float = 400.0,
-) -> Tuple[np.ndarray, np.ndarray]:
-    print("\n" + "=" * 60)
-    print("开始构建真实距离矩阵和噪声矩阵")
-    print("=" * 60)
-
-    n = len(task_points)
-    point_ids = [p.id for p in task_points]
-    print(f"任务点: {point_ids}")
-
+    rrt_step_size: float,
+    rrt_max_iter: int,
+    rrt_goal_bias: float,
+    grid_cell_size: float,
+    noise_threshold: float,
+    search_radius: float,
+) -> _PathPlanningContext:
     obstacles = []
     for obs in obstacles_raw:
         p = Point(id="", lon=obs["lon"], lat=obs["lat"], alt=obs["alt"])
@@ -304,8 +326,144 @@ def build_realistic_distance_and_noise_matrices(
         goal_bias=rrt_goal_bias,
         grid_cell_size=grid_cell_size,
     )
-
     positions = [np.array([p.x, p.y, p.z]) for p in task_points]
+
+    return _PathPlanningContext(
+        task_points=task_points,
+        positions=positions,
+        planner=planner,
+        residential_positions=residential_positions,
+        residential_tree=residential_tree,
+        noise_threshold=noise_threshold,
+        flight_height=flight_height,
+        search_radius=search_radius,
+    )
+
+
+def _compute_pair_metrics(context: _PathPlanningContext, i: int, j: int) -> Tuple[float, int, int]:
+    pair_rng = random.Random(
+        _stable_pair_seed(context.task_points[i], context.task_points[j])
+    )
+    length, path = context.planner.plan(
+        context.positions[i],
+        context.positions[j],
+        rng=pair_rng,
+    )
+    num_affected = compute_path_noise_impact(
+        path=path,
+        residential_positions=context.residential_positions,
+        residential_tree=context.residential_tree,
+        source_level=NOISE_SOURCE_LEVEL,
+        threshold=context.noise_threshold,
+        flight_height=context.flight_height,
+        ground_type="urban",
+        search_radius=context.search_radius,
+    )
+    return float(length), int(num_affected), len(path)
+
+
+class LazySymmetricMatrix:
+    """Symmetric matrix view that computes pair costs the first time they are requested."""
+
+    def __init__(self, cache: "LazyPathCostCache", metric: str):
+        self._cache = cache
+        self._metric = metric
+
+    @property
+    def shape(self) -> Tuple[int, int]:
+        return (self._cache.size, self._cache.size)
+
+    @property
+    def computed_pairs(self) -> int:
+        return self._cache.computed_pairs
+
+    def __getitem__(self, key: Tuple[int, int]) -> float | int:
+        if not isinstance(key, tuple) or len(key) != 2:
+            raise TypeError("LazySymmetricMatrix expects a tuple index like matrix[i, j]")
+        i, j = (int(key[0]), int(key[1]))
+        distance, noise = self._cache.get_pair_cost(i, j)
+        if self._metric == "distance":
+            return distance
+        if self._metric == "noise":
+            return noise
+        raise ValueError(f"Unsupported metric: {self._metric}")
+
+
+class LazyPathCostCache:
+    """Cache distance/noise pairs so the dynamic solver only plans paths it actually uses."""
+
+    def __init__(self, context: _PathPlanningContext):
+        self._context = context
+        self._pair_costs: Dict[Tuple[int, int], Tuple[float, int]] = {}
+        self._compute_count = 0
+
+    @property
+    def size(self) -> int:
+        return len(self._context.task_points)
+
+    @property
+    def computed_pairs(self) -> int:
+        return len(self._pair_costs)
+
+    def get_pair_cost(self, i: int, j: int) -> Tuple[float, int]:
+        if i == j:
+            return 0.0, 0
+
+        key = (i, j) if i < j else (j, i)
+        if key not in self._pair_costs:
+            self._pair_costs[key] = self._compute_pair(*key)
+        return self._pair_costs[key]
+
+    def _compute_pair(self, i: int, j: int) -> Tuple[float, int]:
+        self._compute_count += 1
+        start = self._context.task_points[i]
+        goal = self._context.task_points[j]
+        print(f"\n[按需路径 {self._compute_count}] 计算路径 {start.id} -> {goal.id} ...")
+
+        length, num_affected, path_len = _compute_pair_metrics(self._context, i, j)
+        print(f"  路径长度: {length:.1f}米, 路径点数: {path_len}")
+        print(f"  完成: 影响建筑 {num_affected} 个")
+        return length, num_affected
+
+
+def build_realistic_distance_and_noise_matrices(
+    task_points: List[Point],
+    obstacles_raw: List[dict],
+    residential_positions: np.ndarray,
+    residential_tree: cKDTree,
+    ref_lat: float,
+    ref_lon: float,
+    flight_height: float,
+    obstacle_radius: float = 20.0,
+    rrt_step_size: float = 30.0,
+    rrt_max_iter: int = 30000,
+    rrt_goal_bias: float = 0.15,
+    grid_cell_size: float = 100.0,
+    noise_threshold: float = NOISE_THRESHOLD,
+    search_radius: float = 400.0,
+) -> Tuple[np.ndarray, np.ndarray]:
+    print("\n" + "=" * 60)
+    print("开始构建真实距离矩阵和噪声矩阵")
+    print("=" * 60)
+
+    n = len(task_points)
+    point_ids = [p.id for p in task_points]
+    print(f"任务点: {point_ids}")
+    context = _prepare_path_planning_context(
+        task_points=task_points,
+        obstacles_raw=obstacles_raw,
+        residential_positions=residential_positions,
+        residential_tree=residential_tree,
+        ref_lat=ref_lat,
+        ref_lon=ref_lon,
+        flight_height=flight_height,
+        rrt_step_size=rrt_step_size,
+        rrt_max_iter=rrt_max_iter,
+        rrt_goal_bias=rrt_goal_bias,
+        grid_cell_size=grid_cell_size,
+        noise_threshold=noise_threshold,
+        search_radius=search_radius,
+    )
     dist_matrix = np.zeros((n, n))
     noise_matrix = np.zeros((n, n), dtype=int)
 
@@ -317,22 +475,10 @@ def build_realistic_distance_and_noise_matrices(
             current_pair += 1
             print(f"\n[{current_pair}/{total_pairs}] 计算路径 {task_points[i].id} -> {task_points[j].id} ...")
 
-            length, path = planner.plan(positions[i], positions[j])
+            length, num_affected, path_len = _compute_pair_metrics(context, i, j)
             dist_matrix[i, j] = length
             dist_matrix[j, i] = length
-            print(f"  路径长度: {length:.1f}米, 路径点数: {len(path)}")
-
-            num_affected = compute_path_noise_impact(
-                path=path,
-                residential_positions=residential_positions,
-                residential_tree=residential_tree,
-                source_level=NOISE_SOURCE_LEVEL,
-                threshold=noise_threshold,
-                flight_height=flight_height,
-                ground_type="urban",
-                search_radius=search_radius,
-            )
-
+            print(f"  路径长度: {length:.1f}米, 路径点数: {path_len}")
             noise_matrix[i, j] = num_affected
             noise_matrix[j, i] = num_affected
             print(f"  完成: 影响建筑 {num_affected} 个")
@@ -343,3 +489,47 @@ def build_realistic_distance_and_noise_matrices(
     print(f"非零噪声路径数: {np.sum(noise_matrix > 0) // 2}条")
 
     return dist_matrix, noise_matrix
+
+
+def build_lazy_distance_and_noise_matrices(
+    task_points: List[Point],
+    obstacles_raw: List[dict],
+    residential_positions: np.ndarray,
+    residential_tree: cKDTree,
+    ref_lat: float,
+    ref_lon: float,
+    flight_height: float,
+    obstacle_radius: float = 20.0,
+    rrt_step_size: float = 30.0,
+    rrt_max_iter: int = 30000,
+    rrt_goal_bias: float = 0.15,
+    grid_cell_size: float = 100.0,
+    noise_threshold: float = NOISE_THRESHOLD,
+    search_radius: float = 400.0,
+) -> Tuple[LazySymmetricMatrix, LazySymmetricMatrix]:
+    del obstacle_radius
+
+    print("\n" + "=" * 60)
+    print("初始化按需路径距离/噪声缓存")
+    print("=" * 60)
+    print(f"任务点数量: {len(task_points)}")
+
+    context = _prepare_path_planning_context(
+        task_points=task_points,
+        obstacles_raw=obstacles_raw,
+        residential_positions=residential_positions,
+        residential_tree=residential_tree,
+        ref_lat=ref_lat,
+        ref_lon=ref_lon,
+        flight_height=flight_height,
+        rrt_step_size=rrt_step_size,
+        rrt_max_iter=rrt_max_iter,
+        rrt_goal_bias=rrt_goal_bias,
+        grid_cell_size=grid_cell_size,
+        noise_threshold=noise_threshold,
+        search_radius=search_radius,
+    )
+    print("路径将在首次访问对应节点对时计算，并跨窗口复用缓存")
+
+    cache = LazyPathCostCache(context)
+    return LazySymmetricMatrix(cache, "distance"), LazySymmetricMatrix(cache, "noise")

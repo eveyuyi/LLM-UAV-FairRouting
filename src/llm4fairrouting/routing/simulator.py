@@ -97,7 +97,7 @@ class FinalDroneSimulator:
         print("=" * 50)
 
         self.advance_to(end_time)
-        self._print_summary()
+        self.print_summary()
 
     def advance_to(self, end_time: float):
         if end_time < self.current_time:
@@ -141,6 +141,35 @@ class FinalDroneSimulator:
 
         if not self.is_complete():
             print(f"警告: 模拟在 {self.current_time:.3f}h 达到上限，仍有未完成任务")
+
+    def get_drone_path_details(self) -> List[Dict[str, object]]:
+        """Return the full executed path for each drone in visit order."""
+        details: List[Dict[str, object]] = []
+        for ds in self.drone_states:
+            path_node_indices = [int(node_idx) for node_idx in ds.executed_path]
+            path_node_ids = [self.all_points[node_idx].id for node_idx in path_node_indices]
+            details.append(
+                {
+                    "drone_id": ds.drone_id,
+                    "station_id": ds.station_id,
+                    "station_name": self.all_points[self.station_indices[ds.station_id]].id,
+                    "current_node_index": int(ds.current_node),
+                    "current_node_id": self.all_points[ds.current_node].id,
+                    "final_status": ds.status.value,
+                    "remaining_range_m": round(float(ds.remaining_range), 3),
+                    "remaining_payload_kg": round(float(ds.remaining_payload), 3),
+                    "pending_task_count": len(ds.task_queue),
+                    "path_node_indices": path_node_indices,
+                    "path_node_ids": path_node_ids,
+                    "path_str": " -> ".join(path_node_ids),
+                    "n_nodes_visited": len(path_node_ids),
+                    "n_legs_completed": max(0, len(path_node_ids) - 1),
+                }
+            )
+        return details
+
+    def print_summary(self):
+        self._print_summary()
 
     def snapshot_state(self) -> Dict[str, object]:
         return serialize_simulator_snapshot(
@@ -427,12 +456,12 @@ class FinalDroneSimulator:
 
         print("\n无人机路径:")
         print("-" * 80)
-        for ds in self.drone_states:
-            if len(ds.executed_path) > 1:
-                path_str = " -> ".join([self.all_points[n].id for n in ds.executed_path])
-                print(f"  {ds.drone_id}: {path_str}")
-                print(f"    总移动节点数: {len(ds.executed_path)}")
-                if ds.task_queue:
-                    print(f"    剩余任务队列: {len(ds.task_queue)} 个")
+        for detail in self.get_drone_path_details():
+            if detail["n_nodes_visited"] > 1:
+                print(f"  {detail['drone_id']}: {detail['path_str']}")
+                print(f"    总移动节点数: {detail['n_nodes_visited']}")
+                print(f"    完成航段数: {detail['n_legs_completed']}")
+                if detail["pending_task_count"]:
+                    print(f"    剩余任务队列: {detail['pending_task_count']} 个")
             else:
-                print(f"  {ds.drone_id}: 没有移动")
+                print(f"  {detail['drone_id']}: 没有移动")
