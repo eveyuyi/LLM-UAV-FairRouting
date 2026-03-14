@@ -91,3 +91,95 @@ def test_run_workflow_filters_dialogues_before_module_2(monkeypatch, tmp_path):
 
     run_meta = json.loads((output_dir / "run_for_test" / "run_meta.json").read_text(encoding="utf-8"))
     assert run_meta["time_slots"] == [1]
+
+
+def test_extract_drone_path_details_returns_first_available_solution_payload():
+    details = workflow_module._extract_drone_path_details(
+        [
+            {"solution": None},
+            {
+                "solution": {
+                    "drone_path_details": [
+                        {
+                            "drone_id": "U11",
+                            "path_str": "L1 -> S1 -> D1 -> L1",
+                        }
+                    ]
+                }
+            },
+        ]
+    )
+
+    assert details == [{"drone_id": "U11", "path_str": "L1 -> S1 -> D1 -> L1"}]
+
+
+def test_run_workflow_writes_drone_paths_json(monkeypatch, tmp_path):
+    dialogue_path = tmp_path / "daily_demand_dialogues.jsonl"
+    output_dir = tmp_path / "results"
+    _write_dialogues_jsonl(
+        dialogue_path,
+        [
+            {
+                "dialogue_id": "D000",
+                "timestamp": "2024-03-15T00:00:00",
+                "conversation": "slot 0",
+                "metadata": {"time_slot": 0},
+            }
+        ],
+    )
+
+    extracted_windows = [
+        {
+            "time_window": "2024-03-15T00:00-00:05",
+            "demands": [{"demand_id": "REQ001"}],
+        }
+    ]
+    weight_config = {
+        "global_weights": {"w_distance": 1.0, "w_time": 1.0, "w_risk": 1.0},
+        "demand_configs": [{"demand_id": "REQ001", "priority": 1, "reasoning": "test"}],
+        "supplementary_constraints": [],
+    }
+    drone_paths = [
+        {
+            "drone_id": "U11",
+            "path_node_ids": ["L1", "S_COM_A", "D_DEM_1", "L1"],
+            "path_str": "L1 -> S_COM_A -> D_DEM_1 -> L1",
+        }
+    ]
+
+    monkeypatch.setattr(
+        workflow_module,
+        "_build_run_dir",
+        lambda base_dir, model, noise_weight: base_dir / "run_for_test",
+    )
+    monkeypatch.setattr(workflow_module, "extract_demands_offline", lambda dialogues, window_minutes: extracted_windows)
+    monkeypatch.setattr(workflow_module, "adjust_weights_offline", lambda demands: weight_config)
+    monkeypatch.setattr(
+        workflow_module,
+        "solve_windows_dynamically",
+        lambda **kwargs: [
+            {
+                "time_window": "2024-03-15T00:00-00:05",
+                "weight_config": weight_config,
+                "feasible_demands": [{"demand_id": "REQ001"}],
+                "n_demands_total": 1,
+                "n_demands_filtered": 0,
+                "solution": {"drone_path_details": drone_paths},
+                "n_supply": 1,
+            }
+        ],
+    )
+    monkeypatch.setattr(workflow_module, "serialize_workflow_results", lambda results: results)
+
+    workflow_module.run_workflow(
+        output_dir=str(output_dir),
+        dialogue_path=str(dialogue_path),
+        stations_path=str(tmp_path / "stations.csv"),
+        offline=True,
+        skip_solver=False,
+        window_minutes=5,
+        building_path=str(tmp_path / "buildings.csv"),
+    )
+
+    saved_paths = json.loads((output_dir / "run_for_test" / "drone_paths.json").read_text(encoding="utf-8"))
+    assert saved_paths == drone_paths

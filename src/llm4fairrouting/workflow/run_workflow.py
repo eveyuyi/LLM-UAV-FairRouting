@@ -105,6 +105,16 @@ def _filter_dialogues_by_time_slots(dialogues: list[Dict], time_slots: Optional[
     ]
 
 
+def _extract_drone_path_details(all_solutions: list[Dict]) -> list[Dict]:
+    """Return the first available structured drone-path payload from workflow results."""
+    for solution_entry in all_solutions:
+        solution = solution_entry.get("solution") or {}
+        details = solution.get("drone_path_details")
+        if details:
+            return list(details)
+    return []
+
+
 # ============================================================================
 # Pipeline Runner
 # ============================================================================
@@ -308,12 +318,19 @@ def run_workflow(
                 ensure_ascii=False,
                 indent=2,
             )
+        drone_paths = _extract_drone_path_details(all_solutions)
+        drone_paths_path = run_dir / "drone_path_results.json"
+        if drone_paths:
+            with open(drone_paths_path, "w", encoding="utf-8") as f:
+                json.dump(drone_paths, f, ensure_ascii=False, indent=2)
 
         print(f"\n{'=' * 60}")
         print("Workflow finished. Outputs:")
         print(f"  Run directory   : {run_dir}")
         print(f"  Weight configs  : {weight_configs_dir}")
         print(f"  Workflow results: {summary_path}")
+        if drone_paths:
+            print(f"  Drone paths     : {drone_paths_path}")
         print(f"  Log file        : {log_path}")
         print(f"{'=' * 60}")
 
