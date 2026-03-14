@@ -352,7 +352,7 @@ def solve_windows_dynamically(
         )
         from llm4fairrouting.routing.path_costs import (
             FLIGHT_HEIGHT as _FLIGHT_HEIGHT,
-            build_realistic_distance_and_noise_matrices,
+            build_lazy_distance_and_noise_matrices,
             create_obstacles_from_buildings,
         )
         from llm4fairrouting.routing.simulator import (
@@ -489,7 +489,7 @@ def solve_windows_dynamically(
 
     residential_positions_np = np.array(residential_positions, dtype=float)
     residential_tree = cKDTree(residential_positions_np)
-    dist_matrix, noise_cost_matrix = build_realistic_distance_and_noise_matrices(
+    dist_matrix, noise_cost_matrix = build_lazy_distance_and_noise_matrices(
         task_points=all_points,
         obstacles_raw=obstacles_raw,
         residential_positions=residential_positions_np,

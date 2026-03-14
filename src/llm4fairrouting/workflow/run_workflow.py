@@ -13,6 +13,7 @@ from llm4fairrouting.config.runtime_env import (
     env_bool,
     env_float,
     env_int,
+    env_int_list,
     env_text,
     prepare_env_file,
 )
@@ -68,6 +69,42 @@ def _build_run_dir(base_dir: Path, model: str, noise_weight: float) -> Path:
     return base_dir / run_name
 
 
+def _dialogue_time_slot(dialogue: Dict) -> Optional[int]:
+    """Return the canonical 5-minute ``time_slot`` for a dialogue when available."""
+    metadata = dialogue.get("metadata", {})
+    raw_slot = metadata.get("time_slot")
+    if raw_slot not in (None, ""):
+        try:
+            return int(raw_slot)
+        except (TypeError, ValueError):
+            pass
+
+    timestamp = str(dialogue.get("timestamp", "")).strip()
+    if not timestamp:
+        return None
+
+    try:
+        parsed = datetime.fromisoformat(timestamp)
+    except ValueError:
+        return None
+
+    minutes_from_midnight = parsed.hour * 60 + parsed.minute
+    return minutes_from_midnight // 5
+
+
+def _filter_dialogues_by_time_slots(dialogues: list[Dict], time_slots: Optional[list[int]]) -> list[Dict]:
+    """Keep only dialogues whose canonical 5-minute slot is listed in ``time_slots``."""
+    if time_slots is None:
+        return list(dialogues)
+
+    allowed_slots = {int(slot) for slot in time_slots}
+    return [
+        dialogue
+        for dialogue in dialogues
+        if _dialogue_time_slot(dialogue) in allowed_slots
+    ]
+
+
 # ============================================================================
 # Pipeline Runner
 # ============================================================================
@@ -91,6 +128,7 @@ def run_workflow(
     noise_weight: float = 0.5,
     building_path: Optional[str] = None,
     drone_speed: float = 60.0,
+    time_slots: Optional[list[int]] = None,
 ):
     """Run the workflow from a canonical dialogue dataset through ranking and solving."""
     base_dir = Path(output_dir)
@@ -133,6 +171,7 @@ def run_workflow(
             "drone_speed": drone_speed,
             "stations_path": resolved_stations_path,
             "dialogue_path": resolved_dialogue_path,
+            "time_slots": time_slots,
             "skip_solver": skip_solver,
         }
         with open(run_dir / "run_meta.json", "w", encoding="utf-8") as f:
@@ -151,6 +190,13 @@ def run_workflow(
         with open(resolved_dialogue_path, "r", encoding="utf-8") as f:
             dialogues = [json.loads(l.strip()) for l in f if l.strip()]
         print(f"  Loaded {len(dialogues)} dialogues from {resolved_dialogue_path}")
+        if time_slots is not None:
+            filtered_dialogues = _filter_dialogues_by_time_slots(dialogues, time_slots)
+            print(
+                f"  Applied time-slot filter {time_slots}: "
+                f"kept {len(filtered_dialogues)} / {len(dialogues)} dialogues"
+            )
+            dialogues = filtered_dialogues
 
         # ----------------------------------------------------------------
         # Step 2: Module 2 — 按窗口提取需求
@@ -364,6 +410,13 @@ def main():
         help="Time-window size in minutes",
     )
     parser.add_argument(
+        "--time-slots",
+        type=int,
+        nargs="+",
+        default=env_int_list("LLM4FAIRROUTING_TIME_SLOTS"),
+        help="Only process dialogues whose metadata.time_slot falls in these 5-minute slots",
+    )
+    parser.add_argument(
         "--time-limit",
         type=int,
         default=env_int("LLM4FAIRROUTING_TIME_LIMIT", 10),
@@ -401,6 +454,7 @@ def main():
         noise_weight=args.noise_weight,
         building_path=args.building_data,
         drone_speed=args.drone_speed,
+        time_slots=args.time_slots,
     )
 
 
