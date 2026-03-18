@@ -136,6 +136,7 @@ def run_workflow(
     max_solver_stations: Optional[int] = 1,
     skip_solver: bool = False,
     noise_weight: float = 0.5,
+    drone_activation_cost: float = 10000.0,
     building_path: Optional[str] = None,
     drone_speed: float = 60.0,
     time_slots: Optional[list[int]] = None,
@@ -170,6 +171,7 @@ def run_workflow(
             "model": model,
             "offline": offline,
             "noise_weight": noise_weight,
+            "drone_activation_cost": drone_activation_cost,
             "temperature": temperature,
             "window_minutes": window_minutes,
             "time_limit": time_limit,
@@ -303,6 +305,7 @@ def run_workflow(
                     max_payload=max_payload,
                     max_range=max_range,
                     noise_weight=noise_weight,
+                    drone_activation_cost=drone_activation_cost,
                     drone_speed=drone_speed,
                 )
             )
@@ -320,8 +323,11 @@ def run_workflow(
             )
         drone_paths = _extract_drone_path_details(all_solutions)
         drone_paths_path = run_dir / "drone_path_results.json"
+        legacy_drone_paths_path = run_dir / "drone_paths.json"
         if drone_paths:
             with open(drone_paths_path, "w", encoding="utf-8") as f:
+                json.dump(drone_paths, f, ensure_ascii=False, indent=2)
+            with open(legacy_drone_paths_path, "w", encoding="utf-8") as f:
                 json.dump(drone_paths, f, ensure_ascii=False, indent=2)
 
         print(f"\n{'=' * 60}")
@@ -453,6 +459,12 @@ def main():
     )
     parser.add_argument("--noise-weight", type=float, default=env_float("LLM4FAIRROUTING_NOISE_WEIGHT", 0.5),
                         help="Noise-cost weight in the objective")
+    parser.add_argument(
+        "--drone-activation-cost",
+        type=float,
+        default=env_float("LLM4FAIRROUTING_DRONE_ACTIVATION_COST", 10000.0),
+        help="Activation cost per used drone in the objective",
+    )
     args = parser.parse_args()
 
     run_workflow(
@@ -469,6 +481,7 @@ def main():
         max_solver_stations=args.max_solver_stations,
         skip_solver=args.skip_solver,
         noise_weight=args.noise_weight,
+        drone_activation_cost=args.drone_activation_cost,
         building_path=args.building_data,
         drone_speed=args.drone_speed,
         time_slots=args.time_slots,

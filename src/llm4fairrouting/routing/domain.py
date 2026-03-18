@@ -52,6 +52,7 @@ class DroneState:
     current_node: int
     remaining_range: float
     remaining_payload: float
+    current_load: float = 0.0
     status: DroneStatus = DroneStatus.IDLE
     target_node: Optional[int] = None
     arrival_time: float = 0.0

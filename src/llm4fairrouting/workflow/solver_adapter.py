@@ -7,10 +7,10 @@ Module 3b: Solver Adapter
 统一使用共享 routing 核心作为求解后端。
 
 求解模型特性（对齐 baseline）：
-- 目标函数: ``distance + noise_weight * noise + priority-scaled unassigned penalty``
+- 目标函数: ``distance + noise_weight * noise + drone_activation_cost * used + priority-scaled unassigned penalty``
 - 允许部分需求不被服务（unassigned 变量 + 大罚项 1e9）
-- 每架无人机单次求解最多接 1 个需求（single_task_per_drone）
-- 需求必须从指定供给点取货（supply_demand_matching）
+- 支持 Pickup and Delivery Problem 多任务路径：单架无人机可在一次出行中串联多个取送货任务
+- 需求必须从指定供给点取货，并通过路径级配对/顺序/容量/时间约束保证可行
 """
 
 from __future__ import annotations
@@ -291,6 +291,7 @@ def solve_windows_dynamically(
     max_payload: float,
     max_range: float,
     noise_weight: float,
+    drone_activation_cost: float = 10000.0,
     drone_speed: float = DEFAULT_DRONE_SPEED_MS,
 ) -> List[Dict]:
     """Use the shared routing core to solve the full window sequence."""
@@ -536,6 +537,7 @@ def solve_windows_dynamically(
         demand_events=demand_events,
         noise_cost_matrix=noise_cost_matrix,
         noise_weight=noise_weight,
+        drone_activation_cost=drone_activation_cost,
         time_step=0.001,
         solve_interval=0.05,
         time_limit=time_limit,
@@ -980,6 +982,12 @@ def main():
         help="噪声成本权重（>0 启用噪声优先级）",
     )
     parser.add_argument(
+        "--drone-activation-cost",
+        type=float,
+        default=10000.0,
+        help="无人机启用成本，用于鼓励更少启用无人机",
+    )
+    parser.add_argument(
         "--max-solver-stations",
         type=int,
         default=1,
@@ -1002,6 +1010,7 @@ def main():
         max_payload=args.max_payload,
         max_range=args.max_range,
         noise_weight=args.noise_weight,
+        drone_activation_cost=args.drone_activation_cost,
         drone_speed=args.drone_speed,
     )
 

@@ -24,6 +24,7 @@ class FinalDroneSimulator:
         demand_events: List[DemandEvent],
         noise_cost_matrix: np.ndarray = None,
         noise_weight: float = 0.0,
+        drone_activation_cost: float = 10000.0,
         time_step: float = 0.001,
         solve_interval: float = 0.05,
         time_limit: int = 10,
@@ -32,6 +33,7 @@ class FinalDroneSimulator:
         self.demand_points = demand_points
         self.station_points = station_points
         self.drones_static = drones_static
+        self.drone_specs = {drone.id: drone for drone in drones_static}
         self.dist_matrix = dist_matrix
         self.all_demand_events = demand_events
         self.time_step = time_step
@@ -58,6 +60,7 @@ class FinalDroneSimulator:
                 current_node=station_node,
                 remaining_range=d.max_range,
                 remaining_payload=d.max_payload,
+                current_load=0.0,
                 status=DroneStatus.IDLE,
                 position_x=self.all_points[station_node].x,
                 position_y=self.all_points[station_node].y,
@@ -89,6 +92,7 @@ class FinalDroneSimulator:
             all_points=self.all_points,
             noise_cost_matrix=noise_cost_matrix,
             noise_weight=noise_weight,
+            drone_activation_cost=drone_activation_cost,
             time_limit=time_limit,
         )
 
@@ -158,6 +162,7 @@ class FinalDroneSimulator:
                     "final_status": ds.status.value,
                     "remaining_range_m": round(float(ds.remaining_range), 3),
                     "remaining_payload_kg": round(float(ds.remaining_payload), 3),
+                    "current_load_kg": round(float(ds.current_load), 3),
                     "pending_task_count": len(ds.task_queue),
                     "path_node_indices": path_node_indices,
                     "path_node_ids": path_node_ids,
@@ -190,7 +195,8 @@ class FinalDroneSimulator:
                 dist = math.sqrt(dx * dx + dy * dy)
 
                 if dist > 0:
-                    speed_per_step = self.drones_static[0].speed * self.time_step * 3600
+                    drone_speed = self.drone_specs[ds.drone_id].speed
+                    speed_per_step = drone_speed * self.time_step * 3600
                     if dist <= speed_per_step:
                         ds.position_x = target.x
                         ds.position_y = target.y
@@ -213,145 +219,156 @@ class FinalDroneSimulator:
         ds.executed_path.append(arrived_node)
 
         node_name = self.all_points[arrived_node].id
+        current_task = ds.task_queue.pop(0) if ds.task_queue else None
+        if current_task is None:
+            print(f"[{self.current_time:.3f}] 无人机 {ds.drone_id} 到达 {node_name}，但没有待执行停靠点")
+            self._return_to_station(ds)
+            return
 
-        if ds.status == DroneStatus.TO_SUPPLY:
+        task_type = current_task["type"]
+        drone_spec = self.drone_specs[ds.drone_id]
+
+        if task_type == "pickup":
             print(f"[{self.current_time:.3f}] 无人机 {ds.drone_id} 到达供给点 {node_name}")
+            ds.current_load += float(current_task.get("weight", 0.0))
+            ds.remaining_payload = max(0.0, drone_spec.max_payload - ds.current_load)
+            print(
+                f"    完成取货 {current_task.get('demand_id')}，当前载货 {ds.current_load:.1f}kg，"
+                f"剩余可用载重 {ds.remaining_payload:.1f}kg"
+            )
 
-            if ds.task_queue:
-                current_task = ds.task_queue[0]
-                if current_task["type"] == "delivery":
-                    demand_node = current_task["demand_node"]
-                    dist = self.dist_matrix[arrived_node, demand_node]
-                    ds.remaining_range -= dist
-                    self.total_distance += dist
-
-                    if self.cplex_solver.noise_cost_matrix is not None:
-                        noise = self.cplex_solver.noise_cost_matrix[arrived_node, demand_node]
-                        self.total_noise_impact += noise
-
-                    ds.status = DroneStatus.TO_DEMAND
-                    ds.target_node = demand_node
-                    ds.assigned_demand_id = current_task["demand_id"]
-                    ds.assigned_demand_node = demand_node
-                    ds.assigned_demand_weight = current_task["weight"]
-
-                    demand_name = self.all_points[demand_node].id
-                    print(f"    前往需求点 {demand_name} 送货")
-                else:
-                    print("    错误: 任务队列中的任务类型错误")
-                    self._return_to_station(ds)
-            else:
-                print("    错误: 到达供给点但任务队列为空")
-                self._return_to_station(ds)
-
-        elif ds.status == DroneStatus.TO_DEMAND:
+        elif task_type == "delivery":
             print(f"[{self.current_time:.3f}] 无人机 {ds.drone_id} 到达需求点 {node_name}")
+            demand_id = current_task["demand_id"]
+            demand = self.unserved_demands_dict.get(demand_id)
+            if demand and demand.node_idx == arrived_node:
+                ds.current_load = max(0.0, ds.current_load - float(demand.weight))
+                ds.remaining_payload = min(
+                    drone_spec.max_payload,
+                    drone_spec.max_payload - ds.current_load,
+                )
+                demand.served_time = self.current_time
+                self.completed_demands.append(demand)
 
-            if ds.task_queue and ds.task_queue[0]["type"] == "delivery":
-                current_task = ds.task_queue.pop(0)
-                demand_id = current_task["demand_id"]
+                for i, d in enumerate(self.unserved_demands):
+                    if d is not None and d.unique_id == demand_id:
+                        self.unserved_demands[i] = None
+                        break
 
-                demand = self.unserved_demands_dict.get(demand_id)
-                if demand and demand.node_idx == arrived_node:
-                    ds.remaining_payload -= demand.weight
-                    demand.served_time = self.current_time
-                    self.completed_demands.append(demand)
+                if demand_id in self.unserved_demands_dict:
+                    del self.unserved_demands_dict[demand_id]
 
-                    for i, d in enumerate(self.unserved_demands):
-                        if d is not None and d.unique_id == demand_id:
-                            self.unserved_demands[i] = None
-                            break
-
-                    if demand_id in self.unserved_demands_dict:
-                        del self.unserved_demands_dict[demand_id]
-
-                    print(
-                        f"    送达需求 {demand.unique_id} ({demand.demand_point_id}), 剩余载重 {ds.remaining_payload:.1f}kg"
-                    )
-
-                    if ds.task_queue:
-                        print(f"    还有 {len(ds.task_queue)} 个任务等待执行")
-                        next_task = ds.task_queue[0]
-                        if next_task["type"] == "delivery":
-                            supply_node = next_task["supply_node"]
-                            dist = self.dist_matrix[ds.current_node, supply_node]
-                            ds.remaining_range -= dist
-                            self.total_distance += dist
-
-                            if self.cplex_solver.noise_cost_matrix is not None:
-                                noise = self.cplex_solver.noise_cost_matrix[ds.current_node, supply_node]
-                                self.total_noise_impact += noise
-
-                            ds.status = DroneStatus.TO_SUPPLY
-                            ds.target_node = supply_node
-                            ds.assigned_supply_node = supply_node
-
-                            supply_name = self.all_points[supply_node].id
-                            demand_name = self.all_points[next_task["demand_node"]].id
-                            print(f"    开始执行下一个任务: 前往 {supply_name} 取货，送 {demand_name}")
-                    else:
-                        self._return_to_station(ds)
-                else:
-                    print(f"    错误: 找不到匹配的需求 {demand_id}")
-                    self._return_to_station(ds)
+                print(
+                    f"    送达需求 {demand.unique_id} ({demand.demand_point_id})，"
+                    f"当前载货 {ds.current_load:.1f}kg，剩余可用载重 {ds.remaining_payload:.1f}kg"
+                )
             else:
-                print("    错误: 到达需求点但任务队列为空")
+                print(f"    错误: 找不到匹配的需求 {demand_id}")
                 self._return_to_station(ds)
+                return
 
-        elif ds.status == DroneStatus.RETURNING:
+        elif task_type == "station":
             print(f"[{self.current_time:.3f}] 无人机 {ds.drone_id} 到达站点")
+            self._finish_route_at_station(ds)
+            return
 
-            if ds.task_queue:
-                print(f"    还有 {len(ds.task_queue)} 个任务，准备执行下一个任务")
-                next_task = ds.task_queue[0]
-                if next_task["type"] == "delivery":
-                    supply_node = next_task["supply_node"]
-                    dist = self.dist_matrix[ds.current_node, supply_node]
-                    ds.remaining_range -= dist
-                    self.total_distance += dist
+        else:
+            print(f"    错误: 未知停靠点类型 {task_type}")
+            self._return_to_station(ds)
+            return
 
-                    if self.cplex_solver.noise_cost_matrix is not None:
-                        noise = self.cplex_solver.noise_cost_matrix[ds.current_node, supply_node]
-                        self.total_noise_impact += noise
+        if ds.task_queue:
+            print(f"    还有 {len(ds.task_queue)} 个停靠点等待执行")
+            self._dispatch_next_stop(ds)
+        elif ds.current_node != self.station_indices[ds.station_id]:
+            self._return_to_station(ds)
+        else:
+            self._finish_route_at_station(ds)
 
-                    ds.status = DroneStatus.TO_SUPPLY
-                    ds.target_node = supply_node
-                    ds.assigned_supply_node = supply_node
-
-                    supply_name = self.all_points[supply_node].id
-                    demand_name = self.all_points[next_task["demand_node"]].id
-                    print(f"    前往供给点 {supply_name} 取货 (为 {demand_name} 送货)")
-                else:
-                    print("    错误: 任务类型错误")
-                    ds.status = DroneStatus.IDLE
-                    ds.target_node = None
-            else:
-                ds.status = DroneStatus.CHARGING
-                ds.target_node = None
-                ds.status = DroneStatus.IDLE
-                ds.remaining_range = self.drones_static[0].max_range
-                ds.remaining_payload = self.drones_static[0].max_payload
-                ds.assigned_demand_id = None
-                ds.assigned_demand_node = None
-                ds.assigned_demand_weight = None
-                ds.assigned_supply_node = None
-                print("    充电完成，变为空闲")
-
-    def _return_to_station(self, ds: DroneState):
-        station_node = self.station_indices[ds.station_id]
-        dist = self.dist_matrix[ds.current_node, station_node]
-        ds.remaining_range -= dist
+    def _apply_leg_cost(self, from_node: int, to_node: int):
+        dist = self.dist_matrix[from_node, to_node]
         self.total_distance += dist
 
         if self.cplex_solver.noise_cost_matrix is not None:
-            noise = self.cplex_solver.noise_cost_matrix[ds.current_node, station_node]
+            noise = self.cplex_solver.noise_cost_matrix[from_node, to_node]
             self.total_noise_impact += noise
 
-        ds.status = DroneStatus.RETURNING
-        ds.target_node = station_node
+        return dist
 
-        station_name = self.all_points[station_node].id
-        print(f"    返回站点 {station_name}, 距离 {dist:.0f}m")
+    def _dispatch_next_stop(self, ds: DroneState):
+        if not ds.task_queue:
+            if ds.current_node == self.station_indices[ds.station_id]:
+                self._finish_route_at_station(ds)
+            else:
+                self._return_to_station(ds)
+            return
+
+        next_task = ds.task_queue[0]
+        target_node = next_task["node"]
+        dist = self._apply_leg_cost(ds.current_node, target_node)
+        ds.remaining_range -= dist
+        ds.target_node = target_node
+
+        if next_task["type"] == "pickup":
+            ds.status = DroneStatus.TO_SUPPLY
+            ds.assigned_supply_node = target_node
+            ds.assigned_demand_id = next_task.get("demand_id")
+            ds.assigned_demand_node = next_task.get("demand_node")
+            ds.assigned_demand_weight = next_task.get("weight")
+            demand_name = self.all_points[next_task["demand_node"]].id
+            print(
+                f"    前往供给点 {self.all_points[target_node].id} 取货，"
+                f"对应需求 {demand_name} ({next_task.get('demand_id')})"
+            )
+        elif next_task["type"] == "delivery":
+            ds.status = DroneStatus.TO_DEMAND
+            ds.assigned_supply_node = next_task.get("supply_node")
+            ds.assigned_demand_id = next_task.get("demand_id")
+            ds.assigned_demand_node = target_node
+            ds.assigned_demand_weight = next_task.get("weight")
+            print(
+                f"    前往需求点 {self.all_points[target_node].id} 送货 "
+                f"({next_task.get('demand_id')})"
+            )
+        else:
+            ds.status = DroneStatus.RETURNING
+            ds.assigned_supply_node = None
+            ds.assigned_demand_id = None
+            ds.assigned_demand_node = None
+            ds.assigned_demand_weight = None
+            print(f"    返回站点 {self.all_points[target_node].id}，距离 {dist:.0f}m")
+
+    def _finish_route_at_station(self, ds: DroneState):
+        drone_spec = self.drone_specs[ds.drone_id]
+        ds.status = DroneStatus.CHARGING
+        ds.target_node = None
+        ds.status = DroneStatus.IDLE
+        ds.remaining_range = drone_spec.max_range
+        ds.current_load = 0.0
+        ds.remaining_payload = drone_spec.max_payload
+        ds.assigned_demand_id = None
+        ds.assigned_demand_node = None
+        ds.assigned_demand_weight = None
+        ds.assigned_supply_node = None
+        print("    充电完成，变为空闲")
+
+    def _return_to_station(self, ds: DroneState):
+        station_node = self.station_indices[ds.station_id]
+        if ds.task_queue and ds.task_queue[0].get("type") == "station":
+            self._dispatch_next_stop(ds)
+            return
+
+        ds.task_queue.insert(0, {
+            "type": "station",
+            "node": station_node,
+            "demand_id": None,
+            "demand_node": None,
+            "supply_node": None,
+            "weight": 0.0,
+            "priority": None,
+            "demand_point_id": None,
+        })
+        self._dispatch_next_stop(ds)
 
     def _process_new_demands(self):
         while self.event_queue and self.event_queue[0][0] <= self.current_time:
@@ -375,49 +392,28 @@ class FinalDroneSimulator:
 
         for assign in assignments:
             drone = assign["drone"]
-            demand = assign["demand"]
-            supply_node = assign["supply_node"]
+            served_demands = assign.get("served_demands", [])
+            route_stops = list(assign.get("route_stops", []))
+            if not served_demands or not route_stops:
+                continue
 
-            demand.assigned_drone = drone.drone_id
-            demand.assigned_time = self.current_time
-            demand.supply_node = supply_node
+            for served in served_demands:
+                demand = served["demand"]
+                demand.assigned_drone = drone.drone_id
+                demand.assigned_time = self.current_time
+                demand.supply_node = served.get("supply_node")
 
-            task = {
-                "type": "delivery",
-                "demand_id": demand.unique_id,
-                "demand_node": demand.node_idx,
-                "supply_node": supply_node,
-                "weight": demand.weight,
-                "priority": demand.priority,
-            }
-            drone.task_queue.append(task)
+            drone.task_queue = route_stops
 
-            if drone.status == DroneStatus.IDLE and len(drone.task_queue) == 1:
-                dist = self.dist_matrix[drone.current_node, supply_node]
-                drone.remaining_range -= dist
-                self.total_distance += dist
-
-                if self.cplex_solver.noise_cost_matrix is not None:
-                    noise = self.cplex_solver.noise_cost_matrix[drone.current_node, supply_node]
-                    self.total_noise_impact += noise
-
-                drone.status = DroneStatus.TO_SUPPLY
-                drone.target_node = supply_node
-                drone.assigned_supply_node = supply_node
-
-                supply_name = self.all_points[supply_node].id
-                demand_name = self.all_points[demand.node_idx].id
-                print(
-                    f"  → 无人机 {drone.drone_id} 开始执行任务 {len(drone.task_queue)}: "
-                    f"去 {supply_name} 取货，送 {demand_name} ({demand.unique_id}, 优先级{demand.priority})"
-                )
-            else:
-                supply_name = self.all_points[supply_node].id
-                demand_name = self.all_points[demand.node_idx].id
-                print(
-                    f"  → 无人机 {drone.drone_id} 新增任务到队列 (队列长度 {len(drone.task_queue)}): "
-                    f"{supply_name}→{demand_name} ({demand.unique_id}, 优先级{demand.priority})"
-                )
+            print(
+                f"  → 无人机 {drone.drone_id} 执行多任务路径: "
+                f"{assign.get('path_str', ' -> '.join(assign.get('path_node_ids', [])))}"
+            )
+            print(
+                f"    本次路径覆盖 {len(served_demands)} 个需求: "
+                f"{', '.join(assign.get('served_demand_ids', []))}"
+            )
+            self._dispatch_next_stop(drone)
 
     def _print_summary(self):
         print("\n" + "=" * 70)
