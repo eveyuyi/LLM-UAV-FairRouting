@@ -9,6 +9,8 @@ venv/
 .env
 .cursor/
 
+*.log
+
 build/
 dist/
 *.egg-info/

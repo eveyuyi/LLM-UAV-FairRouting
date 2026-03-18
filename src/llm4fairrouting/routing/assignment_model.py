@@ -16,7 +16,9 @@ before returning to its home station.
 
 from __future__ import annotations
 
-from typing import Dict, List, Tuple
+import time as _time
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 from pyomo.environ import (
@@ -34,6 +36,11 @@ from pyomo.environ import (
     value,
 )
 
+from llm4fairrouting.routing.analytics import (
+    parse_cplex_incumbent_trace,
+    resolve_objective_weights,
+    sanitize_label,
+)
 from llm4fairrouting.routing.domain import (
     DemandEvent,
     Drone,
@@ -55,6 +62,8 @@ class CplexSolver:
         noise_weight: float = 0.0,
         drone_activation_cost: float = 10000.0,
         time_limit: int = 10,
+        analytics_output_dir: Optional[str] = None,
+        enable_conflict_refiner: bool = False,
     ):
         self.drones = drones
         self.supply_indices = supply_indices
@@ -66,15 +75,67 @@ class CplexSolver:
         self.noise_cost_matrix = noise_cost_matrix
         self.noise_weight = noise_weight
         self.drone_activation_cost = drone_activation_cost
+        self.analytics_output_dir = Path(analytics_output_dir) if analytics_output_dir else None
+        self.enable_conflict_refiner = enable_conflict_refiner
+        self.last_solve_details: Dict[str, object] = {}
+        self.default_objective_weights = resolve_objective_weights(None)
+
+    def _count_model_size(self, model: ConcreteModel) -> Dict[str, int]:
+        variables = list(model.component_data_objects(Var, active=True))
+        constraints = list(model.component_data_objects(Constraint, active=True))
+        return {
+            "variables": len(variables),
+            "binary_variables": sum(1 for var in variables if var.is_binary()),
+            "constraints": len(constraints),
+        }
+
+    def _build_conflict_summary(
+        self,
+        *,
+        solve_name: str,
+        termination: object,
+    ) -> Dict[str, object]:
+        if not self.enable_conflict_refiner:
+            return {"status": "not_requested"}
+
+        summary = {
+            "status": "requested",
+            "requested": True,
+            "termination_condition": str(termination),
+            "message": (
+                "The current Pyomo shell integration can export diagnostics, but true "
+                "automated CPLEX Conflict Refiner runs need a direct CPLEX API or CLI bridge."
+            ),
+        }
+        if self.analytics_output_dir is not None:
+            summary["artifact_dir"] = str(self.analytics_output_dir / "conflicts" / solve_name)
+        return summary
 
     def solve_assignment(
         self,
         drone_states: List[DroneState],
         demands: List[DemandEvent],
         current_time: float,
+        objective_weights: Optional[Dict[str, float]] = None,
+        solve_context: Optional[Dict[str, object]] = None,
     ) -> List[Dict]:
         if not demands or not drone_states:
+            self.last_solve_details = {
+                "time_window": (solve_context or {}).get("time_window"),
+                "objective_weights": resolve_objective_weights(objective_weights),
+                "solve_time_s": 0.0,
+                "termination_condition": "skipped",
+                "model_size": {},
+                "convergence_trace": [],
+                "conflict_refiner": {"status": "not_run"},
+            }
             return []
+
+        active_weights = resolve_objective_weights(objective_weights)
+        solve_context = dict(solve_context or {})
+        solve_name = sanitize_label(
+            f"{solve_context.get('time_window', 'windowless')}_t{current_time:.3f}"
+        )
 
         print(f"\n  CPLEX求解: {len(drone_states)}架无人机, {len(demands)}个需求")
         model = ConcreteModel()
@@ -257,10 +318,21 @@ class CplexSolver:
             initialize=0,
         )
         model.unassigned = Var(model.DEMANDS, within=Binary, initialize=0)
+        effective_risk_weight = self.noise_weight * active_weights["w_risk"]
 
         def obj_rule(m):
-            total_assignment_cost = sum(
-                arc_cost[(u, i, j)] * m.x[u, i, j]
+            total_distance_cost = sum(
+                arc_distance[(u, i, j)] * m.x[u, i, j]
+                for u in m.DRONES
+                for i, j in m.ARCS
+            )
+            total_time_cost = sum(
+                3600.0 * m.arrival[u, delivery_nodes[d]]
+                for u in m.DRONES
+                for d in m.DEMANDS
+            )
+            total_risk_cost = sum(
+                arc_noise[(u, i, j)] * m.x[u, i, j]
                 for u in m.DRONES
                 for i, j in m.ARCS
             )
@@ -269,7 +341,13 @@ class CplexSolver:
                 for u in m.DRONES
             )
             penalty = sum(unassigned_penalty[d] * m.unassigned[d] for d in m.DEMANDS)
-            return total_assignment_cost + activation_cost + penalty
+            return (
+                active_weights["w_distance"] * total_distance_cost
+                + active_weights["w_time"] * total_time_cost
+                + effective_risk_weight * total_risk_cost
+                + activation_cost
+                + penalty
+            )
 
         model.obj = Objective(rule=obj_rule, sense=minimize)
 
@@ -572,14 +650,78 @@ class CplexSolver:
             rule=propagation_load_upper,
         )
 
+        model_size = self._count_model_size(model)
         solver = SolverFactory("cplex")
         solver.options["timelimit"] = self.time_limit
+        if self.enable_conflict_refiner:
+            solver.options["conflictalg"] = 3
+
+        log_path = None
+        if self.analytics_output_dir is not None:
+            log_dir = self.analytics_output_dir / "cplex_logs"
+            log_dir.mkdir(parents=True, exist_ok=True)
+            log_path = log_dir / f"{solve_name}.log"
+
+        solve_kwargs = {"tee": True}
+        if log_path is not None:
+            solve_kwargs["logfile"] = str(log_path)
+
+        solve_started_at = _time.time()
         try:
-            results = solver.solve(model, tee=True)
-            if results.solver.termination_condition in [
+            try:
+                results = solver.solve(model, **solve_kwargs)
+            except TypeError:
+                solve_kwargs.pop("logfile", None)
+                results = solver.solve(model, **solve_kwargs)
+
+            solve_time_s = round(_time.time() - solve_started_at, 6)
+            termination = results.solver.termination_condition
+            convergence_trace = parse_cplex_incumbent_trace(log_path)
+            conflict_summary = self._build_conflict_summary(
+                solve_name=solve_name,
+                termination=termination,
+            )
+
+            if termination in [
                 TerminationCondition.optimal,
                 TerminationCondition.feasible,
             ]:
+                objective_breakdown = {
+                    "distance_m": sum(
+                        arc_distance[(u, i, j)] * float(value(model.x[u, i, j]))
+                        for u in model.DRONES
+                        for i, j in model.ARCS
+                    ),
+                    "delivery_time_s": sum(
+                        3600.0 * float(value(model.arrival[u, delivery_nodes[d]]))
+                        for u in model.DRONES
+                        for d in model.DEMANDS
+                    ),
+                    "noise_impact": sum(
+                        arc_noise[(u, i, j)] * float(value(model.x[u, i, j]))
+                        for u in model.DRONES
+                        for i, j in model.ARCS
+                    ),
+                    "activation_cost": sum(
+                        self.drone_activation_cost * float(value(model.used[u]))
+                        for u in model.DRONES
+                    ),
+                    "unassigned_penalty": sum(
+                        unassigned_penalty[d] * float(value(model.unassigned[d]))
+                        for d in model.DEMANDS
+                    ),
+                }
+                objective_breakdown["weighted_distance_cost"] = (
+                    active_weights["w_distance"] * objective_breakdown["distance_m"]
+                )
+                objective_breakdown["weighted_time_cost"] = (
+                    active_weights["w_time"] * objective_breakdown["delivery_time_s"]
+                )
+                objective_breakdown["weighted_risk_cost"] = (
+                    effective_risk_weight * objective_breakdown["noise_impact"]
+                )
+                objective_value = float(value(model.obj))
+
                 route_plans: List[Dict] = []
                 total_served = 0
                 for u in model.DRONES:
@@ -683,9 +825,70 @@ class CplexSolver:
                 print(
                     f"    CPLEX规划了 {len(route_plans)} 条无人机路径, 覆盖 {total_served} 个需求"
                 )
+                self.last_solve_details = {
+                    "time_window": solve_context.get("time_window"),
+                    "current_time_h": round(current_time, 6),
+                    "objective_weights": active_weights,
+                    "solve_time_s": solve_time_s,
+                    "termination_condition": str(termination),
+                    "model_size": {
+                        **model_size,
+                        "drones": len(drone_states),
+                        "demands": len(demands),
+                        "service_nodes": len(service_nodes),
+                        "arcs": len(arc_list),
+                    },
+                    "objective_value": objective_value,
+                    "objective_breakdown": objective_breakdown,
+                    "convergence_trace": convergence_trace,
+                    "conflict_refiner": conflict_summary,
+                    "solver_log_path": str(log_path) if log_path is not None else None,
+                }
                 return route_plans
-            print(f"    求解失败: {results.solver.termination_condition}")
+            print(f"    求解失败: {termination}")
+            self.last_solve_details = {
+                "time_window": solve_context.get("time_window"),
+                "current_time_h": round(current_time, 6),
+                "objective_weights": active_weights,
+                "solve_time_s": solve_time_s,
+                "termination_condition": str(termination),
+                "model_size": {
+                    **model_size,
+                    "drones": len(drone_states),
+                    "demands": len(demands),
+                    "service_nodes": len(service_nodes),
+                    "arcs": len(arc_list),
+                },
+                "objective_value": None,
+                "objective_breakdown": None,
+                "convergence_trace": convergence_trace,
+                "conflict_refiner": conflict_summary,
+                "solver_log_path": str(log_path) if log_path is not None else None,
+            }
             return []
         except Exception as e:
             print(f"    CPLEX异常: {e}")
+            self.last_solve_details = {
+                "time_window": solve_context.get("time_window"),
+                "current_time_h": round(current_time, 6),
+                "objective_weights": active_weights,
+                "solve_time_s": round(_time.time() - solve_started_at, 6),
+                "termination_condition": "error",
+                "model_size": {
+                    **model_size,
+                    "drones": len(drone_states),
+                    "demands": len(demands),
+                    "service_nodes": len(service_nodes),
+                    "arcs": len(arc_list),
+                },
+                "objective_value": None,
+                "objective_breakdown": None,
+                "convergence_trace": parse_cplex_incumbent_trace(log_path),
+                "conflict_refiner": self._build_conflict_summary(
+                    solve_name=solve_name,
+                    termination="error",
+                ),
+                "solver_log_path": str(log_path) if log_path is not None else None,
+                "error": str(e),
+            }
             return []

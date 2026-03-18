@@ -153,6 +153,7 @@ llm4fairrouting-demand-events --input data/seed/building_information.csv --outpu
 - Output:
   - standalone default: `data/drone/solver_results.json`
   - workflow run: `results/run_*/workflow_results.json`
+  - analytics sidecar: `*_analytics/solver_analytics.json`, `*_analytics/charts/*.png`
 
 ### Baseline
 
@@ -188,3 +189,20 @@ The routing core is shared by the workflow and the baseline:
 - `src/llm4fairrouting/routing/assignment_model.py`: Pyomo/CPLEX assignment model
 - `src/llm4fairrouting/routing/simulator.py`: dynamic simulator for time-evolving demand and drone execution
 - `src/llm4fairrouting/routing/serialization.py`: serialization helpers for simulation and workflow results
+- `src/llm4fairrouting/routing/analytics.py`: convergence traces, Pareto scans, and chart export
+
+### Solver Analytics Outputs
+
+When the solver runs, the project can now export a sidecar analytics directory with:
+
+- `solver_analytics.json`: per-solve model size, objective breakdown, incumbent trace, Gantt tasks, and run summary
+- `charts/convergence_curve.png`: incumbent objective improvements over solve time
+- `charts/solve_time_vs_problem_size.png`: relationship between solve time and model size
+- `charts/drone_schedule_gantt.png`: executed drone schedule
+- `pareto/pareto_frontier.json` and `pareto/charts/pareto_frontier.png`: weighted-sum multi-objective scan outputs when `--pareto-scan` is enabled
+
+Useful flags:
+
+```bash
+python -m llm4fairrouting.workflow.run_workflow --offline --pareto-scan --enable-conflict-refiner
+```

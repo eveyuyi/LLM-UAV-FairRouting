@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import heapq
 import math
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import numpy as np
 
+from llm4fairrouting.routing.analytics import resolve_objective_weights
 from llm4fairrouting.routing.assignment_model import CplexSolver
 from llm4fairrouting.routing.domain import DemandEvent, Drone, DroneState, DroneStatus, Point
 from llm4fairrouting.routing.serialization import serialize_simulator_snapshot
@@ -28,6 +29,9 @@ class FinalDroneSimulator:
         time_step: float = 0.001,
         solve_interval: float = 0.05,
         time_limit: int = 10,
+        objective_weight_schedule: Optional[List[Dict[str, object]]] = None,
+        analytics_output_dir: Optional[str] = None,
+        enable_conflict_refiner: bool = False,
     ):
         self.supply_points = supply_points
         self.demand_points = demand_points
@@ -38,6 +42,9 @@ class FinalDroneSimulator:
         self.all_demand_events = demand_events
         self.time_step = time_step
         self.solve_interval = solve_interval
+        self.objective_weight_schedule = list(objective_weight_schedule or [])
+        self.analytics_output_dir = analytics_output_dir
+        self.enable_conflict_refiner = enable_conflict_refiner
 
         self.all_points = supply_points + demand_points + station_points
         self.n_supply = len(supply_points)
@@ -83,6 +90,9 @@ class FinalDroneSimulator:
         self.last_solve_time = -1.0
         self.total_distance = 0.0
         self.total_noise_impact = 0.0
+        self.solver_calls: List[Dict[str, object]] = []
+        self.gantt_tasks: List[Dict[str, object]] = []
+        self.active_legs: Dict[str, Dict[str, object]] = {}
 
         self.cplex_solver = CplexSolver(
             drones=drones_static,
@@ -94,6 +104,8 @@ class FinalDroneSimulator:
             noise_weight=noise_weight,
             drone_activation_cost=drone_activation_cost,
             time_limit=time_limit,
+            analytics_output_dir=analytics_output_dir,
+            enable_conflict_refiner=enable_conflict_refiner,
         )
 
     def run(self, end_time: float):
@@ -186,6 +198,86 @@ class FinalDroneSimulator:
             total_noise_impact=self.total_noise_impact,
         )
 
+    def get_solver_analytics(self) -> Dict[str, object]:
+        served_events = [
+            event
+            for event in self.all_demand_events
+            if event.served_time is not None
+        ]
+        delivery_latencies = [
+            max(0.0, float(event.served_time) - float(event.time))
+            for event in served_events
+        ]
+        run_summary = {
+            "total_demands": len(self.all_demand_events),
+            "served_demands": len(served_events),
+            "service_rate": round(
+                len(served_events) / len(self.all_demand_events),
+                6,
+            ) if self.all_demand_events else 0.0,
+            "final_total_distance_m": float(self.total_distance),
+            "final_total_noise_impact": float(self.total_noise_impact),
+            "average_delivery_time_h": round(
+                sum(delivery_latencies) / len(delivery_latencies),
+                6,
+            ) if delivery_latencies else None,
+            "max_delivery_time_h": round(max(delivery_latencies), 6) if delivery_latencies else None,
+            "n_solver_calls": len(self.solver_calls),
+            "n_conflict_reports": sum(
+                1
+                for call in self.solver_calls
+                if call.get("conflict_refiner", {}).get("status")
+                not in {None, "not_requested", "not_run"}
+            ),
+        }
+        return {
+            "run_summary": run_summary,
+            "solver_calls": list(self.solver_calls),
+            "gantt_tasks": list(self.gantt_tasks),
+            "objective_weight_schedule": list(self.objective_weight_schedule),
+        }
+
+    def _active_window_context(self) -> Dict[str, object]:
+        if not self.objective_weight_schedule:
+            return {
+                "time_window": None,
+                "weights": resolve_objective_weights(None),
+            }
+
+        for entry in self.objective_weight_schedule:
+            start_time_h = float(entry.get("start_time_h", 0.0))
+            raw_end = entry.get("end_time_h")
+            end_time_h = None if raw_end is None else float(raw_end)
+            if self.current_time + 1e-9 < start_time_h:
+                continue
+            if end_time_h is None or self.current_time <= end_time_h + 1e-9:
+                return {
+                    "time_window": entry.get("time_window"),
+                    "window_start_h": start_time_h,
+                    "window_end_h": end_time_h,
+                    "weights": resolve_objective_weights(entry.get("global_weights")),
+                }
+
+        last_entry = self.objective_weight_schedule[-1]
+        return {
+            "time_window": last_entry.get("time_window"),
+            "window_start_h": float(last_entry.get("start_time_h", 0.0)),
+            "window_end_h": last_entry.get("end_time_h"),
+            "weights": resolve_objective_weights(last_entry.get("global_weights")),
+        }
+
+    def _finish_active_leg(self, ds: DroneState, arrived_node: int):
+        leg = self.active_legs.pop(ds.drone_id, None)
+        if leg is None:
+            return
+        leg["end_time_h"] = round(self.current_time, 6)
+        leg["duration_h"] = round(
+            max(0.0, float(leg["end_time_h"]) - float(leg["start_time_h"])),
+            6,
+        )
+        leg["arrived_node_index"] = int(arrived_node)
+        leg["arrived_node_id"] = self.all_points[arrived_node].id
+
     def _update_positions(self):
         for ds in self.drone_states:
             if ds.status != DroneStatus.IDLE and ds.target_node is not None:
@@ -217,6 +309,7 @@ class FinalDroneSimulator:
         ds.position_y = self.all_points[arrived_node].y
         ds.current_node = arrived_node
         ds.executed_path.append(arrived_node)
+        self._finish_active_leg(ds, arrived_node)
 
         node_name = self.all_points[arrived_node].id
         current_task = ds.task_queue.pop(0) if ds.task_queue else None
@@ -308,6 +401,27 @@ class FinalDroneSimulator:
         dist = self._apply_leg_cost(ds.current_node, target_node)
         ds.remaining_range -= dist
         ds.target_node = target_node
+        travel_time_h = dist / max(self.drone_specs[ds.drone_id].speed, 1e-6) / 3600.0
+        task_type = str(next_task["type"])
+        gantt_task_type = {
+            "pickup": "pickup_leg",
+            "delivery": "delivery_leg",
+            "station": "return_leg",
+        }.get(task_type, "delivery_leg")
+        leg_record = {
+            "drone_id": ds.drone_id,
+            "task_type": gantt_task_type,
+            "demand_id": next_task.get("demand_id"),
+            "start_time_h": round(self.current_time, 6),
+            "planned_end_time_h": round(self.current_time + travel_time_h, 6),
+            "from_node_index": int(ds.current_node),
+            "from_node_id": self.all_points[ds.current_node].id,
+            "to_node_index": int(target_node),
+            "to_node_id": self.all_points[target_node].id,
+            "time_window": self._active_window_context().get("time_window"),
+        }
+        self.active_legs[ds.drone_id] = leg_record
+        self.gantt_tasks.append(leg_record)
 
         if next_task["type"] == "pickup":
             ds.status = DroneStatus.TO_SUPPLY
@@ -388,8 +502,21 @@ class FinalDroneSimulator:
         print(f"\n[{self.current_time:.3f}] 调用CPLEX求解器")
         print(f"  空闲无人机: {len(idle_drones)}, 待处理需求: {len(pending)}")
 
-        assignments = self.cplex_solver.solve_assignment(idle_drones, pending, self.current_time)
+        solve_context = self._active_window_context()
+        assignments = self.cplex_solver.solve_assignment(
+            idle_drones,
+            pending,
+            self.current_time,
+            objective_weights=solve_context.get("weights"),
+            solve_context=solve_context,
+        )
 
+        solve_details = dict(self.cplex_solver.last_solve_details or {})
+        solve_details.setdefault("pending_demands", len(pending))
+        solve_details.setdefault("idle_drones", len(idle_drones))
+        solve_details.setdefault("time_window", solve_context.get("time_window"))
+
+        assigned_demand_ids: List[str] = []
         for assign in assignments:
             drone = assign["drone"]
             served_demands = assign.get("served_demands", [])
@@ -402,6 +529,7 @@ class FinalDroneSimulator:
                 demand.assigned_drone = drone.drone_id
                 demand.assigned_time = self.current_time
                 demand.supply_node = served.get("supply_node")
+                assigned_demand_ids.append(demand.unique_id)
 
             drone.task_queue = route_stops
 
@@ -414,6 +542,10 @@ class FinalDroneSimulator:
                 f"{', '.join(assign.get('served_demand_ids', []))}"
             )
             self._dispatch_next_stop(drone)
+
+        solve_details["assigned_route_count"] = len(assignments)
+        solve_details["assigned_demand_ids"] = assigned_demand_ids
+        self.solver_calls.append(solve_details)
 
     def _print_summary(self):
         print("\n" + "=" * 70)

@@ -39,6 +39,14 @@ from llm4fairrouting.data.seed_paths import (
     STATION_DATA_PATH,
 )
 from llm4fairrouting.data.stations import load_station_data
+from llm4fairrouting.routing.analytics import (
+    build_default_pareto_profiles,
+    compute_pareto_frontier,
+    export_visualizations,
+    resolve_objective_weights,
+    sanitize_label,
+    write_json,
+)
 from llm4fairrouting.routing.domain import Point
 
 
@@ -279,6 +287,48 @@ def _build_window_payloads(
     return payloads
 
 
+def _build_objective_weight_schedule(
+    window_payloads: List[Dict],
+    base_dt: datetime,
+) -> List[Dict[str, object]]:
+    schedule: List[Dict[str, object]] = []
+    for payload in window_payloads:
+        start_h = max(
+            0.0,
+            (payload["window_start_dt"] - base_dt).total_seconds() / 3600.0,
+        )
+        end_h = max(
+            0.0,
+            (payload["window_end_dt"] - base_dt).total_seconds() / 3600.0,
+        )
+        payload["window_start_h"] = start_h
+        payload["window_end_h"] = end_h
+        schedule.append(
+            {
+                "time_window": payload["time_window"],
+                "start_time_h": start_h,
+                "end_time_h": end_h,
+                "global_weights": resolve_objective_weights(
+                    payload["weight_config"].get("global_weights")
+                ),
+            }
+        )
+    return schedule
+
+
+def _override_global_weights(
+    weight_configs: Dict[str, Dict],
+    global_weights: Dict[str, float],
+) -> Dict[str, Dict]:
+    overridden: Dict[str, Dict] = {}
+    resolved = resolve_objective_weights(global_weights)
+    for time_window, config in weight_configs.items():
+        cloned = copy.deepcopy(config)
+        cloned["global_weights"] = resolved
+        overridden[time_window] = cloned
+    return overridden
+
+
 def solve_windows_dynamically(
     *,
     windows: List[Dict],
@@ -293,6 +343,8 @@ def solve_windows_dynamically(
     noise_weight: float,
     drone_activation_cost: float = 10000.0,
     drone_speed: float = DEFAULT_DRONE_SPEED_MS,
+    analytics_output_dir: Optional[str] = None,
+    enable_conflict_refiner: bool = False,
 ) -> List[Dict]:
     """Use the shared routing core to solve the full window sequence."""
     window_payloads = _build_window_payloads(
@@ -501,6 +553,7 @@ def solve_windows_dynamically(
     )
 
     base_dt = min(record["request_dt"] for record in event_records)
+    objective_weight_schedule = _build_objective_weight_schedule(window_payloads, base_dt)
     n_supply = len(supply_points)
     demand_events: List = []
     for record in event_records:
@@ -541,18 +594,15 @@ def solve_windows_dynamically(
         time_step=0.001,
         solve_interval=0.05,
         time_limit=time_limit,
+        objective_weight_schedule=objective_weight_schedule,
+        analytics_output_dir=analytics_output_dir,
+        enable_conflict_refiner=enable_conflict_refiner,
     )
 
     window_snapshots: Dict[str, Dict] = {}
     for payload in window_payloads:
-        end_time_h = max(
-            0.0,
-            (payload["window_end_dt"] - base_dt).total_seconds() / 3600.0,
-        )
-        payload["window_end_h"] = end_time_h
-
         step_started_at = _time.time()
-        simulator.advance_to(end_time_h)
+        simulator.advance_to(payload["window_end_h"])
         snapshot = simulator.snapshot_state()
         snapshot["solve_time_s"] = round(_time.time() - step_started_at, 3)
         window_snapshots[payload["time_window"]] = snapshot
@@ -561,6 +611,24 @@ def solve_windows_dynamically(
     simulator.run_until_complete(last_event_time_h + DEFAULT_SIMULATION_PADDING_H)
     simulator.print_summary()
     final_drone_paths = simulator.get_drone_path_details()
+    solver_analytics = simulator.get_solver_analytics()
+    run_summary = solver_analytics.get("run_summary", {})
+    analytics_artifacts: Dict[str, object] = {}
+    if analytics_output_dir:
+        analytics_dir = Path(analytics_output_dir)
+        analytics_dir.mkdir(parents=True, exist_ok=True)
+        analytics_json_path = write_json(
+            solver_analytics,
+            analytics_dir / "solver_analytics.json",
+        )
+        chart_artifacts = export_visualizations(
+            analytics=solver_analytics,
+            output_dir=analytics_dir / "charts",
+        )
+        analytics_artifacts = {
+            "analytics_json": analytics_json_path,
+            "charts": chart_artifacts,
+        }
 
     demand_event_lookup = {event.unique_id: event for event in demand_events}
     simulation_completed = simulator.is_complete()
@@ -612,11 +680,100 @@ def solve_windows_dynamically(
                 "objective_value": None,
                 "demand_event_results": demand_event_results,
                 "drone_path_details": final_drone_paths,
+                "run_summary": run_summary,
+                "analytics_artifacts": analytics_artifacts,
             },
             "n_supply": n_supply,
         })
 
     return results
+
+
+def run_multiobjective_pareto_scan(
+    *,
+    windows: List[Dict],
+    weight_configs: Dict[str, Dict],
+    stations_path: Optional[str],
+    building_path: Optional[str],
+    max_solver_stations: Optional[int],
+    time_limit: int,
+    max_drones_per_station: int,
+    max_payload: float,
+    max_range: float,
+    noise_weight: float,
+    drone_activation_cost: float = 10000.0,
+    drone_speed: float = DEFAULT_DRONE_SPEED_MS,
+    analytics_output_dir: Optional[str] = None,
+    enable_conflict_refiner: bool = False,
+    pareto_profiles: Optional[List[Dict[str, object]]] = None,
+) -> Dict[str, object]:
+    if pareto_profiles is None:
+        base_weights = None
+        if weight_configs:
+            first_window = next(iter(weight_configs.values()))
+            base_weights = first_window.get("global_weights")
+        pareto_profiles = build_default_pareto_profiles(base_weights)
+
+    output_dir = Path(analytics_output_dir) if analytics_output_dir else None
+    if output_dir is not None:
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+    candidates: List[Dict[str, object]] = []
+    for profile in pareto_profiles:
+        profile_id = str(profile.get("profile_id", f"profile_{len(candidates)}"))
+        label = str(profile.get("label", profile_id))
+        weights = resolve_objective_weights(profile.get("weights"))
+        profile_dir = output_dir / "profiles" / sanitize_label(profile_id) if output_dir is not None else None
+
+        results = solve_windows_dynamically(
+            windows=windows,
+            weight_configs=_override_global_weights(weight_configs, weights),
+            stations_path=stations_path,
+            building_path=building_path,
+            max_solver_stations=max_solver_stations,
+            time_limit=time_limit,
+            max_drones_per_station=max_drones_per_station,
+            max_payload=max_payload,
+            max_range=max_range,
+            noise_weight=noise_weight,
+            drone_activation_cost=drone_activation_cost,
+            drone_speed=drone_speed,
+            analytics_output_dir=str(profile_dir) if profile_dir is not None else None,
+            enable_conflict_refiner=enable_conflict_refiner,
+        )
+
+        run_summary: Dict[str, object] = {}
+        for result in results:
+            solution = result.get("solution") or {}
+            run_summary = solution.get("run_summary") or {}
+            if run_summary:
+                break
+
+        candidate = {
+            "profile_id": profile_id,
+            "label": label,
+            "weights": weights,
+            **run_summary,
+        }
+        if profile_dir is not None:
+            candidate["analytics_dir"] = str(profile_dir)
+        candidates.append(candidate)
+
+    frontier = compute_pareto_frontier(candidates)
+    payload = {
+        "candidates": candidates,
+        "frontier": frontier,
+    }
+
+    if output_dir is not None:
+        payload["pareto_json"] = write_json(payload, output_dir / "pareto_frontier.json")
+        payload["charts"] = export_visualizations(
+            analytics={"solver_calls": [], "gantt_tasks": []},
+            output_dir=output_dir / "charts",
+            pareto_candidates=candidates,
+        )
+
+    return payload
 
 
 def serialize_workflow_results(all_solutions: List[Dict]) -> List[Dict]:
@@ -662,6 +819,8 @@ def serialize_workflow_results(all_solutions: List[Dict]) -> List[Dict]:
                     "snapshot_time_h": solution.get("snapshot_time_h"),
                     "snapshot_time_window_end": solution.get("snapshot_time_window_end"),
                     "busy_drones_at_window_end": solution.get("busy_drones", []),
+                    "run_summary": solution.get("run_summary", {}),
+                    "analytics_artifacts": solution.get("analytics_artifacts", {}),
                 })
 
                 config_map = {
@@ -993,6 +1152,18 @@ def main():
         default=1,
         help="求解时最多使用多少个真实站点；默认 1 以对齐 baseline demo，0 表示使用全部",
     )
+    parser.add_argument(
+        "--pareto-scan",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="执行多组 global_weights 扫描并生成帕累托前沿图",
+    )
+    parser.add_argument(
+        "--enable-conflict-refiner",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="在不可行时输出冲突诊断元数据",
+    )
     args = parser.parse_args()
 
     with open(args.demands, "r", encoding="utf-8") as f:
@@ -1012,7 +1183,27 @@ def main():
         noise_weight=args.noise_weight,
         drone_activation_cost=args.drone_activation_cost,
         drone_speed=args.drone_speed,
+        analytics_output_dir=str(Path(args.output).with_suffix("")) + "_analytics",
+        enable_conflict_refiner=args.enable_conflict_refiner,
     )
+
+    if args.pareto_scan:
+        run_multiobjective_pareto_scan(
+            windows=windows,
+            weight_configs=weight_configs,
+            stations_path=args.stations,
+            building_path=args.building_data,
+            max_solver_stations=args.max_solver_stations,
+            time_limit=args.time_limit,
+            max_drones_per_station=args.max_drones_per_station,
+            max_payload=args.max_payload,
+            max_range=args.max_range,
+            noise_weight=args.noise_weight,
+            drone_activation_cost=args.drone_activation_cost,
+            drone_speed=args.drone_speed,
+            analytics_output_dir=str(Path(args.output).with_suffix("")) + "_analytics/pareto",
+            enable_conflict_refiner=args.enable_conflict_refiner,
+        )
 
     out_path = Path(args.output)
     out_path.parent.mkdir(parents=True, exist_ok=True)
