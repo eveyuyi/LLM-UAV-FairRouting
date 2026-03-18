@@ -115,6 +115,17 @@ def test_serialize_workflow_results_keeps_dynamic_drone_path_details():
                 "total_distance": 1200.0,
                 "total_noise_impact": 5.0,
                 "objective_value": None,
+                "run_summary": {
+                    "final_total_distance_m": 1400.0,
+                    "final_total_noise_impact": 6.0,
+                    "average_delivery_time_h": 0.25,
+                },
+                "analytics_artifacts": {
+                    "analytics_json": "/tmp/solver_analytics.json",
+                    "charts": [
+                        {"chart_type": "gantt", "path": "/tmp/drone_schedule_gantt.png"}
+                    ],
+                },
                 "demand_event_results": {},
                 "drone_path_details": [
                     {
@@ -133,3 +144,5 @@ def test_serialize_workflow_results_keeps_dynamic_drone_path_details():
 
     assert serialized[0]["drone_path_details"][0]["drone_id"] == "U11"
     assert serialized[0]["drone_path_details"][0]["path_str"] == "L1 -> S_COM_A -> D_DEM_1 -> L1"
+    assert serialized[0]["run_summary"]["final_total_distance_m"] == 1400.0
+    assert serialized[0]["analytics_artifacts"]["charts"][0]["chart_type"] == "gantt"

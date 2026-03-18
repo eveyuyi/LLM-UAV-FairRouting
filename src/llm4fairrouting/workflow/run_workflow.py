@@ -22,6 +22,7 @@ from llm4fairrouting.llm.demand_extraction import (
     extract_demands_offline,
 )
 from llm4fairrouting.workflow.solver_adapter import (
+    run_multiobjective_pareto_scan,
     serialize_workflow_results,
     solve_windows_dynamically,
 )
@@ -136,9 +137,12 @@ def run_workflow(
     max_solver_stations: Optional[int] = 1,
     skip_solver: bool = False,
     noise_weight: float = 0.5,
+    drone_activation_cost: float = 10000.0,
     building_path: Optional[str] = None,
     drone_speed: float = 60.0,
     time_slots: Optional[list[int]] = None,
+    pareto_scan: bool = False,
+    enable_conflict_refiner: bool = False,
 ):
     """Run the workflow from a canonical dialogue dataset through ranking and solving."""
     base_dir = Path(output_dir)
@@ -170,6 +174,7 @@ def run_workflow(
             "model": model,
             "offline": offline,
             "noise_weight": noise_weight,
+            "drone_activation_cost": drone_activation_cost,
             "temperature": temperature,
             "window_minutes": window_minutes,
             "time_limit": time_limit,
@@ -183,6 +188,8 @@ def run_workflow(
             "dialogue_path": resolved_dialogue_path,
             "time_slots": time_slots,
             "skip_solver": skip_solver,
+            "pareto_scan": pareto_scan,
+            "enable_conflict_refiner": enable_conflict_refiner,
         }
         with open(run_dir / "run_meta.json", "w", encoding="utf-8") as f:
             json.dump(run_meta, f, ensure_ascii=False, indent=2)
@@ -303,9 +310,29 @@ def run_workflow(
                     max_payload=max_payload,
                     max_range=max_range,
                     noise_weight=noise_weight,
+                    drone_activation_cost=drone_activation_cost,
                     drone_speed=drone_speed,
+                    analytics_output_dir=str(run_dir / "solver_analytics"),
+                    enable_conflict_refiner=enable_conflict_refiner,
                 )
             )
+            if pareto_scan:
+                run_multiobjective_pareto_scan(
+                    windows=windows_to_solve,
+                    weight_configs=weight_configs_by_window,
+                    stations_path=resolved_stations_path,
+                    building_path=building_path or str(BUILDING_DATA_PATH),
+                    max_solver_stations=max_solver_stations,
+                    time_limit=time_limit,
+                    max_drones_per_station=max_drones_per_station,
+                    max_payload=max_payload,
+                    max_range=max_range,
+                    noise_weight=noise_weight,
+                    drone_activation_cost=drone_activation_cost,
+                    drone_speed=drone_speed,
+                    analytics_output_dir=str(run_dir / "solver_analytics" / "pareto"),
+                    enable_conflict_refiner=enable_conflict_refiner,
+                )
 
         # ----------------------------------------------------------------
         # 保存汇总结果（含完整 eval 字段）
@@ -320,8 +347,11 @@ def run_workflow(
             )
         drone_paths = _extract_drone_path_details(all_solutions)
         drone_paths_path = run_dir / "drone_path_results.json"
+        legacy_drone_paths_path = run_dir / "drone_paths.json"
         if drone_paths:
             with open(drone_paths_path, "w", encoding="utf-8") as f:
+                json.dump(drone_paths, f, ensure_ascii=False, indent=2)
+            with open(legacy_drone_paths_path, "w", encoding="utf-8") as f:
                 json.dump(drone_paths, f, ensure_ascii=False, indent=2)
 
         print(f"\n{'=' * 60}")
@@ -331,6 +361,9 @@ def run_workflow(
         print(f"  Workflow results: {summary_path}")
         if drone_paths:
             print(f"  Drone paths     : {drone_paths_path}")
+        analytics_dir = run_dir / "solver_analytics"
+        if analytics_dir.exists():
+            print(f"  Solver analytics: {analytics_dir}")
         print(f"  Log file        : {log_path}")
         print(f"{'=' * 60}")
 
@@ -453,6 +486,24 @@ def main():
     )
     parser.add_argument("--noise-weight", type=float, default=env_float("LLM4FAIRROUTING_NOISE_WEIGHT", 0.5),
                         help="Noise-cost weight in the objective")
+    parser.add_argument(
+        "--drone-activation-cost",
+        type=float,
+        default=env_float("LLM4FAIRROUTING_DRONE_ACTIVATION_COST", 10000.0),
+        help="Activation cost per used drone in the objective",
+    )
+    parser.add_argument(
+        "--pareto-scan",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Run a weighted-sum Pareto scan and export the Pareto frontier artifacts",
+    )
+    parser.add_argument(
+        "--enable-conflict-refiner",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Request conflict diagnostics when a solve is infeasible",
+    )
     args = parser.parse_args()
 
     run_workflow(
@@ -469,9 +520,12 @@ def main():
         max_solver_stations=args.max_solver_stations,
         skip_solver=args.skip_solver,
         noise_weight=args.noise_weight,
+        drone_activation_cost=args.drone_activation_cost,
         building_path=args.building_data,
         drone_speed=args.drone_speed,
         time_slots=args.time_slots,
+        pareto_scan=args.pareto_scan,
+        enable_conflict_refiner=args.enable_conflict_refiner,
     )
 
 

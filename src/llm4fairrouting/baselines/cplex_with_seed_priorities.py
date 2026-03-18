@@ -15,6 +15,7 @@ from llm4fairrouting.data.seed_paths import (
 )
 from llm4fairrouting.llm.dialogue_generation import load_demand_events
 from llm4fairrouting.workflow.solver_adapter import (
+    run_multiobjective_pareto_scan,
     serialize_workflow_results,
     solve_windows_dynamically,
 )
@@ -132,6 +133,8 @@ def main() -> None:
     parser.add_argument("--max-range", type=float, default=200000.0)
     parser.add_argument("--noise-weight", type=float, default=0.5)
     parser.add_argument("--drone-speed", type=float, default=60.0)
+    parser.add_argument("--pareto-scan", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--enable-conflict-refiner", action=argparse.BooleanOptionalAction, default=False)
     args = parser.parse_args()
 
     windows, weight_configs = build_seed_priority_inputs(
@@ -155,7 +158,25 @@ def main() -> None:
         max_range=args.max_range,
         noise_weight=args.noise_weight,
         drone_speed=args.drone_speed,
+        analytics_output_dir=str(run_dir / "solver_analytics"),
+        enable_conflict_refiner=args.enable_conflict_refiner,
     )
+    if args.pareto_scan:
+        run_multiobjective_pareto_scan(
+            windows=windows,
+            weight_configs=weight_configs,
+            stations_path=args.stations,
+            building_path=args.building_data,
+            max_solver_stations=args.max_solver_stations,
+            time_limit=args.time_limit,
+            max_drones_per_station=args.max_drones_per_station,
+            max_payload=args.max_payload,
+            max_range=args.max_range,
+            noise_weight=args.noise_weight,
+            drone_speed=args.drone_speed,
+            analytics_output_dir=str(run_dir / "solver_analytics" / "pareto"),
+            enable_conflict_refiner=args.enable_conflict_refiner,
+        )
 
     with open(run_dir / "workflow_results.json", "w", encoding="utf-8") as f:
         json.dump(serialize_workflow_results(results), f, ensure_ascii=False, indent=2)
