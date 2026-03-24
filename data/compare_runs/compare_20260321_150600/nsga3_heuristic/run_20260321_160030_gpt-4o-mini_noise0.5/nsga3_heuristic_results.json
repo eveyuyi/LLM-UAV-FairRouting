@@ -1,0 +1,1077 @@
+{
+  "problem_meta": {
+    "problem_type": "dynamic_routing_workflow",
+    "problem_id": "run_20260321_160030_gpt-4o-mini_noise0.5",
+    "n_windows": 1,
+    "time_windows": [
+      "2024-03-15T00:00-00:05"
+    ],
+    "stations_path": "D:\\Git\\LLM-UAV-FairRouting\\data\\seed\\drone_station_locations.csv",
+    "building_path": "D:\\Git\\LLM-UAV-FairRouting\\data\\seed\\building_information.csv",
+    "time_limit_s": 180,
+    "max_solver_stations": 1,
+    "max_drones_per_station": 3,
+    "max_payload_kg": 60.0,
+    "max_range_m": 200000.0,
+    "noise_weight": 0.5,
+    "drone_speed_ms": 60.0
+  },
+  "solver_meta": {
+    "solver_family": "evolutionary",
+    "solver_name": "nsga3_heuristic",
+    "inner_solver": "greedy_heuristic"
+  },
+  "search_meta": {
+    "pop_size": 4,
+    "n_generations": 2,
+    "seed": 42,
+    "n_candidates_evaluated": 8
+  },
+  "candidates": [
+    {
+      "solution_id": "nsga3_heuristic_candidate_0000",
+      "profile_id": "nsga3_heuristic_candidate_0000",
+      "label": "nsga3_heuristic_candidate_0000",
+      "decision_vector": [
+        0.7739560485559633,
+        0.4388784397520523,
+        0.8585979199113825,
+        0.6973680290593639
+      ],
+      "weights": {
+        "w_distance": 3.892384637924221,
+        "w_time": 2.2505043547850567,
+        "w_risk": 4.307129807565774
+      },
+      "drone_activation_cost": 14249.992552127915,
+      "objectives": {
+        "final_total_distance_m": 300975.41779670963,
+        "average_delivery_time_h": 0.242556,
+        "final_total_noise_impact": 259.0
+      },
+      "final_total_distance_m": 300975.41779670963,
+      "average_delivery_time_h": 0.242556,
+      "final_total_noise_impact": 259.0,
+      "run_summary": {
+        "total_demands": 9,
+        "served_demands": 9,
+        "service_rate": 1.0,
+        "final_total_distance_m": 300975.41779670963,
+        "final_total_noise_impact": 259.0,
+        "average_delivery_time_h": 0.242556,
+        "max_delivery_time_h": 0.405333,
+        "n_solver_calls": 3,
+        "n_conflict_reports": 0,
+        "n_rrt_paths_used": 22
+      },
+      "problem_meta": {
+        "problem_type": "dynamic_routing_workflow",
+        "problem_id": "run_20260321_160030_gpt-4o-mini_noise0.5",
+        "n_windows": 1,
+        "time_windows": [
+          "2024-03-15T00:00-00:05"
+        ],
+        "stations_path": "D:\\Git\\LLM-UAV-FairRouting\\data\\seed\\drone_station_locations.csv",
+        "building_path": "D:\\Git\\LLM-UAV-FairRouting\\data\\seed\\building_information.csv",
+        "time_limit_s": 180,
+        "max_solver_stations": 1,
+        "max_drones_per_station": 3,
+        "max_payload_kg": 60.0,
+        "max_range_m": 200000.0,
+        "noise_weight": 0.5,
+        "drone_speed_ms": 60.0
+      },
+      "solver_meta": {
+        "solver_family": "evolutionary",
+        "solver_name": "nsga3_heuristic",
+        "inner_solver": "greedy_heuristic"
+      },
+      "is_nondominated": true,
+      "frontier_result_path": "data\\compare_runs\\compare_20260321_150600\\nsga3_heuristic\\run_20260321_160030_gpt-4o-mini_noise0.5\\solver_analytics\\nsga3_heuristic\\frontier_solutions\\nsga3_heuristic_candidate_0000\\workflow_results.json"
+    },
+    {
+      "solution_id": "nsga3_heuristic_candidate_0001",
+      "profile_id": "nsga3_heuristic_candidate_0001",
+      "label": "nsga3_heuristic_candidate_0001",
+      "decision_vector": [
+        0.09417734788764953,
+        0.9756223516367559,
+        0.761139701990353,
+        0.7860643052769538
+      ],
+      "weights": {
+        "w_distance": 0.5614690046494828,
+        "w_time": 4.880549523020104,
+        "w_risk": 3.8295845397527297
+      },
+      "drone_activation_cost": 15935.221800262123,
+      "objectives": {
+        "final_total_distance_m": 300975.41779670963,
+        "average_delivery_time_h": 0.242556,
+        "final_total_noise_impact": 259.0
+      },
+      "final_total_distance_m": 300975.41779670963,
+      "average_delivery_time_h": 0.242556,
+      "final_total_noise_impact": 259.0,
+      "run_summary": {
+        "total_demands": 9,
+        "served_demands": 9,
+        "service_rate": 1.0,
+        "final_total_distance_m": 300975.41779670963,
+        "final_total_noise_impact": 259.0,
+        "average_delivery_time_h": 0.242556,
+        "max_delivery_time_h": 0.405333,
+        "n_solver_calls": 3,
+        "n_conflict_reports": 0,
+        "n_rrt_paths_used": 22
+      },
+      "problem_meta": {
+        "problem_type": "dynamic_routing_workflow",
+        "problem_id": "run_20260321_160030_gpt-4o-mini_noise0.5",
+        "n_windows": 1,
+        "time_windows": [
+          "2024-03-15T00:00-00:05"
+        ],
+        "stations_path": "D:\\Git\\LLM-UAV-FairRouting\\data\\seed\\drone_station_locations.csv",
+        "building_path": "D:\\Git\\LLM-UAV-FairRouting\\data\\seed\\building_information.csv",
+        "time_limit_s": 180,
+        "max_solver_stations": 1,
+        "max_drones_per_station": 3,
+        "max_payload_kg": 60.0,
+        "max_range_m": 200000.0,
+        "noise_weight": 0.5,
+        "drone_speed_ms": 60.0
+      },
+      "solver_meta": {
+        "solver_family": "evolutionary",
+        "solver_name": "nsga3_heuristic",
+        "inner_solver": "greedy_heuristic"
+      },
+      "is_nondominated": true,
+      "frontier_result_path": "data\\compare_runs\\compare_20260321_150600\\nsga3_heuristic\\run_20260321_160030_gpt-4o-mini_noise0.5\\solver_analytics\\nsga3_heuristic\\frontier_solutions\\nsga3_heuristic_candidate_0001\\workflow_results.json"
+    },
+    {
+      "solution_id": "nsga3_heuristic_candidate_0002",
+      "profile_id": "nsga3_heuristic_candidate_0002",
+      "label": "nsga3_heuristic_candidate_0002",
+      "decision_vector": [
+        0.12811363267554587,
+        0.45038593789556713,
+        0.37079802423258124,
+        0.9267649888486018
+      ],
+      "weights": {
+        "w_distance": 0.7277568001101749,
+        "w_time": 2.3068910956882793,
+        "w_risk": 1.9169103187396483
+      },
+      "drone_activation_cost": 18608.534788123434,
+      "objectives": {
+        "final_total_distance_m": 300975.41779670963,
+        "average_delivery_time_h": 0.242556,
+        "final_total_noise_impact": 259.0
+      },
+      "final_total_distance_m": 300975.41779670963,
+      "average_delivery_time_h": 0.242556,
+      "final_total_noise_impact": 259.0,
+      "run_summary": {
+        "total_demands": 9,
+        "served_demands": 9,
+        "service_rate": 1.0,
+        "final_total_distance_m": 300975.41779670963,
+        "final_total_noise_impact": 259.0,
+        "average_delivery_time_h": 0.242556,
+        "max_delivery_time_h": 0.405333,
+        "n_solver_calls": 3,
+        "n_conflict_reports": 0,
+        "n_rrt_paths_used": 22
+      },
+      "problem_meta": {
+        "problem_type": "dynamic_routing_workflow",
+        "problem_id": "run_20260321_160030_gpt-4o-mini_noise0.5",
+        "n_windows": 1,
+        "time_windows": [
+          "2024-03-15T00:00-00:05"
+        ],
+        "stations_path": "D:\\Git\\LLM-UAV-FairRouting\\data\\seed\\drone_station_locations.csv",
+        "building_path": "D:\\Git\\LLM-UAV-FairRouting\\data\\seed\\building_information.csv",
+        "time_limit_s": 180,
+        "max_solver_stations": 1,
+        "max_drones_per_station": 3,
+        "max_payload_kg": 60.0,
+        "max_range_m": 200000.0,
+        "noise_weight": 0.5,
+        "drone_speed_ms": 60.0
+      },
+      "solver_meta": {
+        "solver_family": "evolutionary",
+        "solver_name": "nsga3_heuristic",
+        "inner_solver": "greedy_heuristic"
+      },
+      "is_nondominated": true,
+      "frontier_result_path": "data\\compare_runs\\compare_20260321_150600\\nsga3_heuristic\\run_20260321_160030_gpt-4o-mini_noise0.5\\solver_analytics\\nsga3_heuristic\\frontier_solutions\\nsga3_heuristic_candidate_0002\\workflow_results.json"
+    },
+    {
+      "solution_id": "nsga3_heuristic_candidate_0003",
+      "profile_id": "nsga3_heuristic_candidate_0003",
+      "label": "nsga3_heuristic_candidate_0003",
+      "decision_vector": [
+        0.6438651200806645,
+        0.82276161327083,
+        0.44341419882733113,
+        0.2272387217847769
+      ],
+      "weights": {
+        "w_distance": 3.2549390883952567,
+        "w_time": 4.1315319050270665,
+        "w_risk": 2.2727295742539226
+      },
+      "drone_activation_cost": 5317.535713910761,
+      "objectives": {
+        "final_total_distance_m": 300975.41779670963,
+        "average_delivery_time_h": 0.242556,
+        "final_total_noise_impact": 259.0
+      },
+      "final_total_distance_m": 300975.41779670963,
+      "average_delivery_time_h": 0.242556,
+      "final_total_noise_impact": 259.0,
+      "run_summary": {
+        "total_demands": 9,
+        "served_demands": 9,
+        "service_rate": 1.0,
+        "final_total_distance_m": 300975.41779670963,
+        "final_total_noise_impact": 259.0,
+        "average_delivery_time_h": 0.242556,
+        "max_delivery_time_h": 0.405333,
+        "n_solver_calls": 3,
+        "n_conflict_reports": 0,
+        "n_rrt_paths_used": 22
+      },
+      "problem_meta": {
+        "problem_type": "dynamic_routing_workflow",
+        "problem_id": "run_20260321_160030_gpt-4o-mini_noise0.5",
+        "n_windows": 1,
+        "time_windows": [
+          "2024-03-15T00:00-00:05"
+        ],
+        "stations_path": "D:\\Git\\LLM-UAV-FairRouting\\data\\seed\\drone_station_locations.csv",
+        "building_path": "D:\\Git\\LLM-UAV-FairRouting\\data\\seed\\building_information.csv",
+        "time_limit_s": 180,
+        "max_solver_stations": 1,
+        "max_drones_per_station": 3,
+        "max_payload_kg": 60.0,
+        "max_range_m": 200000.0,
+        "noise_weight": 0.5,
+        "drone_speed_ms": 60.0
+      },
+      "solver_meta": {
+        "solver_family": "evolutionary",
+        "solver_name": "nsga3_heuristic",
+        "inner_solver": "greedy_heuristic"
+      },
+      "is_nondominated": true,
+      "frontier_result_path": "data\\compare_runs\\compare_20260321_150600\\nsga3_heuristic\\run_20260321_160030_gpt-4o-mini_noise0.5\\solver_analytics\\nsga3_heuristic\\frontier_solutions\\nsga3_heuristic_candidate_0003\\workflow_results.json"
+    },
+    {
+      "solution_id": "nsga3_heuristic_candidate_0004",
+      "profile_id": "nsga3_heuristic_candidate_0004",
+      "label": "nsga3_heuristic_candidate_0004",
+      "decision_vector": [
+        0.7640044492240197,
+        0.4391232160149579,
+        0.8585979199113825,
+        0.6973680290593639
+      ],
+      "weights": {
+        "w_distance": 3.843621801197697,
+        "w_time": 2.251703758473294,
+        "w_risk": 4.307129807565774
+      },
+      "drone_activation_cost": 14249.992552127915,
+      "objectives": {
+        "final_total_distance_m": 300975.41779670963,
+        "average_delivery_time_h": 0.242556,
+        "final_total_noise_impact": 259.0
+      },
+      "final_total_distance_m": 300975.41779670963,
+      "average_delivery_time_h": 0.242556,
+      "final_total_noise_impact": 259.0,
+      "run_summary": {
+        "total_demands": 9,
+        "served_demands": 9,
+        "service_rate": 1.0,
+        "final_total_distance_m": 300975.41779670963,
+        "final_total_noise_impact": 259.0,
+        "average_delivery_time_h": 0.242556,
+        "max_delivery_time_h": 0.405333,
+        "n_solver_calls": 3,
+        "n_conflict_reports": 0,
+        "n_rrt_paths_used": 22
+      },
+      "problem_meta": {
+        "problem_type": "dynamic_routing_workflow",
+        "problem_id": "run_20260321_160030_gpt-4o-mini_noise0.5",
+        "n_windows": 1,
+        "time_windows": [
+          "2024-03-15T00:00-00:05"
+        ],
+        "stations_path": "D:\\Git\\LLM-UAV-FairRouting\\data\\seed\\drone_station_locations.csv",
+        "building_path": "D:\\Git\\LLM-UAV-FairRouting\\data\\seed\\building_information.csv",
+        "time_limit_s": 180,
+        "max_solver_stations": 1,
+        "max_drones_per_station": 3,
+        "max_payload_kg": 60.0,
+        "max_range_m": 200000.0,
+        "noise_weight": 0.5,
+        "drone_speed_ms": 60.0
+      },
+      "solver_meta": {
+        "solver_family": "evolutionary",
+        "solver_name": "nsga3_heuristic",
+        "inner_solver": "greedy_heuristic"
+      },
+      "is_nondominated": true,
+      "frontier_result_path": "data\\compare_runs\\compare_20260321_150600\\nsga3_heuristic\\run_20260321_160030_gpt-4o-mini_noise0.5\\solver_analytics\\nsga3_heuristic\\frontier_solutions\\nsga3_heuristic_candidate_0004\\workflow_results.json"
+    },
+    {
+      "solution_id": "nsga3_heuristic_candidate_0005",
+      "profile_id": "nsga3_heuristic_candidate_0005",
+      "label": "nsga3_heuristic_candidate_0005",
+      "decision_vector": [
+        0.12544556944186647,
+        0.4573201302754115,
+        0.47781513516932184,
+        0.22252547880307383
+      ],
+      "weights": {
+        "w_distance": 0.7146832902651458,
+        "w_time": 2.3408686383495168,
+        "w_risk": 2.4412941623296773
+      },
+      "drone_activation_cost": 5227.9840972584025,
+      "objectives": {
+        "final_total_distance_m": 300975.41779670963,
+        "average_delivery_time_h": 0.242556,
+        "final_total_noise_impact": 259.0
+      },
+      "final_total_distance_m": 300975.41779670963,
+      "average_delivery_time_h": 0.242556,
+      "final_total_noise_impact": 259.0,
+      "run_summary": {
+        "total_demands": 9,
+        "served_demands": 9,
+        "service_rate": 1.0,
+        "final_total_distance_m": 300975.41779670963,
+        "final_total_noise_impact": 259.0,
+        "average_delivery_time_h": 0.242556,
+        "max_delivery_time_h": 0.405333,
+        "n_solver_calls": 3,
+        "n_conflict_reports": 0,
+        "n_rrt_paths_used": 22
+      },
+      "problem_meta": {
+        "problem_type": "dynamic_routing_workflow",
+        "problem_id": "run_20260321_160030_gpt-4o-mini_noise0.5",
+        "n_windows": 1,
+        "time_windows": [
+          "2024-03-15T00:00-00:05"
+        ],
+        "stations_path": "D:\\Git\\LLM-UAV-FairRouting\\data\\seed\\drone_station_locations.csv",
+        "building_path": "D:\\Git\\LLM-UAV-FairRouting\\data\\seed\\building_information.csv",
+        "time_limit_s": 180,
+        "max_solver_stations": 1,
+        "max_drones_per_station": 3,
+        "max_payload_kg": 60.0,
+        "max_range_m": 200000.0,
+        "noise_weight": 0.5,
+        "drone_speed_ms": 60.0
+      },
+      "solver_meta": {
+        "solver_family": "evolutionary",
+        "solver_name": "nsga3_heuristic",
+        "inner_solver": "greedy_heuristic"
+      },
+      "is_nondominated": true,
+      "frontier_result_path": "data\\compare_runs\\compare_20260321_150600\\nsga3_heuristic\\run_20260321_160030_gpt-4o-mini_noise0.5\\solver_analytics\\nsga3_heuristic\\frontier_solutions\\nsga3_heuristic_candidate_0005\\workflow_results.json"
+    },
+    {
+      "solution_id": "nsga3_heuristic_candidate_0006",
+      "profile_id": "nsga3_heuristic_candidate_0006",
+      "label": "nsga3_heuristic_candidate_0006",
+      "decision_vector": [
+        0.13806539182002503,
+        0.45014116163266155,
+        0.37079802423258124,
+        0.9267649888486018
+      ],
+      "weights": {
+        "w_distance": 0.7765204199181227,
+        "w_time": 2.3056916920000416,
+        "w_risk": 1.9169103187396483
+      },
+      "drone_activation_cost": 18608.534788123434,
+      "objectives": {
+        "final_total_distance_m": 300975.41779670963,
+        "average_delivery_time_h": 0.242556,
+        "final_total_noise_impact": 259.0
+      },
+      "final_total_distance_m": 300975.41779670963,
+      "average_delivery_time_h": 0.242556,
+      "final_total_noise_impact": 259.0,
+      "run_summary": {
+        "total_demands": 9,
+        "served_demands": 9,
+        "service_rate": 1.0,
+        "final_total_distance_m": 300975.41779670963,
+        "final_total_noise_impact": 259.0,
+        "average_delivery_time_h": 0.242556,
+        "max_delivery_time_h": 0.405333,
+        "n_solver_calls": 3,
+        "n_conflict_reports": 0,
+        "n_rrt_paths_used": 22
+      },
+      "problem_meta": {
+        "problem_type": "dynamic_routing_workflow",
+        "problem_id": "run_20260321_160030_gpt-4o-mini_noise0.5",
+        "n_windows": 1,
+        "time_windows": [
+          "2024-03-15T00:00-00:05"
+        ],
+        "stations_path": "D:\\Git\\LLM-UAV-FairRouting\\data\\seed\\drone_station_locations.csv",
+        "building_path": "D:\\Git\\LLM-UAV-FairRouting\\data\\seed\\building_information.csv",
+        "time_limit_s": 180,
+        "max_solver_stations": 1,
+        "max_drones_per_station": 3,
+        "max_payload_kg": 60.0,
+        "max_range_m": 200000.0,
+        "noise_weight": 0.5,
+        "drone_speed_ms": 60.0
+      },
+      "solver_meta": {
+        "solver_family": "evolutionary",
+        "solver_name": "nsga3_heuristic",
+        "inner_solver": "greedy_heuristic"
+      },
+      "is_nondominated": true,
+      "frontier_result_path": "data\\compare_runs\\compare_20260321_150600\\nsga3_heuristic\\run_20260321_160030_gpt-4o-mini_noise0.5\\solver_analytics\\nsga3_heuristic\\frontier_solutions\\nsga3_heuristic_candidate_0006\\workflow_results.json"
+    },
+    {
+      "solution_id": "nsga3_heuristic_candidate_0007",
+      "profile_id": "nsga3_heuristic_candidate_0007",
+      "label": "nsga3_heuristic_candidate_0007",
+      "decision_vector": [
+        0.6438651200806645,
+        0.8370163676297602,
+        0.3770945846110142,
+        0.9314462988926375
+      ],
+      "weights": {
+        "w_distance": 3.2549390883952567,
+        "w_time": 4.201380201385825,
+        "w_risk": 1.9477634645939699
+      },
+      "drone_activation_cost": 18697.479678960113,
+      "objectives": {
+        "final_total_distance_m": 300975.41779670963,
+        "average_delivery_time_h": 0.242556,
+        "final_total_noise_impact": 259.0
+      },
+      "final_total_distance_m": 300975.41779670963,
+      "average_delivery_time_h": 0.242556,
+      "final_total_noise_impact": 259.0,
+      "run_summary": {
+        "total_demands": 9,
+        "served_demands": 9,
+        "service_rate": 1.0,
+        "final_total_distance_m": 300975.41779670963,
+        "final_total_noise_impact": 259.0,
+        "average_delivery_time_h": 0.242556,
+        "max_delivery_time_h": 0.405333,
+        "n_solver_calls": 3,
+        "n_conflict_reports": 0,
+        "n_rrt_paths_used": 22
+      },
+      "problem_meta": {
+        "problem_type": "dynamic_routing_workflow",
+        "problem_id": "run_20260321_160030_gpt-4o-mini_noise0.5",
+        "n_windows": 1,
+        "time_windows": [
+          "2024-03-15T00:00-00:05"
+        ],
+        "stations_path": "D:\\Git\\LLM-UAV-FairRouting\\data\\seed\\drone_station_locations.csv",
+        "building_path": "D:\\Git\\LLM-UAV-FairRouting\\data\\seed\\building_information.csv",
+        "time_limit_s": 180,
+        "max_solver_stations": 1,
+        "max_drones_per_station": 3,
+        "max_payload_kg": 60.0,
+        "max_range_m": 200000.0,
+        "noise_weight": 0.5,
+        "drone_speed_ms": 60.0
+      },
+      "solver_meta": {
+        "solver_family": "evolutionary",
+        "solver_name": "nsga3_heuristic",
+        "inner_solver": "greedy_heuristic"
+      },
+      "is_nondominated": true,
+      "frontier_result_path": "data\\compare_runs\\compare_20260321_150600\\nsga3_heuristic\\run_20260321_160030_gpt-4o-mini_noise0.5\\solver_analytics\\nsga3_heuristic\\frontier_solutions\\nsga3_heuristic_candidate_0007\\workflow_results.json"
+    }
+  ],
+  "frontier": [
+    {
+      "solution_id": "nsga3_heuristic_candidate_0000",
+      "profile_id": "nsga3_heuristic_candidate_0000",
+      "label": "nsga3_heuristic_candidate_0000",
+      "decision_vector": [
+        0.7739560485559633,
+        0.4388784397520523,
+        0.8585979199113825,
+        0.6973680290593639
+      ],
+      "weights": {
+        "w_distance": 3.892384637924221,
+        "w_time": 2.2505043547850567,
+        "w_risk": 4.307129807565774
+      },
+      "drone_activation_cost": 14249.992552127915,
+      "objectives": {
+        "final_total_distance_m": 300975.41779670963,
+        "average_delivery_time_h": 0.242556,
+        "final_total_noise_impact": 259.0
+      },
+      "final_total_distance_m": 300975.41779670963,
+      "average_delivery_time_h": 0.242556,
+      "final_total_noise_impact": 259.0,
+      "run_summary": {
+        "total_demands": 9,
+        "served_demands": 9,
+        "service_rate": 1.0,
+        "final_total_distance_m": 300975.41779670963,
+        "final_total_noise_impact": 259.0,
+        "average_delivery_time_h": 0.242556,
+        "max_delivery_time_h": 0.405333,
+        "n_solver_calls": 3,
+        "n_conflict_reports": 0,
+        "n_rrt_paths_used": 22
+      },
+      "problem_meta": {
+        "problem_type": "dynamic_routing_workflow",
+        "problem_id": "run_20260321_160030_gpt-4o-mini_noise0.5",
+        "n_windows": 1,
+        "time_windows": [
+          "2024-03-15T00:00-00:05"
+        ],
+        "stations_path": "D:\\Git\\LLM-UAV-FairRouting\\data\\seed\\drone_station_locations.csv",
+        "building_path": "D:\\Git\\LLM-UAV-FairRouting\\data\\seed\\building_information.csv",
+        "time_limit_s": 180,
+        "max_solver_stations": 1,
+        "max_drones_per_station": 3,
+        "max_payload_kg": 60.0,
+        "max_range_m": 200000.0,
+        "noise_weight": 0.5,
+        "drone_speed_ms": 60.0
+      },
+      "solver_meta": {
+        "solver_family": "evolutionary",
+        "solver_name": "nsga3_heuristic",
+        "inner_solver": "greedy_heuristic"
+      },
+      "is_nondominated": true,
+      "frontier_result_path": "data\\compare_runs\\compare_20260321_150600\\nsga3_heuristic\\run_20260321_160030_gpt-4o-mini_noise0.5\\solver_analytics\\nsga3_heuristic\\frontier_solutions\\nsga3_heuristic_candidate_0000\\workflow_results.json"
+    },
+    {
+      "solution_id": "nsga3_heuristic_candidate_0001",
+      "profile_id": "nsga3_heuristic_candidate_0001",
+      "label": "nsga3_heuristic_candidate_0001",
+      "decision_vector": [
+        0.09417734788764953,
+        0.9756223516367559,
+        0.761139701990353,
+        0.7860643052769538
+      ],
+      "weights": {
+        "w_distance": 0.5614690046494828,
+        "w_time": 4.880549523020104,
+        "w_risk": 3.8295845397527297
+      },
+      "drone_activation_cost": 15935.221800262123,
+      "objectives": {
+        "final_total_distance_m": 300975.41779670963,
+        "average_delivery_time_h": 0.242556,
+        "final_total_noise_impact": 259.0
+      },
+      "final_total_distance_m": 300975.41779670963,
+      "average_delivery_time_h": 0.242556,
+      "final_total_noise_impact": 259.0,
+      "run_summary": {
+        "total_demands": 9,
+        "served_demands": 9,
+        "service_rate": 1.0,
+        "final_total_distance_m": 300975.41779670963,
+        "final_total_noise_impact": 259.0,
+        "average_delivery_time_h": 0.242556,
+        "max_delivery_time_h": 0.405333,
+        "n_solver_calls": 3,
+        "n_conflict_reports": 0,
+        "n_rrt_paths_used": 22
+      },
+      "problem_meta": {
+        "problem_type": "dynamic_routing_workflow",
+        "problem_id": "run_20260321_160030_gpt-4o-mini_noise0.5",
+        "n_windows": 1,
+        "time_windows": [
+          "2024-03-15T00:00-00:05"
+        ],
+        "stations_path": "D:\\Git\\LLM-UAV-FairRouting\\data\\seed\\drone_station_locations.csv",
+        "building_path": "D:\\Git\\LLM-UAV-FairRouting\\data\\seed\\building_information.csv",
+        "time_limit_s": 180,
+        "max_solver_stations": 1,
+        "max_drones_per_station": 3,
+        "max_payload_kg": 60.0,
+        "max_range_m": 200000.0,
+        "noise_weight": 0.5,
+        "drone_speed_ms": 60.0
+      },
+      "solver_meta": {
+        "solver_family": "evolutionary",
+        "solver_name": "nsga3_heuristic",
+        "inner_solver": "greedy_heuristic"
+      },
+      "is_nondominated": true,
+      "frontier_result_path": "data\\compare_runs\\compare_20260321_150600\\nsga3_heuristic\\run_20260321_160030_gpt-4o-mini_noise0.5\\solver_analytics\\nsga3_heuristic\\frontier_solutions\\nsga3_heuristic_candidate_0001\\workflow_results.json"
+    },
+    {
+      "solution_id": "nsga3_heuristic_candidate_0002",
+      "profile_id": "nsga3_heuristic_candidate_0002",
+      "label": "nsga3_heuristic_candidate_0002",
+      "decision_vector": [
+        0.12811363267554587,
+        0.45038593789556713,
+        0.37079802423258124,
+        0.9267649888486018
+      ],
+      "weights": {
+        "w_distance": 0.7277568001101749,
+        "w_time": 2.3068910956882793,
+        "w_risk": 1.9169103187396483
+      },
+      "drone_activation_cost": 18608.534788123434,
+      "objectives": {
+        "final_total_distance_m": 300975.41779670963,
+        "average_delivery_time_h": 0.242556,
+        "final_total_noise_impact": 259.0
+      },
+      "final_total_distance_m": 300975.41779670963,
+      "average_delivery_time_h": 0.242556,
+      "final_total_noise_impact": 259.0,
+      "run_summary": {
+        "total_demands": 9,
+        "served_demands": 9,
+        "service_rate": 1.0,
+        "final_total_distance_m": 300975.41779670963,
+        "final_total_noise_impact": 259.0,
+        "average_delivery_time_h": 0.242556,
+        "max_delivery_time_h": 0.405333,
+        "n_solver_calls": 3,
+        "n_conflict_reports": 0,
+        "n_rrt_paths_used": 22
+      },
+      "problem_meta": {
+        "problem_type": "dynamic_routing_workflow",
+        "problem_id": "run_20260321_160030_gpt-4o-mini_noise0.5",
+        "n_windows": 1,
+        "time_windows": [
+          "2024-03-15T00:00-00:05"
+        ],
+        "stations_path": "D:\\Git\\LLM-UAV-FairRouting\\data\\seed\\drone_station_locations.csv",
+        "building_path": "D:\\Git\\LLM-UAV-FairRouting\\data\\seed\\building_information.csv",
+        "time_limit_s": 180,
+        "max_solver_stations": 1,
+        "max_drones_per_station": 3,
+        "max_payload_kg": 60.0,
+        "max_range_m": 200000.0,
+        "noise_weight": 0.5,
+        "drone_speed_ms": 60.0
+      },
+      "solver_meta": {
+        "solver_family": "evolutionary",
+        "solver_name": "nsga3_heuristic",
+        "inner_solver": "greedy_heuristic"
+      },
+      "is_nondominated": true,
+      "frontier_result_path": "data\\compare_runs\\compare_20260321_150600\\nsga3_heuristic\\run_20260321_160030_gpt-4o-mini_noise0.5\\solver_analytics\\nsga3_heuristic\\frontier_solutions\\nsga3_heuristic_candidate_0002\\workflow_results.json"
+    },
+    {
+      "solution_id": "nsga3_heuristic_candidate_0003",
+      "profile_id": "nsga3_heuristic_candidate_0003",
+      "label": "nsga3_heuristic_candidate_0003",
+      "decision_vector": [
+        0.6438651200806645,
+        0.82276161327083,
+        0.44341419882733113,
+        0.2272387217847769
+      ],
+      "weights": {
+        "w_distance": 3.2549390883952567,
+        "w_time": 4.1315319050270665,
+        "w_risk": 2.2727295742539226
+      },
+      "drone_activation_cost": 5317.535713910761,
+      "objectives": {
+        "final_total_distance_m": 300975.41779670963,
+        "average_delivery_time_h": 0.242556,
+        "final_total_noise_impact": 259.0
+      },
+      "final_total_distance_m": 300975.41779670963,
+      "average_delivery_time_h": 0.242556,
+      "final_total_noise_impact": 259.0,
+      "run_summary": {
+        "total_demands": 9,
+        "served_demands": 9,
+        "service_rate": 1.0,
+        "final_total_distance_m": 300975.41779670963,
+        "final_total_noise_impact": 259.0,
+        "average_delivery_time_h": 0.242556,
+        "max_delivery_time_h": 0.405333,
+        "n_solver_calls": 3,
+        "n_conflict_reports": 0,
+        "n_rrt_paths_used": 22
+      },
+      "problem_meta": {
+        "problem_type": "dynamic_routing_workflow",
+        "problem_id": "run_20260321_160030_gpt-4o-mini_noise0.5",
+        "n_windows": 1,
+        "time_windows": [
+          "2024-03-15T00:00-00:05"
+        ],
+        "stations_path": "D:\\Git\\LLM-UAV-FairRouting\\data\\seed\\drone_station_locations.csv",
+        "building_path": "D:\\Git\\LLM-UAV-FairRouting\\data\\seed\\building_information.csv",
+        "time_limit_s": 180,
+        "max_solver_stations": 1,
+        "max_drones_per_station": 3,
+        "max_payload_kg": 60.0,
+        "max_range_m": 200000.0,
+        "noise_weight": 0.5,
+        "drone_speed_ms": 60.0
+      },
+      "solver_meta": {
+        "solver_family": "evolutionary",
+        "solver_name": "nsga3_heuristic",
+        "inner_solver": "greedy_heuristic"
+      },
+      "is_nondominated": true,
+      "frontier_result_path": "data\\compare_runs\\compare_20260321_150600\\nsga3_heuristic\\run_20260321_160030_gpt-4o-mini_noise0.5\\solver_analytics\\nsga3_heuristic\\frontier_solutions\\nsga3_heuristic_candidate_0003\\workflow_results.json"
+    },
+    {
+      "solution_id": "nsga3_heuristic_candidate_0004",
+      "profile_id": "nsga3_heuristic_candidate_0004",
+      "label": "nsga3_heuristic_candidate_0004",
+      "decision_vector": [
+        0.7640044492240197,
+        0.4391232160149579,
+        0.8585979199113825,
+        0.6973680290593639
+      ],
+      "weights": {
+        "w_distance": 3.843621801197697,
+        "w_time": 2.251703758473294,
+        "w_risk": 4.307129807565774
+      },
+      "drone_activation_cost": 14249.992552127915,
+      "objectives": {
+        "final_total_distance_m": 300975.41779670963,
+        "average_delivery_time_h": 0.242556,
+        "final_total_noise_impact": 259.0
+      },
+      "final_total_distance_m": 300975.41779670963,
+      "average_delivery_time_h": 0.242556,
+      "final_total_noise_impact": 259.0,
+      "run_summary": {
+        "total_demands": 9,
+        "served_demands": 9,
+        "service_rate": 1.0,
+        "final_total_distance_m": 300975.41779670963,
+        "final_total_noise_impact": 259.0,
+        "average_delivery_time_h": 0.242556,
+        "max_delivery_time_h": 0.405333,
+        "n_solver_calls": 3,
+        "n_conflict_reports": 0,
+        "n_rrt_paths_used": 22
+      },
+      "problem_meta": {
+        "problem_type": "dynamic_routing_workflow",
+        "problem_id": "run_20260321_160030_gpt-4o-mini_noise0.5",
+        "n_windows": 1,
+        "time_windows": [
+          "2024-03-15T00:00-00:05"
+        ],
+        "stations_path": "D:\\Git\\LLM-UAV-FairRouting\\data\\seed\\drone_station_locations.csv",
+        "building_path": "D:\\Git\\LLM-UAV-FairRouting\\data\\seed\\building_information.csv",
+        "time_limit_s": 180,
+        "max_solver_stations": 1,
+        "max_drones_per_station": 3,
+        "max_payload_kg": 60.0,
+        "max_range_m": 200000.0,
+        "noise_weight": 0.5,
+        "drone_speed_ms": 60.0
+      },
+      "solver_meta": {
+        "solver_family": "evolutionary",
+        "solver_name": "nsga3_heuristic",
+        "inner_solver": "greedy_heuristic"
+      },
+      "is_nondominated": true,
+      "frontier_result_path": "data\\compare_runs\\compare_20260321_150600\\nsga3_heuristic\\run_20260321_160030_gpt-4o-mini_noise0.5\\solver_analytics\\nsga3_heuristic\\frontier_solutions\\nsga3_heuristic_candidate_0004\\workflow_results.json"
+    },
+    {
+      "solution_id": "nsga3_heuristic_candidate_0005",
+      "profile_id": "nsga3_heuristic_candidate_0005",
+      "label": "nsga3_heuristic_candidate_0005",
+      "decision_vector": [
+        0.12544556944186647,
+        0.4573201302754115,
+        0.47781513516932184,
+        0.22252547880307383
+      ],
+      "weights": {
+        "w_distance": 0.7146832902651458,
+        "w_time": 2.3408686383495168,
+        "w_risk": 2.4412941623296773
+      },
+      "drone_activation_cost": 5227.9840972584025,
+      "objectives": {
+        "final_total_distance_m": 300975.41779670963,
+        "average_delivery_time_h": 0.242556,
+        "final_total_noise_impact": 259.0
+      },
+      "final_total_distance_m": 300975.41779670963,
+      "average_delivery_time_h": 0.242556,
+      "final_total_noise_impact": 259.0,
+      "run_summary": {
+        "total_demands": 9,
+        "served_demands": 9,
+        "service_rate": 1.0,
+        "final_total_distance_m": 300975.41779670963,
+        "final_total_noise_impact": 259.0,
+        "average_delivery_time_h": 0.242556,
+        "max_delivery_time_h": 0.405333,
+        "n_solver_calls": 3,
+        "n_conflict_reports": 0,
+        "n_rrt_paths_used": 22
+      },
+      "problem_meta": {
+        "problem_type": "dynamic_routing_workflow",
+        "problem_id": "run_20260321_160030_gpt-4o-mini_noise0.5",
+        "n_windows": 1,
+        "time_windows": [
+          "2024-03-15T00:00-00:05"
+        ],
+        "stations_path": "D:\\Git\\LLM-UAV-FairRouting\\data\\seed\\drone_station_locations.csv",
+        "building_path": "D:\\Git\\LLM-UAV-FairRouting\\data\\seed\\building_information.csv",
+        "time_limit_s": 180,
+        "max_solver_stations": 1,
+        "max_drones_per_station": 3,
+        "max_payload_kg": 60.0,
+        "max_range_m": 200000.0,
+        "noise_weight": 0.5,
+        "drone_speed_ms": 60.0
+      },
+      "solver_meta": {
+        "solver_family": "evolutionary",
+        "solver_name": "nsga3_heuristic",
+        "inner_solver": "greedy_heuristic"
+      },
+      "is_nondominated": true,
+      "frontier_result_path": "data\\compare_runs\\compare_20260321_150600\\nsga3_heuristic\\run_20260321_160030_gpt-4o-mini_noise0.5\\solver_analytics\\nsga3_heuristic\\frontier_solutions\\nsga3_heuristic_candidate_0005\\workflow_results.json"
+    },
+    {
+      "solution_id": "nsga3_heuristic_candidate_0006",
+      "profile_id": "nsga3_heuristic_candidate_0006",
+      "label": "nsga3_heuristic_candidate_0006",
+      "decision_vector": [
+        0.13806539182002503,
+        0.45014116163266155,
+        0.37079802423258124,
+        0.9267649888486018
+      ],
+      "weights": {
+        "w_distance": 0.7765204199181227,
+        "w_time": 2.3056916920000416,
+        "w_risk": 1.9169103187396483
+      },
+      "drone_activation_cost": 18608.534788123434,
+      "objectives": {
+        "final_total_distance_m": 300975.41779670963,
+        "average_delivery_time_h": 0.242556,
+        "final_total_noise_impact": 259.0
+      },
+      "final_total_distance_m": 300975.41779670963,
+      "average_delivery_time_h": 0.242556,
+      "final_total_noise_impact": 259.0,
+      "run_summary": {
+        "total_demands": 9,
+        "served_demands": 9,
+        "service_rate": 1.0,
+        "final_total_distance_m": 300975.41779670963,
+        "final_total_noise_impact": 259.0,
+        "average_delivery_time_h": 0.242556,
+        "max_delivery_time_h": 0.405333,
+        "n_solver_calls": 3,
+        "n_conflict_reports": 0,
+        "n_rrt_paths_used": 22
+      },
+      "problem_meta": {
+        "problem_type": "dynamic_routing_workflow",
+        "problem_id": "run_20260321_160030_gpt-4o-mini_noise0.5",
+        "n_windows": 1,
+        "time_windows": [
+          "2024-03-15T00:00-00:05"
+        ],
+        "stations_path": "D:\\Git\\LLM-UAV-FairRouting\\data\\seed\\drone_station_locations.csv",
+        "building_path": "D:\\Git\\LLM-UAV-FairRouting\\data\\seed\\building_information.csv",
+        "time_limit_s": 180,
+        "max_solver_stations": 1,
+        "max_drones_per_station": 3,
+        "max_payload_kg": 60.0,
+        "max_range_m": 200000.0,
+        "noise_weight": 0.5,
+        "drone_speed_ms": 60.0
+      },
+      "solver_meta": {
+        "solver_family": "evolutionary",
+        "solver_name": "nsga3_heuristic",
+        "inner_solver": "greedy_heuristic"
+      },
+      "is_nondominated": true,
+      "frontier_result_path": "data\\compare_runs\\compare_20260321_150600\\nsga3_heuristic\\run_20260321_160030_gpt-4o-mini_noise0.5\\solver_analytics\\nsga3_heuristic\\frontier_solutions\\nsga3_heuristic_candidate_0006\\workflow_results.json"
+    },
+    {
+      "solution_id": "nsga3_heuristic_candidate_0007",
+      "profile_id": "nsga3_heuristic_candidate_0007",
+      "label": "nsga3_heuristic_candidate_0007",
+      "decision_vector": [
+        0.6438651200806645,
+        0.8370163676297602,
+        0.3770945846110142,
+        0.9314462988926375
+      ],
+      "weights": {
+        "w_distance": 3.2549390883952567,
+        "w_time": 4.201380201385825,
+        "w_risk": 1.9477634645939699
+      },
+      "drone_activation_cost": 18697.479678960113,
+      "objectives": {
+        "final_total_distance_m": 300975.41779670963,
+        "average_delivery_time_h": 0.242556,
+        "final_total_noise_impact": 259.0
+      },
+      "final_total_distance_m": 300975.41779670963,
+      "average_delivery_time_h": 0.242556,
+      "final_total_noise_impact": 259.0,
+      "run_summary": {
+        "total_demands": 9,
+        "served_demands": 9,
+        "service_rate": 1.0,
+        "final_total_distance_m": 300975.41779670963,
+        "final_total_noise_impact": 259.0,
+        "average_delivery_time_h": 0.242556,
+        "max_delivery_time_h": 0.405333,
+        "n_solver_calls": 3,
+        "n_conflict_reports": 0,
+        "n_rrt_paths_used": 22
+      },
+      "problem_meta": {
+        "problem_type": "dynamic_routing_workflow",
+        "problem_id": "run_20260321_160030_gpt-4o-mini_noise0.5",
+        "n_windows": 1,
+        "time_windows": [
+          "2024-03-15T00:00-00:05"
+        ],
+        "stations_path": "D:\\Git\\LLM-UAV-FairRouting\\data\\seed\\drone_station_locations.csv",
+        "building_path": "D:\\Git\\LLM-UAV-FairRouting\\data\\seed\\building_information.csv",
+        "time_limit_s": 180,
+        "max_solver_stations": 1,
+        "max_drones_per_station": 3,
+        "max_payload_kg": 60.0,
+        "max_range_m": 200000.0,
+        "noise_weight": 0.5,
+        "drone_speed_ms": 60.0
+      },
+      "solver_meta": {
+        "solver_family": "evolutionary",
+        "solver_name": "nsga3_heuristic",
+        "inner_solver": "greedy_heuristic"
+      },
+      "is_nondominated": true,
+      "frontier_result_path": "data\\compare_runs\\compare_20260321_150600\\nsga3_heuristic\\run_20260321_160030_gpt-4o-mini_noise0.5\\solver_analytics\\nsga3_heuristic\\frontier_solutions\\nsga3_heuristic_candidate_0007\\workflow_results.json"
+    }
+  ],
+  "candidates_json": "data\\compare_runs\\compare_20260321_150600\\nsga3_heuristic\\run_20260321_160030_gpt-4o-mini_noise0.5\\solver_analytics\\nsga3_heuristic\\nsga3_heuristic_candidates.json",
+  "frontier_json": "data\\compare_runs\\compare_20260321_150600\\nsga3_heuristic\\run_20260321_160030_gpt-4o-mini_noise0.5\\solver_analytics\\nsga3_heuristic\\nsga3_heuristic_pareto_frontier.json",
+  "pareto_analysis": {
+    "candidate_count": 8,
+    "frontier_size": 8,
+    "metrics": [
+      "final_total_distance_m",
+      "average_delivery_time_h",
+      "final_total_noise_impact"
+    ],
+    "extreme_solutions": {
+      "final_total_distance_m": {
+        "best_solution_id": "nsga3_heuristic_candidate_0000",
+        "best_value": 300975.41779670963,
+        "worst_solution_id": "nsga3_heuristic_candidate_0007",
+        "worst_value": 300975.41779670963
+      },
+      "average_delivery_time_h": {
+        "best_solution_id": "nsga3_heuristic_candidate_0000",
+        "best_value": 0.242556,
+        "worst_solution_id": "nsga3_heuristic_candidate_0007",
+        "worst_value": 0.242556
+      },
+      "final_total_noise_impact": {
+        "best_solution_id": "nsga3_heuristic_candidate_0000",
+        "best_value": 259.0,
+        "worst_solution_id": "nsga3_heuristic_candidate_0007",
+        "worst_value": 259.0
+      }
+    },
+    "metric_ranges": {
+      "final_total_distance_m": {
+        "min": 300975.41779670963,
+        "max": 300975.41779670963,
+        "spread": 0.0
+      },
+      "average_delivery_time_h": {
+        "min": 0.242556,
+        "max": 0.242556,
+        "spread": 0.0
+      },
+      "final_total_noise_impact": {
+        "min": 259.0,
+        "max": 259.0,
+        "spread": 0.0
+      }
+    },
+    "dominance_check_passed": true,
+    "frontier_solution_ids": [
+      "nsga3_heuristic_candidate_0000",
+      "nsga3_heuristic_candidate_0001",
+      "nsga3_heuristic_candidate_0002",
+      "nsga3_heuristic_candidate_0003",
+      "nsga3_heuristic_candidate_0004",
+      "nsga3_heuristic_candidate_0005",
+      "nsga3_heuristic_candidate_0006",
+      "nsga3_heuristic_candidate_0007"
+    ]
+  },
+  "summary_json": "data\\compare_runs\\compare_20260321_150600\\nsga3_heuristic\\run_20260321_160030_gpt-4o-mini_noise0.5\\solver_analytics\\nsga3_heuristic\\nsga3_heuristic_summary.json",
+  "pareto_analysis_json": "data\\compare_runs\\compare_20260321_150600\\nsga3_heuristic\\run_20260321_160030_gpt-4o-mini_noise0.5\\solver_analytics\\nsga3_heuristic\\pareto_analysis.json",
+  "charts": [
+    {
+      "chart_type": "pareto_frontier",
+      "path": "data\\compare_runs\\compare_20260321_150600\\nsga3_heuristic\\run_20260321_160030_gpt-4o-mini_noise0.5\\solver_analytics\\nsga3_heuristic\\charts\\pareto_frontier.png"
+    }
+  ]
+}

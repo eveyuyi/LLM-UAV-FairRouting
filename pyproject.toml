@@ -16,6 +16,7 @@ dependencies = [
   "scipy",
   "matplotlib",
   "openpyxl",
+  "pymoo",
 ]
 
 [project.optional-dependencies]

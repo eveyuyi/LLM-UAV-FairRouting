@@ -6,6 +6,7 @@ from llm4fairrouting.routing.path_costs import (
     FLIGHT_HEIGHT,
     FastRRTPlanner,
     build_lazy_distance_and_noise_matrices,
+    export_rrt_paths_for_edges,
 )
 
 
@@ -110,3 +111,38 @@ def test_eager_and_lazy_path_builders_match_for_same_points(monkeypatch):
 
     np.testing.assert_allclose(eager_dist, lazy_dist_values)
     np.testing.assert_array_equal(eager_noise, lazy_noise_values)
+
+
+def test_export_rrt_paths_for_used_edges(monkeypatch):
+    points, ref_lat, ref_lon = _build_points()
+    residential_positions = np.array([[0.0, 0.0, 0.0]])
+    residential_tree = cKDTree(residential_positions)
+
+    def fake_plan(self, start, goal, rng=None):
+        mid = (start + goal) / 2.0
+        return 123.0, [start, mid, goal]
+
+    monkeypatch.setattr(FastRRTPlanner, "plan", fake_plan)
+    monkeypatch.setattr(
+        "llm4fairrouting.routing.path_costs.compute_path_noise_impact",
+        lambda **kwargs: 3,
+    )
+
+    dist_matrix, _noise_matrix = build_lazy_distance_and_noise_matrices(
+        task_points=points,
+        obstacles_raw=[],
+        residential_positions=residential_positions,
+        residential_tree=residential_tree,
+        ref_lat=ref_lat,
+        ref_lon=ref_lon,
+        flight_height=FLIGHT_HEIGHT,
+    )
+
+    _ = dist_matrix[0, 1]
+    exported = export_rrt_paths_for_edges(dist_matrix, [(0, 1), (1, 0), (0, 0)])
+
+    assert len(exported) == 1
+    assert exported[0]["from_id"] == "S1"
+    assert exported[0]["to_id"] == "D1"
+    assert exported[0]["n_waypoints"] == 3
+    assert exported[0]["noise_impact"] == 3

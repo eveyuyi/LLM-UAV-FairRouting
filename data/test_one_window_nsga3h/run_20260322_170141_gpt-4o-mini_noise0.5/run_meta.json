@@ -1,0 +1,29 @@
+{
+  "created_at": "2026-03-22T17:01:41.165060",
+  "model": "gpt-4o-mini",
+  "offline": true,
+  "noise_weight": 0.5,
+  "drone_activation_cost": 1000.0,
+  "temperature": 0.0,
+  "window_minutes": 5,
+  "time_limit": 180,
+  "max_drones_per_station": 3,
+  "max_payload": 60.0,
+  "max_range": 200000.0,
+  "max_solver_stations": 1,
+  "building_path": "data/seed/building_information.csv",
+  "drone_speed": 60.0,
+  "stations_path": "data/seed/drone_station_locations.csv",
+  "dialogue_path": "data/seed/daily_demand_dialogues.jsonl",
+  "time_slots": [
+    0
+  ],
+  "skip_solver": false,
+  "pareto_scan": false,
+  "enable_conflict_refiner": false,
+  "solver_backend": "nsga3_heuristic",
+  "nsga3_pop_size": 8,
+  "nsga3_n_generations": 4,
+  "nsga3_seed": 42,
+  "nsga3_save_all_candidate_results": false
+}

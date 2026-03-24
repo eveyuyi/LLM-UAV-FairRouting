@@ -60,7 +60,7 @@ class CplexSolver:
         all_points: List[Point],
         noise_cost_matrix: np.ndarray = None,
         noise_weight: float = 0.0,
-        drone_activation_cost: float = 10000.0,
+        drone_activation_cost: float = 1000.0,
         time_limit: int = 10,
         analytics_output_dir: Optional[str] = None,
         enable_conflict_refiner: bool = False,
@@ -110,6 +110,21 @@ class CplexSolver:
         if self.analytics_output_dir is not None:
             summary["artifact_dir"] = str(self.analytics_output_dir / "conflicts" / solve_name)
         return summary
+
+    @staticmethod
+    def _has_usable_incumbent(results: object, model: ConcreteModel) -> bool:
+        solution_container = getattr(results, "solution", None)
+        if solution_container is not None:
+            try:
+                if len(solution_container) > 0:
+                    return True
+            except TypeError:
+                pass
+
+        for var in model.component_data_objects(Var, active=True):
+            if value(var, exception=False) is not None:
+                return True
+        return False
 
     def solve_assignment(
         self,
@@ -681,11 +696,17 @@ class CplexSolver:
                 solve_name=solve_name,
                 termination=termination,
             )
+            incumbent_available = (
+                termination == TerminationCondition.maxTimeLimit
+                and self._has_usable_incumbent(results, model)
+            )
 
             if termination in [
                 TerminationCondition.optimal,
                 TerminationCondition.feasible,
-            ]:
+            ] or incumbent_available:
+                if incumbent_available:
+                    print("    CPLEX 达到 time limit，但已找到可行 incumbent，提取当前近似解")
                 objective_breakdown = {
                     "distance_m": sum(
                         arc_distance[(u, i, j)] * float(value(model.x[u, i, j]))
@@ -843,6 +864,7 @@ class CplexSolver:
                     "convergence_trace": convergence_trace,
                     "conflict_refiner": conflict_summary,
                     "solver_log_path": str(log_path) if log_path is not None else None,
+                    "accepted_with_incumbent": incumbent_available,
                 }
                 return route_plans
             print(f"    求解失败: {termination}")

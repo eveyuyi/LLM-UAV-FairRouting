@@ -1,0 +1,36 @@
+{
+  "compare_dir": "data\\compare_runs\\compare_20260321_181623",
+  "cplex_run_dir": "data\\compare_runs\\compare_20260321_181623\\cplex\\run_20260321_181624_gpt-4o-mini_noise0.5",
+  "nsga3_run_dir": "data\\compare_runs\\compare_20260321_181623\\nsga3\\run_20260321_183946_gpt-4o-mini_noise0.5",
+  "nsga3_heuristic_run_dir": "data\\compare_runs\\compare_20260321_181623\\nsga3_heuristic\\run_20260321_191052_gpt-4o-mini_noise0.5",
+  "priority_alignment_json": "data\\compare_runs\\compare_20260321_181623\\priority_alignment.json",
+  "solver_comparison_json": "data\\compare_runs\\compare_20260321_181623\\solver_comparison.json",
+  "time_slots": [
+    0
+  ],
+  "time_limit_s": 180,
+  "nsga3_pop_size": 4,
+  "nsga3_n_generations": 2,
+  "drone_activation_cost": 1000.0,
+  "nsga3_runtime": {
+    "search_runtime_s": 1863.85536,
+    "avg_candidate_runtime_s": 232.98192
+  },
+  "nsga3_heuristic_runtime": {
+    "search_runtime_s": 378.634488,
+    "avg_candidate_runtime_s": 47.329311
+  },
+  "rrt_3d_visualizations": {
+    "cplex_main": {
+      "workflow_results_path": "data\\compare_runs\\compare_20260321_181623\\cplex\\run_20260321_181624_gpt-4o-mini_noise0.5\\workflow_results.json",
+      "rrt_paths_json": "D:\\Git\\LLM-UAV-FairRouting\\data\\compare_runs\\compare_20260321_181623\\cplex\\run_20260321_181624_gpt-4o-mini_noise0.5\\solver_analytics\\rrt_paths.json",
+      "chart_path": "data\\compare_runs\\compare_20260321_181623\\rrt_3d_charts\\cplex_main_rrt_3d.png",
+      "n_rrt_paths": 16,
+      "topdown_chart_path": "data\\compare_runs\\compare_20260321_181623\\rrt_3d_charts\\cplex_main_rrt_topdown.png"
+    },
+    "nsga3_representative": null,
+    "nsga3_heuristic_representative": null
+  },
+  "five_objectives_csv": "data\\compare_runs\\compare_20260321_181623\\five_objectives_raw.csv",
+  "five_objective_rows": 18
+}

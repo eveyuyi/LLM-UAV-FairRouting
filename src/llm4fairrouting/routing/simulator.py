@@ -32,6 +32,7 @@ class FinalDroneSimulator:
         objective_weight_schedule: Optional[List[Dict[str, object]]] = None,
         analytics_output_dir: Optional[str] = None,
         enable_conflict_refiner: bool = False,
+        assignment_solver: Optional[object] = None,
     ):
         self.supply_points = supply_points
         self.demand_points = demand_points
@@ -94,7 +95,7 @@ class FinalDroneSimulator:
         self.gantt_tasks: List[Dict[str, object]] = []
         self.active_legs: Dict[str, Dict[str, object]] = {}
 
-        self.cplex_solver = CplexSolver(
+        self.cplex_solver = assignment_solver or CplexSolver(
             drones=drones_static,
             supply_indices=self.supply_indices,
             station_indices=self.station_indices,
@@ -204,17 +205,26 @@ class FinalDroneSimulator:
             for event in self.all_demand_events
             if event.served_time is not None
         ]
+        used_drone_ids = sorted(
+            ds.drone_id
+            for ds in self.drone_states
+            if len(getattr(ds, "executed_path", []) or []) > 1
+        )
         delivery_latencies = [
             max(0.0, float(event.served_time) - float(event.time))
             for event in served_events
         ]
+        service_rate = (
+            round(
+                len(served_events) / len(self.all_demand_events),
+                6,
+            ) if self.all_demand_events else 0.0
+        )
         run_summary = {
             "total_demands": len(self.all_demand_events),
             "served_demands": len(served_events),
-            "service_rate": round(
-                len(served_events) / len(self.all_demand_events),
-                6,
-            ) if self.all_demand_events else 0.0,
+            "service_rate": service_rate,
+            "service_rate_loss": round(1.0 - service_rate, 6),
             "final_total_distance_m": float(self.total_distance),
             "final_total_noise_impact": float(self.total_noise_impact),
             "average_delivery_time_h": round(
@@ -222,6 +232,8 @@ class FinalDroneSimulator:
                 6,
             ) if delivery_latencies else None,
             "max_delivery_time_h": round(max(delivery_latencies), 6) if delivery_latencies else None,
+            "n_used_drones": len(used_drone_ids),
+            "used_drone_ids": used_drone_ids,
             "n_solver_calls": len(self.solver_calls),
             "n_conflict_reports": sum(
                 1

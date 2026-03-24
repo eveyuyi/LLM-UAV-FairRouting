@@ -1,0 +1,265 @@
+{
+  "candidates": [
+    {
+      "profile_id": "balanced",
+      "label": "Balanced",
+      "weights": {
+        "w_distance": 1.0,
+        "w_time": 1.0,
+        "w_risk": 1.0
+      },
+      "total_demands": 9,
+      "served_demands": 9,
+      "service_rate": 1.0,
+      "final_total_distance_m": 72888.26179938215,
+      "final_total_noise_impact": 39.0,
+      "average_delivery_time_h": 0.169,
+      "max_delivery_time_h": 0.240333,
+      "n_solver_calls": 1,
+      "n_conflict_reports": 0,
+      "n_rrt_paths_used": 17,
+      "analytics_dir": "data\\compare_runs\\compare_20260321_150600\\cplex\\run_20260321_150601_gpt-4o-mini_noise0.5\\solver_analytics\\pareto\\profiles\\balanced"
+    },
+    {
+      "profile_id": "distance_focus",
+      "label": "Distance Focus",
+      "weights": {
+        "w_distance": 3.0,
+        "w_time": 1.0,
+        "w_risk": 1.0
+      },
+      "total_demands": 9,
+      "served_demands": 9,
+      "service_rate": 1.0,
+      "final_total_distance_m": 72888.26179938215,
+      "final_total_noise_impact": 39.0,
+      "average_delivery_time_h": 0.169,
+      "max_delivery_time_h": 0.240333,
+      "n_solver_calls": 1,
+      "n_conflict_reports": 0,
+      "n_rrt_paths_used": 17,
+      "analytics_dir": "data\\compare_runs\\compare_20260321_150600\\cplex\\run_20260321_150601_gpt-4o-mini_noise0.5\\solver_analytics\\pareto\\profiles\\distance_focus"
+    },
+    {
+      "profile_id": "time_focus",
+      "label": "Time Focus",
+      "weights": {
+        "w_distance": 1.0,
+        "w_time": 3.0,
+        "w_risk": 1.0
+      },
+      "total_demands": 9,
+      "served_demands": 9,
+      "service_rate": 1.0,
+      "final_total_distance_m": 71412.1153936331,
+      "final_total_noise_impact": 114.0,
+      "average_delivery_time_h": 0.168556,
+      "max_delivery_time_h": 0.238333,
+      "n_solver_calls": 1,
+      "n_conflict_reports": 0,
+      "n_rrt_paths_used": 16,
+      "analytics_dir": "data\\compare_runs\\compare_20260321_150600\\cplex\\run_20260321_150601_gpt-4o-mini_noise0.5\\solver_analytics\\pareto\\profiles\\time_focus"
+    },
+    {
+      "profile_id": "risk_focus",
+      "label": "Risk Focus",
+      "weights": {
+        "w_distance": 1.0,
+        "w_time": 1.0,
+        "w_risk": 3.0
+      },
+      "total_demands": 9,
+      "served_demands": 9,
+      "service_rate": 1.0,
+      "final_total_distance_m": 72888.26179938215,
+      "final_total_noise_impact": 39.0,
+      "average_delivery_time_h": 0.169,
+      "max_delivery_time_h": 0.240333,
+      "n_solver_calls": 1,
+      "n_conflict_reports": 0,
+      "n_rrt_paths_used": 17,
+      "analytics_dir": "data\\compare_runs\\compare_20260321_150600\\cplex\\run_20260321_150601_gpt-4o-mini_noise0.5\\solver_analytics\\pareto\\profiles\\risk_focus"
+    },
+    {
+      "profile_id": "time_risk_balance",
+      "label": "Time-Risk",
+      "weights": {
+        "w_distance": 1.0,
+        "w_time": 2.0,
+        "w_risk": 2.0
+      },
+      "total_demands": 9,
+      "served_demands": 9,
+      "service_rate": 1.0,
+      "final_total_distance_m": 72888.26179938215,
+      "final_total_noise_impact": 39.0,
+      "average_delivery_time_h": 0.169,
+      "max_delivery_time_h": 0.240333,
+      "n_solver_calls": 1,
+      "n_conflict_reports": 0,
+      "n_rrt_paths_used": 17,
+      "analytics_dir": "data\\compare_runs\\compare_20260321_150600\\cplex\\run_20260321_150601_gpt-4o-mini_noise0.5\\solver_analytics\\pareto\\profiles\\time_risk_balance"
+    }
+  ],
+  "frontier": [
+    {
+      "profile_id": "time_focus",
+      "label": "Time Focus",
+      "weights": {
+        "w_distance": 1.0,
+        "w_time": 3.0,
+        "w_risk": 1.0
+      },
+      "total_demands": 9,
+      "served_demands": 9,
+      "service_rate": 1.0,
+      "final_total_distance_m": 71412.1153936331,
+      "final_total_noise_impact": 114.0,
+      "average_delivery_time_h": 0.168556,
+      "max_delivery_time_h": 0.238333,
+      "n_solver_calls": 1,
+      "n_conflict_reports": 0,
+      "n_rrt_paths_used": 16,
+      "analytics_dir": "data\\compare_runs\\compare_20260321_150600\\cplex\\run_20260321_150601_gpt-4o-mini_noise0.5\\solver_analytics\\pareto\\profiles\\time_focus",
+      "is_nondominated": true
+    },
+    {
+      "profile_id": "balanced",
+      "label": "Balanced",
+      "weights": {
+        "w_distance": 1.0,
+        "w_time": 1.0,
+        "w_risk": 1.0
+      },
+      "total_demands": 9,
+      "served_demands": 9,
+      "service_rate": 1.0,
+      "final_total_distance_m": 72888.26179938215,
+      "final_total_noise_impact": 39.0,
+      "average_delivery_time_h": 0.169,
+      "max_delivery_time_h": 0.240333,
+      "n_solver_calls": 1,
+      "n_conflict_reports": 0,
+      "n_rrt_paths_used": 17,
+      "analytics_dir": "data\\compare_runs\\compare_20260321_150600\\cplex\\run_20260321_150601_gpt-4o-mini_noise0.5\\solver_analytics\\pareto\\profiles\\balanced",
+      "is_nondominated": true
+    },
+    {
+      "profile_id": "distance_focus",
+      "label": "Distance Focus",
+      "weights": {
+        "w_distance": 3.0,
+        "w_time": 1.0,
+        "w_risk": 1.0
+      },
+      "total_demands": 9,
+      "served_demands": 9,
+      "service_rate": 1.0,
+      "final_total_distance_m": 72888.26179938215,
+      "final_total_noise_impact": 39.0,
+      "average_delivery_time_h": 0.169,
+      "max_delivery_time_h": 0.240333,
+      "n_solver_calls": 1,
+      "n_conflict_reports": 0,
+      "n_rrt_paths_used": 17,
+      "analytics_dir": "data\\compare_runs\\compare_20260321_150600\\cplex\\run_20260321_150601_gpt-4o-mini_noise0.5\\solver_analytics\\pareto\\profiles\\distance_focus",
+      "is_nondominated": true
+    },
+    {
+      "profile_id": "risk_focus",
+      "label": "Risk Focus",
+      "weights": {
+        "w_distance": 1.0,
+        "w_time": 1.0,
+        "w_risk": 3.0
+      },
+      "total_demands": 9,
+      "served_demands": 9,
+      "service_rate": 1.0,
+      "final_total_distance_m": 72888.26179938215,
+      "final_total_noise_impact": 39.0,
+      "average_delivery_time_h": 0.169,
+      "max_delivery_time_h": 0.240333,
+      "n_solver_calls": 1,
+      "n_conflict_reports": 0,
+      "n_rrt_paths_used": 17,
+      "analytics_dir": "data\\compare_runs\\compare_20260321_150600\\cplex\\run_20260321_150601_gpt-4o-mini_noise0.5\\solver_analytics\\pareto\\profiles\\risk_focus",
+      "is_nondominated": true
+    },
+    {
+      "profile_id": "time_risk_balance",
+      "label": "Time-Risk",
+      "weights": {
+        "w_distance": 1.0,
+        "w_time": 2.0,
+        "w_risk": 2.0
+      },
+      "total_demands": 9,
+      "served_demands": 9,
+      "service_rate": 1.0,
+      "final_total_distance_m": 72888.26179938215,
+      "final_total_noise_impact": 39.0,
+      "average_delivery_time_h": 0.169,
+      "max_delivery_time_h": 0.240333,
+      "n_solver_calls": 1,
+      "n_conflict_reports": 0,
+      "n_rrt_paths_used": 17,
+      "analytics_dir": "data\\compare_runs\\compare_20260321_150600\\cplex\\run_20260321_150601_gpt-4o-mini_noise0.5\\solver_analytics\\pareto\\profiles\\time_risk_balance",
+      "is_nondominated": true
+    }
+  ],
+  "pareto_analysis": {
+    "candidate_count": 5,
+    "frontier_size": 5,
+    "metrics": [
+      "final_total_distance_m",
+      "average_delivery_time_h",
+      "final_total_noise_impact"
+    ],
+    "extreme_solutions": {
+      "final_total_distance_m": {
+        "best_solution_id": "time_focus",
+        "best_value": 71412.1153936331,
+        "worst_solution_id": "time_risk_balance",
+        "worst_value": 72888.26179938215
+      },
+      "average_delivery_time_h": {
+        "best_solution_id": "time_focus",
+        "best_value": 0.168556,
+        "worst_solution_id": "time_risk_balance",
+        "worst_value": 0.169
+      },
+      "final_total_noise_impact": {
+        "best_solution_id": "balanced",
+        "best_value": 39.0,
+        "worst_solution_id": "time_focus",
+        "worst_value": 114.0
+      }
+    },
+    "metric_ranges": {
+      "final_total_distance_m": {
+        "min": 71412.1153936331,
+        "max": 72888.26179938215,
+        "spread": 1476.146405749052
+      },
+      "average_delivery_time_h": {
+        "min": 0.168556,
+        "max": 0.169,
+        "spread": 0.00044399999999999995
+      },
+      "final_total_noise_impact": {
+        "min": 39.0,
+        "max": 114.0,
+        "spread": 75.0
+      }
+    },
+    "dominance_check_passed": true,
+    "frontier_solution_ids": [
+      "balanced",
+      "distance_focus",
+      "risk_focus",
+      "time_focus",
+      "time_risk_balance"
+    ]
+  }
+}

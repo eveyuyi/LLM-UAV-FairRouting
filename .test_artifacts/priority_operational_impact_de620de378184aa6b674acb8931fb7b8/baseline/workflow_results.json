@@ -1,0 +1,23 @@
+[
+  {
+    "time_window": "W1",
+    "per_demand_results": [
+      {
+        "demand_id": "REQ1",
+        "source_dialogue_id": "D1",
+        "source_event_id": "E1",
+        "is_served": true,
+        "delivery_latency_min": 30.0,
+        "deadline_minutes": 20
+      },
+      {
+        "demand_id": "REQ2",
+        "source_dialogue_id": "D2",
+        "source_event_id": "E2",
+        "is_served": true,
+        "delivery_latency_min": 40.0,
+        "deadline_minutes": 60
+      }
+    ]
+  }
+]

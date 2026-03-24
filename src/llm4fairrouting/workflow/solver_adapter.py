@@ -40,6 +40,7 @@ from llm4fairrouting.data.seed_paths import (
 )
 from llm4fairrouting.data.stations import load_station_data
 from llm4fairrouting.routing.analytics import (
+    analyze_pareto_candidates,
     build_default_pareto_profiles,
     compute_pareto_frontier,
     export_visualizations,
@@ -341,10 +342,11 @@ def solve_windows_dynamically(
     max_payload: float,
     max_range: float,
     noise_weight: float,
-    drone_activation_cost: float = 10000.0,
+    drone_activation_cost: float = 1000.0,
     drone_speed: float = DEFAULT_DRONE_SPEED_MS,
     analytics_output_dir: Optional[str] = None,
     enable_conflict_refiner: bool = False,
+    assignment_solver_factory=None,
 ) -> List[Dict]:
     """Use the shared routing core to solve the full window sequence."""
     window_payloads = _build_window_payloads(
@@ -407,6 +409,7 @@ def solve_windows_dynamically(
             FLIGHT_HEIGHT as _FLIGHT_HEIGHT,
             build_lazy_distance_and_noise_matrices,
             create_obstacles_from_buildings,
+            export_rrt_paths_for_edges,
         )
         from llm4fairrouting.routing.simulator import (
             FinalDroneSimulator as _FinalDroneSimulator,
@@ -475,15 +478,20 @@ def solve_windows_dynamically(
             demand["solver_event_id"] = event_id
 
             cfg = demand_cfg_map.get(original_demand_id, {})
+            deadline_minutes = float(
+                demand.get("time_constraint", {}).get("deadline_minutes", 0.0) or 0.0
+            )
             event_records.append({
                 "event_id": event_id,
                 "original_demand_id": original_demand_id,
+                "source_event_id": demand.get("source_event_id"),
                 "time_window": payload["time_window"],
                 "request_dt": _resolve_request_datetime(
                     demand, payload["window_start_dt"]
                 ),
                 "weight": float(demand.get("cargo", {}).get("weight_kg", 0.0)),
                 "priority": int(cfg.get("priority", 3)),
+                "deadline_minutes": deadline_minutes,
                 "required_supply_idx": supply_key_to_idx[origin_key],
                 "demand_point_idx": demand_key_to_idx[dest_key],
                 "demand_point_id": demand_points[demand_key_to_idx[dest_key]].id,
@@ -581,6 +589,25 @@ def solve_windows_dynamically(
         max_range=max_range,
         speed=drone_speed,
     )
+    assignment_solver = None
+    if assignment_solver_factory is not None:
+        assignment_solver = assignment_solver_factory(
+            drones=drones,
+            supply_indices=list(range(len(supply_points))),
+            station_indices=list(range(
+                len(supply_points) + len(demand_points),
+                len(supply_points) + len(demand_points) + len(station_cplex_points),
+            )),
+            dist_matrix=dist_matrix,
+            all_points=all_points,
+            noise_cost_matrix=noise_cost_matrix,
+            noise_weight=noise_weight,
+            drone_activation_cost=drone_activation_cost,
+            time_limit=time_limit,
+            analytics_output_dir=analytics_output_dir,
+            enable_conflict_refiner=enable_conflict_refiner,
+        )
+
     simulator = _FinalDroneSimulator(
         supply_points=supply_points,
         demand_points=demand_points,
@@ -597,6 +624,7 @@ def solve_windows_dynamically(
         objective_weight_schedule=objective_weight_schedule,
         analytics_output_dir=analytics_output_dir,
         enable_conflict_refiner=enable_conflict_refiner,
+        assignment_solver=assignment_solver,
     )
 
     window_snapshots: Dict[str, Dict] = {}
@@ -614,9 +642,22 @@ def solve_windows_dynamically(
     solver_analytics = simulator.get_solver_analytics()
     run_summary = solver_analytics.get("run_summary", {})
     analytics_artifacts: Dict[str, object] = {}
+    rrt_path_edges = []
+    for drone_path in final_drone_paths:
+        node_indices = [int(idx) for idx in drone_path.get("path_node_indices", [])]
+        rrt_path_edges.extend(
+            (node_indices[pos], node_indices[pos + 1])
+            for pos in range(len(node_indices) - 1)
+        )
+    rrt_paths_payload = export_rrt_paths_for_edges(dist_matrix, rrt_path_edges)
+    run_summary["n_rrt_paths_used"] = len(rrt_paths_payload)
     if analytics_output_dir:
         analytics_dir = Path(analytics_output_dir)
         analytics_dir.mkdir(parents=True, exist_ok=True)
+        if rrt_paths_payload:
+            rrt_paths_json = write_json(rrt_paths_payload, analytics_dir / "rrt_paths.json")
+        else:
+            rrt_paths_json = None
         analytics_json_path = write_json(
             solver_analytics,
             analytics_dir / "solver_analytics.json",
@@ -628,9 +669,11 @@ def solve_windows_dynamically(
         analytics_artifacts = {
             "analytics_json": analytics_json_path,
             "charts": chart_artifacts,
+            "rrt_paths_json": rrt_paths_json,
         }
 
     demand_event_lookup = {event.unique_id: event for event in demand_events}
+    event_record_lookup = {record["event_id"]: record for record in event_records}
     simulation_completed = simulator.is_complete()
     results: List[Dict] = []
 
@@ -640,16 +683,30 @@ def solve_windows_dynamically(
         for demand in payload["feasible_demands"]:
             event_id = demand["solver_event_id"]
             event = demand_event_lookup[event_id]
+            record = event_record_lookup.get(event_id, {})
             served_time_s = (
                 round(event.served_time * 3600.0, 1)
                 if event.served_time is not None else None
             )
+            delivery_latency_h = (
+                max(0.0, float(event.served_time) - float(event.time))
+                if event.served_time is not None else None
+            )
+            delivery_latency_s = (
+                round(delivery_latency_h * 3600.0, 1)
+                if delivery_latency_h is not None else None
+            )
             demand_event_results[event_id] = {
                 "event_id": event_id,
+                "source_event_id": record.get("source_event_id") or demand.get("source_event_id"),
                 "assigned_drone": event.assigned_drone,
                 "assigned_time_h": event.assigned_time,
+                "request_time_h": event.time,
                 "served_time_h": event.served_time,
                 "served_time_s": served_time_s,
+                "delivery_latency_h": delivery_latency_h,
+                "delivery_latency_s": delivery_latency_s,
+                "deadline_minutes": record.get("deadline_minutes"),
                 "required_supply_idx": event.required_supply_idx,
                 "supply_node": event.supply_node,
                 "demand_point_id": event.demand_point_id,
@@ -701,7 +758,7 @@ def run_multiobjective_pareto_scan(
     max_payload: float,
     max_range: float,
     noise_weight: float,
-    drone_activation_cost: float = 10000.0,
+    drone_activation_cost: float = 1000.0,
     drone_speed: float = DEFAULT_DRONE_SPEED_MS,
     analytics_output_dir: Optional[str] = None,
     enable_conflict_refiner: bool = False,
@@ -760,13 +817,16 @@ def run_multiobjective_pareto_scan(
         candidates.append(candidate)
 
     frontier = compute_pareto_frontier(candidates)
+    pareto_analysis = analyze_pareto_candidates(candidates)
     payload = {
         "candidates": candidates,
         "frontier": frontier,
+        "pareto_analysis": pareto_analysis,
     }
 
     if output_dir is not None:
         payload["pareto_json"] = write_json(payload, output_dir / "pareto_frontier.json")
+        payload["pareto_analysis_json"] = write_json(pareto_analysis, output_dir / "pareto_analysis.json")
         payload["charts"] = export_visualizations(
             analytics={"solver_calls": [], "gantt_tasks": []},
             output_dir=output_dir / "charts",
@@ -842,9 +902,12 @@ def serialize_workflow_results(all_solutions: List[Dict]) -> List[Dict]:
                         "population_vulnerability", {}
                     )
                     delivery_time_s = outcome.get("served_time_s")
+                    delivery_latency_s = outcome.get("delivery_latency_s")
+                    deadline_minutes = demand.get("time_constraint", {}).get("deadline_minutes")
                     per_demand.append({
                         "demand_id": demand_id,
                         "solver_event_id": solver_event_id,
+                        "source_event_id": demand.get("source_event_id") or outcome.get("source_event_id"),
                         "source_dialogue_id": demand.get("source_dialogue_id"),
                         "request_timestamp": demand.get("request_timestamp"),
                         "demand_tier": demand.get("demand_tier", cargo.get("demand_tier", "")),
@@ -853,6 +916,7 @@ def serialize_workflow_results(all_solutions: List[Dict]) -> List[Dict]:
                         "weight_kg": cargo.get("weight_kg", 0.0),
                         "temperature_sensitive": cargo.get("temperature_sensitive", False),
                         "priority": config.get("priority", 3),
+                        "window_rank": config.get("window_rank"),
                         "llm_reasoning": config.get("reasoning", ""),
                         "elderly_involved": vuln.get("elderly_involved", False),
                         "vulnerable_community": vuln.get("vulnerable_community", False),
@@ -875,6 +939,17 @@ def serialize_workflow_results(all_solutions: List[Dict]) -> List[Dict]:
                         "delivery_time_min": (
                             round(delivery_time_s / 60, 2)
                             if delivery_time_s is not None else None
+                        ),
+                        "delivery_latency_h": outcome.get("delivery_latency_h"),
+                        "delivery_latency_s": delivery_latency_s,
+                        "delivery_latency_min": (
+                            round(delivery_latency_s / 60, 2)
+                            if delivery_latency_s is not None else None
+                        ),
+                        "deadline_minutes": deadline_minutes,
+                        "is_deadline_met": (
+                            delivery_latency_s is not None and deadline_minutes is not None
+                            and float(delivery_latency_s) <= float(deadline_minutes) * 60.0
                         ),
                         "origin_fid": origin.get("fid"),
                         "origin_coords": origin.get("coords", []),
@@ -1093,76 +1168,87 @@ def main():
         "--demands",
         type=str,
         default=str(PROJECT_ROOT / "data" / "drone" / "extracted_demands.json"),
-        help="Module 2 输出的 extracted_demands.json",
+        help="Module 2 output extracted_demands.json",
     )
     parser.add_argument(
         "--weights",
         type=str,
         required=True,
-        help="Module 3a 输出的权重配置（JSON 文件或目录）",
+        help="Module 3a output weight configs (JSON file or directory)",
     )
     parser.add_argument(
         "--stations",
         type=str,
         default=str(STATION_DATA_PATH),
-        help=f"真实站点文件 {STATION_DATA_FILENAME}；默认使用项目 seed 数据",
+        help=f"Station metadata file ({STATION_DATA_FILENAME})",
     )
     parser.add_argument(
         "--building-data",
         type=str,
         default=str(BUILDING_DATA_PATH),
-        help=f"真实建筑文件 {BUILDING_DATA_FILENAME}；用于构建真实距离/噪声矩阵",
+        help=f"Building data file ({BUILDING_DATA_FILENAME}) used for realistic distance and noise modeling",
     )
     parser.add_argument(
         "--output",
         type=str,
         default=str(PROJECT_ROOT / "data" / "drone" / "solver_results.json"),
-        help="求解结果输出路径",
+        help="Output path for solver results",
     )
+    parser.add_argument("--time-limit", type=int, default=10, help="Solver time limit in seconds")
+    parser.add_argument("--max-drones-per-station", type=int, default=3, help="Maximum drones per station")
+    parser.add_argument("--max-payload", type=float, default=60.0, help="Maximum payload in kg")
+    parser.add_argument("--max-range", type=float, default=200000.0, help="Maximum range in meters")
     parser.add_argument(
-        "--time-limit", type=int, default=10, help="求解器时间限制（秒）"
-    )
-    parser.add_argument(
-        "--max-drones-per-station", type=int, default=3, help="每个站点最大无人机数"
-    )
-    parser.add_argument(
-        "--max-payload", type=float, default=60.0, help="最大载重（kg）"
-    )
-    parser.add_argument(
-        "--max-range", type=float, default=200000.0, help="最大航程（m）"
-    )
-    parser.add_argument(
-        "--drone-speed", type=float, default=DEFAULT_DRONE_SPEED_MS, help="无人机飞行速度（m/s）"
+        "--drone-speed",
+        type=float,
+        default=DEFAULT_DRONE_SPEED_MS,
+        help="Drone speed in meters per second",
     )
     parser.add_argument(
         "--noise-weight",
         type=float,
         default=0.5,
-        help="噪声成本权重（>0 启用噪声优先级）",
+        help="Noise cost weight used by the routing objective",
     )
     parser.add_argument(
         "--drone-activation-cost",
         type=float,
-        default=10000.0,
-        help="无人机启用成本，用于鼓励更少启用无人机",
+        default=1000.0,
+        help="Activation cost per drone; lower values encourage parallel drone usage",
     )
     parser.add_argument(
         "--max-solver-stations",
         type=int,
         default=1,
-        help="求解时最多使用多少个真实站点；默认 1 以对齐 baseline demo，0 表示使用全部",
+        help="Maximum number of real stations used during solving; 0 means all stations",
     )
     parser.add_argument(
         "--pareto-scan",
         action=argparse.BooleanOptionalAction,
         default=False,
-        help="执行多组 global_weights 扫描并生成帕累托前沿图",
+        help="Run the existing weighted-profile Pareto scan",
     )
     parser.add_argument(
         "--enable-conflict-refiner",
         action=argparse.BooleanOptionalAction,
         default=False,
-        help="在不可行时输出冲突诊断元数据",
+        help="Request conflict diagnostics when a solve is infeasible",
+    )
+    parser.add_argument(
+        "--solver-backend",
+        type=str,
+        choices=("cplex", "nsga3", "nsga3_heuristic"),
+        default="cplex",
+        help="Solver backend: exact CPLEX routing, NSGA-III over CPLEX, or NSGA-III over the greedy heuristic backend",
+    )
+    parser.add_argument("--nsga3-pop-size", type=int, default=20, help="Population size for NSGA-III")
+    parser.add_argument("--nsga3-n-generations", type=int, default=10, help="Number of generations for NSGA-III")
+    parser.add_argument("--nsga3-seed", type=int, default=42, help="Random seed for NSGA-III")
+    parser.add_argument(
+        "--nsga3-save-all-candidate-results",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Persist per-candidate workflow results in addition to the default frontier solution files",
     )
     args = parser.parse_args()
 
@@ -1170,6 +1256,44 @@ def main():
         windows = json.load(f)
 
     weight_configs = _load_weight_configs(args.weights)
+    analytics_dir = str(Path(args.output).with_suffix("")) + "_analytics"
+
+    if args.solver_backend in {"nsga3", "nsga3_heuristic"}:
+        if args.solver_backend == "nsga3":
+            from llm4fairrouting.multiobjective.nsga3_search import run_nsga3_pareto_search as run_search
+            search_output_dir = analytics_dir + "/nsga3"
+        else:
+            from llm4fairrouting.multiobjective.nsga3_heuristic import run_nsga3_heuristic_search as run_search
+            search_output_dir = analytics_dir + "/nsga3_heuristic"
+
+        payload = run_search(
+            windows=windows,
+            weight_configs=weight_configs,
+            stations_path=args.stations,
+            building_path=args.building_data,
+            max_solver_stations=args.max_solver_stations,
+            time_limit=args.time_limit,
+            max_drones_per_station=args.max_drones_per_station,
+            max_payload=args.max_payload,
+            max_range=args.max_range,
+            noise_weight=args.noise_weight,
+            drone_activation_cost=args.drone_activation_cost,
+            drone_speed=args.drone_speed,
+            output_dir=search_output_dir,
+            pop_size=args.nsga3_pop_size,
+            n_generations=args.nsga3_n_generations,
+            seed=args.nsga3_seed,
+            save_all_candidate_results=args.nsga3_save_all_candidate_results,
+            enable_conflict_refiner=args.enable_conflict_refiner,
+            problem_id=Path(args.output).stem,
+        )
+        out_path = Path(args.output)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(out_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+        print(f"{args.solver_backend} results saved to {out_path}")
+        return
+
     all_solutions = solve_windows_dynamically(
         windows=windows,
         weight_configs=weight_configs,
@@ -1183,7 +1307,7 @@ def main():
         noise_weight=args.noise_weight,
         drone_activation_cost=args.drone_activation_cost,
         drone_speed=args.drone_speed,
-        analytics_output_dir=str(Path(args.output).with_suffix("")) + "_analytics",
+        analytics_output_dir=analytics_dir,
         enable_conflict_refiner=args.enable_conflict_refiner,
     )
 
@@ -1201,7 +1325,7 @@ def main():
             noise_weight=args.noise_weight,
             drone_activation_cost=args.drone_activation_cost,
             drone_speed=args.drone_speed,
-            analytics_output_dir=str(Path(args.output).with_suffix("")) + "_analytics/pareto",
+            analytics_output_dir=analytics_dir + "/pareto",
             enable_conflict_refiner=args.enable_conflict_refiner,
         )
 
@@ -1210,7 +1334,7 @@ def main():
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(serialize_workflow_results(all_solutions), f, ensure_ascii=False, indent=2)
 
-    print(f"结果保存至 {out_path}")
+    print(f"Results saved to {out_path}")
 
 
 if __name__ == "__main__":

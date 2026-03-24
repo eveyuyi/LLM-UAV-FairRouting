@@ -1,0 +1,124 @@
+[
+  {
+    "solution_id": "nsga3_heuristic_candidate_0000",
+    "profile_id": "nsga3_heuristic_candidate_0000",
+    "label": "nsga3_heuristic_candidate_0000",
+    "decision_vector": [
+      0.2,
+      0.2,
+      0.2,
+      0.2
+    ],
+    "weights": {
+      "w_distance": 1.08,
+      "w_time": 1.08,
+      "w_risk": 1.08
+    },
+    "drone_activation_cost": 2080.0,
+    "objectives": {
+      "final_total_distance_m": 70.0,
+      "average_delivery_time_h": 0.8,
+      "final_total_noise_impact": 8.0,
+      "service_rate_loss": 0.05,
+      "n_used_drones": 1.0
+    },
+    "final_total_distance_m": 70.0,
+    "average_delivery_time_h": 0.8,
+    "final_total_noise_impact": 8.0,
+    "service_rate_loss": 0.05,
+    "n_used_drones": 1.0,
+    "run_summary": {
+      "final_total_distance_m": 70.0,
+      "average_delivery_time_h": 0.8,
+      "final_total_noise_impact": 8.0,
+      "service_rate": 0.95,
+      "service_rate_loss": 0.05,
+      "n_used_drones": 1
+    },
+    "problem_meta": {
+      "problem_type": "dynamic_routing_workflow",
+      "problem_id": "heuristic_case",
+      "n_windows": 1,
+      "time_windows": [
+        "2024-03-15T00:00-00:05"
+      ],
+      "stations_path": "stations.csv",
+      "building_path": "buildings.csv",
+      "time_limit_s": 5,
+      "max_solver_stations": 1,
+      "max_drones_per_station": 2,
+      "max_payload_kg": 60.0,
+      "max_range_m": 1000.0,
+      "noise_weight": 0.5,
+      "drone_speed_ms": 60.0
+    },
+    "solver_meta": {
+      "solver_family": "evolutionary",
+      "solver_name": "nsga3_heuristic",
+      "inner_solver": "greedy_heuristic"
+    },
+    "is_nondominated": true,
+    "frontier_result_path": "D:\\Git\\LLM-UAV-FairRouting\\.test_artifacts\\nsga3_heuristic_search_6efee528369e4d0cb86c0f0973016d64\\frontier_solutions\\nsga3_heuristic_candidate_0000\\workflow_results.json"
+  },
+  {
+    "solution_id": "nsga3_heuristic_candidate_0001",
+    "profile_id": "nsga3_heuristic_candidate_0001",
+    "label": "nsga3_heuristic_candidate_0001",
+    "decision_vector": [
+      0.6,
+      0.3,
+      0.8,
+      0.5
+    ],
+    "weights": {
+      "w_distance": 3.04,
+      "w_time": 1.57,
+      "w_risk": 4.0200000000000005
+    },
+    "drone_activation_cost": 5050.0,
+    "objectives": {
+      "final_total_distance_m": 85.0,
+      "average_delivery_time_h": 0.7,
+      "final_total_noise_impact": 7.5,
+      "service_rate_loss": 0.1,
+      "n_used_drones": 2.0
+    },
+    "final_total_distance_m": 85.0,
+    "average_delivery_time_h": 0.7,
+    "final_total_noise_impact": 7.5,
+    "service_rate_loss": 0.1,
+    "n_used_drones": 2.0,
+    "run_summary": {
+      "final_total_distance_m": 85.0,
+      "average_delivery_time_h": 0.7,
+      "final_total_noise_impact": 7.5,
+      "service_rate": 0.9,
+      "service_rate_loss": 0.1,
+      "n_used_drones": 2
+    },
+    "problem_meta": {
+      "problem_type": "dynamic_routing_workflow",
+      "problem_id": "heuristic_case",
+      "n_windows": 1,
+      "time_windows": [
+        "2024-03-15T00:00-00:05"
+      ],
+      "stations_path": "stations.csv",
+      "building_path": "buildings.csv",
+      "time_limit_s": 5,
+      "max_solver_stations": 1,
+      "max_drones_per_station": 2,
+      "max_payload_kg": 60.0,
+      "max_range_m": 1000.0,
+      "noise_weight": 0.5,
+      "drone_speed_ms": 60.0
+    },
+    "solver_meta": {
+      "solver_family": "evolutionary",
+      "solver_name": "nsga3_heuristic",
+      "inner_solver": "greedy_heuristic"
+    },
+    "is_nondominated": true,
+    "frontier_result_path": "D:\\Git\\LLM-UAV-FairRouting\\.test_artifacts\\nsga3_heuristic_search_6efee528369e4d0cb86c0f0973016d64\\frontier_solutions\\nsga3_heuristic_candidate_0001\\workflow_results.json"
+  }
+]

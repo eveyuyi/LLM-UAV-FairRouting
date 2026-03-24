@@ -1,0 +1,79 @@
+{
+  "candidate_count": 8,
+  "frontier_size": 6,
+  "metrics": [
+    "final_total_distance_m",
+    "average_delivery_time_h",
+    "final_total_noise_impact",
+    "service_rate_loss",
+    "n_used_drones"
+  ],
+  "extreme_solutions": {
+    "final_total_distance_m": {
+      "best_solution_id": "nsga3_gen_candidate_0000",
+      "best_value": 71412.1153936331,
+      "worst_solution_id": "nsga3_gen_candidate_0007",
+      "worst_value": 73095.9002097627
+    },
+    "average_delivery_time_h": {
+      "best_solution_id": "nsga3_gen_candidate_0000",
+      "best_value": 0.168556,
+      "worst_solution_id": "nsga3_gen_candidate_0007",
+      "worst_value": 0.169333
+    },
+    "final_total_noise_impact": {
+      "best_solution_id": "nsga3_gen_candidate_0001",
+      "best_value": 39.0,
+      "worst_solution_id": "nsga3_gen_candidate_0006",
+      "worst_value": 114.0
+    },
+    "service_rate_loss": {
+      "best_solution_id": "nsga3_gen_candidate_0000",
+      "best_value": 0.0,
+      "worst_solution_id": "nsga3_gen_candidate_0007",
+      "worst_value": 0.0
+    },
+    "n_used_drones": {
+      "best_solution_id": "nsga3_gen_candidate_0000",
+      "best_value": 1.0,
+      "worst_solution_id": "nsga3_gen_candidate_0007",
+      "worst_value": 1.0
+    }
+  },
+  "metric_ranges": {
+    "final_total_distance_m": {
+      "min": 71412.1153936331,
+      "max": 73095.9002097627,
+      "spread": 1683.7848161295988
+    },
+    "average_delivery_time_h": {
+      "min": 0.168556,
+      "max": 0.169333,
+      "spread": 0.0007769999999999999
+    },
+    "final_total_noise_impact": {
+      "min": 39.0,
+      "max": 114.0,
+      "spread": 75.0
+    },
+    "service_rate_loss": {
+      "min": 0.0,
+      "max": 0.0,
+      "spread": 0.0
+    },
+    "n_used_drones": {
+      "min": 1.0,
+      "max": 1.0,
+      "spread": 0.0
+    }
+  },
+  "dominance_check_passed": true,
+  "frontier_solution_ids": [
+    "nsga3_gen_candidate_0000",
+    "nsga3_gen_candidate_0002",
+    "nsga3_gen_candidate_0003",
+    "nsga3_gen_candidate_0004",
+    "nsga3_gen_candidate_0005",
+    "nsga3_gen_candidate_0006"
+  ]
+}

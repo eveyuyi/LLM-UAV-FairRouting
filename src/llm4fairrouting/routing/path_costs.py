@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import hashlib
 import math
 import random
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
@@ -340,7 +340,7 @@ def _prepare_path_planning_context(
     )
 
 
-def _compute_pair_metrics(context: _PathPlanningContext, i: int, j: int) -> Tuple[float, int, int]:
+def _compute_pair_metrics(context: _PathPlanningContext, i: int, j: int) -> Tuple[float, int, List[np.ndarray]]:
     pair_rng = random.Random(
         _stable_pair_seed(context.task_points[i], context.task_points[j])
     )
@@ -359,7 +359,7 @@ def _compute_pair_metrics(context: _PathPlanningContext, i: int, j: int) -> Tupl
         ground_type="urban",
         search_radius=context.search_radius,
     )
-    return float(length), int(num_affected), len(path)
+    return float(length), int(num_affected), path
 
 
 class LazySymmetricMatrix:
@@ -395,6 +395,7 @@ class LazyPathCostCache:
     def __init__(self, context: _PathPlanningContext):
         self._context = context
         self._pair_costs: Dict[Tuple[int, int], Tuple[float, int]] = {}
+        self._pair_paths: Dict[Tuple[int, int], Dict[str, object]] = {}
         self._compute_count = 0
 
     @property
@@ -418,12 +419,66 @@ class LazyPathCostCache:
         self._compute_count += 1
         start = self._context.task_points[i]
         goal = self._context.task_points[j]
-        print(f"\n[按需路径 {self._compute_count}] 计算路径 {start.id} -> {goal.id} ...")
+        print(f"\n[Path Cache {self._compute_count}] computing {start.id} -> {goal.id} ...")
 
-        length, num_affected, path_len = _compute_pair_metrics(self._context, i, j)
-        print(f"  路径长度: {length:.1f}米, 路径点数: {path_len}")
-        print(f"  完成: 影响建筑 {num_affected} 个")
+        length, num_affected, path = _compute_pair_metrics(self._context, i, j)
+        self._pair_paths[(i, j)] = {
+            "from_index": i,
+            "to_index": j,
+            "from_id": self._context.task_points[i].id,
+            "to_id": self._context.task_points[j].id,
+            "path_xyz": [[round(float(p[0]), 3), round(float(p[1]), 3), round(float(p[2]), 3)] for p in path],
+            "n_waypoints": len(path),
+            "path_length_m": round(float(length), 3),
+            "noise_impact": int(num_affected),
+        }
+        print(f"  path length: {length:.1f} m | waypoints: {len(path)}")
+        print(f"  affected buildings: {num_affected}")
         return length, num_affected
+
+    def get_pair_path(self, i: int, j: int) -> Optional[Dict[str, object]]:
+        if i == j:
+            return None
+
+        key = (i, j) if i < j else (j, i)
+        if key not in self._pair_costs:
+            self._pair_costs[key] = self._compute_pair(*key)
+        payload = self._pair_paths.get(key)
+        if payload is None:
+            return None
+        return dict(payload)
+
+
+def export_rrt_paths_for_edges(
+    distance_matrix: object,
+    edges: Sequence[Tuple[int, int]],
+    output_path: str | Path | None = None,
+) -> List[Dict[str, object]]:
+    if not isinstance(distance_matrix, LazySymmetricMatrix):
+        return []
+
+    exported: List[Dict[str, object]] = []
+    seen: set[Tuple[int, int]] = set()
+    for start_idx, end_idx in edges:
+        key = (int(start_idx), int(end_idx))
+        norm = key if key[0] < key[1] else (key[1], key[0])
+        if norm in seen or norm[0] == norm[1]:
+            continue
+        seen.add(norm)
+        payload = distance_matrix._cache.get_pair_path(*norm)
+        if payload is None:
+            continue
+        exported.append(payload)
+
+    exported.sort(key=lambda item: (str(item.get("from_id", "")), str(item.get("to_id", ""))))
+    if output_path is not None:
+        path = Path(output_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as handle:
+            import json
+            json.dump(exported, handle, ensure_ascii=False, indent=2)
+    return exported
+
 
 
 def build_realistic_distance_and_noise_matrices(
@@ -475,10 +530,10 @@ def build_realistic_distance_and_noise_matrices(
             current_pair += 1
             print(f"\n[{current_pair}/{total_pairs}] 计算路径 {task_points[i].id} -> {task_points[j].id} ...")
 
-            length, num_affected, path_len = _compute_pair_metrics(context, i, j)
+            length, num_affected, path = _compute_pair_metrics(context, i, j)
             dist_matrix[i, j] = length
             dist_matrix[j, i] = length
-            print(f"  路径长度: {length:.1f}米, 路径点数: {path_len}")
+            print(f"  path length: {length:.1f} m | waypoints: {len(path)}")
             noise_matrix[i, j] = num_affected
             noise_matrix[j, i] = num_affected
             print(f"  完成: 影响建筑 {num_affected} 个")

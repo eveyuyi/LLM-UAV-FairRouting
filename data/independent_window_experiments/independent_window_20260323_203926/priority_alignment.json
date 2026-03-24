@@ -1,0 +1,1538 @@
+{
+  "n_aligned_demands": 145,
+  "labels": [
+    1,
+    2,
+    3,
+    4
+  ],
+  "urgent_threshold": 2,
+  "per_item": [
+    {
+      "time_window": "2024-03-15T00:05-00:10",
+      "demand_id": "REQ005",
+      "dialogue_id": "D0014",
+      "event_id": "DEM_001_04",
+      "true_priority": 2,
+      "pred_priority": 1,
+      "window_rank": 1,
+      "reasoning": "tier=critical, deadline<=30m, hard_deadline, cargo=icu_drug"
+    },
+    {
+      "time_window": "2024-03-15T00:05-00:10",
+      "demand_id": "REQ004",
+      "dialogue_id": "D0013",
+      "event_id": "DEM_001_03",
+      "true_priority": 2,
+      "pred_priority": 1,
+      "window_rank": 2,
+      "reasoning": "tier=critical, deadline<=30m, hard_deadline, cargo=icu_drug"
+    },
+    {
+      "time_window": "2024-03-15T00:05-00:10",
+      "demand_id": "REQ007",
+      "dialogue_id": "D0016",
+      "event_id": "DEM_001_06",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 3,
+      "reasoning": "tier=consumer, elderly_involved, vulnerable_community, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T00:05-00:10",
+      "demand_id": "REQ008",
+      "dialogue_id": "D0017",
+      "event_id": "DEM_001_07",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 4,
+      "reasoning": "tier=consumer, elderly_involved, vulnerable_community, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T00:05-00:10",
+      "demand_id": "REQ003",
+      "dialogue_id": "D0012",
+      "event_id": "DEM_001_02",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 5,
+      "reasoning": "tier=consumer, elderly_involved, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T00:05-00:10",
+      "demand_id": "REQ001",
+      "dialogue_id": "D0010",
+      "event_id": "DEM_001_00",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 6,
+      "reasoning": "tier=consumer, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T00:05-00:10",
+      "demand_id": "REQ002",
+      "dialogue_id": "D0011",
+      "event_id": "DEM_001_01",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 7,
+      "reasoning": "tier=consumer, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T00:05-00:10",
+      "demand_id": "REQ006",
+      "dialogue_id": "D0015",
+      "event_id": "DEM_001_05",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 8,
+      "reasoning": "tier=consumer, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T00:05-00:10",
+      "demand_id": "REQ009",
+      "dialogue_id": "D0018",
+      "event_id": "DEM_001_08",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 9,
+      "reasoning": "tier=consumer, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T00:05-00:10",
+      "demand_id": "REQ010",
+      "dialogue_id": "D0019",
+      "event_id": "DEM_001_09",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 10,
+      "reasoning": "tier=consumer, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T00:10-00:15",
+      "demand_id": "REQ004",
+      "dialogue_id": "D0023",
+      "event_id": "DEM_002_03",
+      "true_priority": 4,
+      "pred_priority": 2,
+      "window_rank": 1,
+      "reasoning": "tier=critical, hard_deadline, critical_clinical_context, elderly_involved"
+    },
+    {
+      "time_window": "2024-03-15T00:10-00:15",
+      "demand_id": "REQ003",
+      "dialogue_id": "D0022",
+      "event_id": "DEM_002_02",
+      "true_priority": 4,
+      "pred_priority": 2,
+      "window_rank": 2,
+      "reasoning": "tier=critical, hard_deadline, critical_clinical_context, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T00:10-00:15",
+      "demand_id": "REQ001",
+      "dialogue_id": "D0020",
+      "event_id": "DEM_002_00",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 3,
+      "reasoning": "tier=consumer, elderly_involved, vulnerable_community, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T00:10-00:15",
+      "demand_id": "REQ002",
+      "dialogue_id": "D0021",
+      "event_id": "DEM_002_01",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 4,
+      "reasoning": "tier=consumer, elderly_involved, vulnerable_community, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T00:10-00:15",
+      "demand_id": "REQ005",
+      "dialogue_id": "D0024",
+      "event_id": "DEM_002_04",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 5,
+      "reasoning": "tier=consumer, elderly_involved, vulnerable_community, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T00:10-00:15",
+      "demand_id": "REQ006",
+      "dialogue_id": "D0025",
+      "event_id": "DEM_002_05",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 6,
+      "reasoning": "tier=consumer, elderly_involved, vulnerable_community, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T00:10-00:15",
+      "demand_id": "REQ007",
+      "dialogue_id": "D0026",
+      "event_id": "DEM_002_06",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 7,
+      "reasoning": "tier=consumer, elderly_involved, vulnerable_community, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T02:15-02:20",
+      "demand_id": "REQ002",
+      "dialogue_id": "D0207",
+      "event_id": "DEM_027_01",
+      "true_priority": 4,
+      "pred_priority": 2,
+      "window_rank": 1,
+      "reasoning": "tier=critical, hard_deadline, critical_clinical_context, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T02:15-02:20",
+      "demand_id": "REQ003",
+      "dialogue_id": "D0208",
+      "event_id": "DEM_027_02",
+      "true_priority": 4,
+      "pred_priority": 2,
+      "window_rank": 2,
+      "reasoning": "tier=critical, hard_deadline, critical_clinical_context, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T02:15-02:20",
+      "demand_id": "REQ004",
+      "dialogue_id": "D0209",
+      "event_id": "DEM_027_03",
+      "true_priority": 4,
+      "pred_priority": 2,
+      "window_rank": 3,
+      "reasoning": "tier=critical, hard_deadline, critical_clinical_context, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T02:15-02:20",
+      "demand_id": "REQ001",
+      "dialogue_id": "D0206",
+      "event_id": "DEM_027_00",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 4,
+      "reasoning": "tier=consumer, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T02:15-02:20",
+      "demand_id": "REQ005",
+      "dialogue_id": "D0210",
+      "event_id": "DEM_027_04",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 5,
+      "reasoning": "tier=consumer, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T02:15-02:20",
+      "demand_id": "REQ006",
+      "dialogue_id": "D0211",
+      "event_id": "DEM_027_05",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 6,
+      "reasoning": "tier=consumer, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T02:15-02:20",
+      "demand_id": "REQ007",
+      "dialogue_id": "D0212",
+      "event_id": "DEM_027_06",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 7,
+      "reasoning": "tier=consumer, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T02:50-02:55",
+      "demand_id": "REQ007",
+      "dialogue_id": "D0259",
+      "event_id": "DEM_034_06",
+      "true_priority": 1,
+      "pred_priority": 1,
+      "window_rank": 1,
+      "reasoning": "tier=life_support, deadline<=15m, hard_deadline, cargo=thrombolytic"
+    },
+    {
+      "time_window": "2024-03-15T02:50-02:55",
+      "demand_id": "REQ005",
+      "dialogue_id": "D0257",
+      "event_id": "DEM_034_04",
+      "true_priority": 3,
+      "pred_priority": 2,
+      "window_rank": 2,
+      "reasoning": "tier=critical, deadline<=60m, hard_deadline, critical_clinical_context"
+    },
+    {
+      "time_window": "2024-03-15T02:50-02:55",
+      "demand_id": "REQ002",
+      "dialogue_id": "D0254",
+      "event_id": "DEM_034_01",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 3,
+      "reasoning": "tier=consumer, elderly_involved, vulnerable_community, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T02:50-02:55",
+      "demand_id": "REQ001",
+      "dialogue_id": "D0253",
+      "event_id": "DEM_034_00",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 4,
+      "reasoning": "tier=consumer, elderly_involved, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T02:50-02:55",
+      "demand_id": "REQ003",
+      "dialogue_id": "D0255",
+      "event_id": "DEM_034_02",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 5,
+      "reasoning": "tier=consumer, elderly_involved, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T02:50-02:55",
+      "demand_id": "REQ006",
+      "dialogue_id": "D0258",
+      "event_id": "DEM_034_05",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 6,
+      "reasoning": "tier=consumer, elderly_involved, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T02:50-02:55",
+      "demand_id": "REQ004",
+      "dialogue_id": "D0256",
+      "event_id": "DEM_034_03",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 7,
+      "reasoning": "tier=consumer, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T02:50-02:55",
+      "demand_id": "REQ008",
+      "dialogue_id": "D0260",
+      "event_id": "DEM_034_07",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 8,
+      "reasoning": "tier=consumer, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T02:50-02:55",
+      "demand_id": "REQ009",
+      "dialogue_id": "D0261",
+      "event_id": "DEM_034_08",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 9,
+      "reasoning": "tier=consumer, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T03:05-03:10",
+      "demand_id": "REQ007",
+      "dialogue_id": "D0278",
+      "event_id": "DEM_037_06",
+      "true_priority": 1,
+      "pred_priority": 1,
+      "window_rank": 1,
+      "reasoning": "tier=life_support, deadline<=15m, hard_deadline, cargo=cardiac_drug"
+    },
+    {
+      "time_window": "2024-03-15T03:05-03:10",
+      "demand_id": "REQ003",
+      "dialogue_id": "D0274",
+      "event_id": "DEM_037_02",
+      "true_priority": 2,
+      "pred_priority": 1,
+      "window_rank": 2,
+      "reasoning": "tier=critical, deadline<=30m, hard_deadline, cargo=ventilator"
+    },
+    {
+      "time_window": "2024-03-15T03:05-03:10",
+      "demand_id": "REQ008",
+      "dialogue_id": "D0279",
+      "event_id": "DEM_037_07",
+      "true_priority": 2,
+      "pred_priority": 1,
+      "window_rank": 3,
+      "reasoning": "tier=critical, deadline<=30m, hard_deadline, cargo=ventilator"
+    },
+    {
+      "time_window": "2024-03-15T03:05-03:10",
+      "demand_id": "REQ005",
+      "dialogue_id": "D0276",
+      "event_id": "DEM_037_04",
+      "true_priority": 2,
+      "pred_priority": 1,
+      "window_rank": 4,
+      "reasoning": "tier=critical, deadline<=30m, hard_deadline, cargo=icu_drug"
+    },
+    {
+      "time_window": "2024-03-15T03:05-03:10",
+      "demand_id": "REQ004",
+      "dialogue_id": "D0275",
+      "event_id": "DEM_037_03",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 5,
+      "reasoning": "tier=consumer, elderly_involved, vulnerable_community, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T03:05-03:10",
+      "demand_id": "REQ010",
+      "dialogue_id": "D0281",
+      "event_id": "DEM_037_09",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 6,
+      "reasoning": "tier=consumer, elderly_involved, vulnerable_community, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T03:05-03:10",
+      "demand_id": "REQ002",
+      "dialogue_id": "D0273",
+      "event_id": "DEM_037_01",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 7,
+      "reasoning": "tier=consumer, elderly_involved, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T03:05-03:10",
+      "demand_id": "REQ001",
+      "dialogue_id": "D0272",
+      "event_id": "DEM_037_00",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 8,
+      "reasoning": "tier=consumer, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T03:05-03:10",
+      "demand_id": "REQ006",
+      "dialogue_id": "D0277",
+      "event_id": "DEM_037_05",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 9,
+      "reasoning": "tier=consumer, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T03:05-03:10",
+      "demand_id": "REQ009",
+      "dialogue_id": "D0280",
+      "event_id": "DEM_037_08",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 10,
+      "reasoning": "tier=consumer, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T03:20-03:25",
+      "demand_id": "REQ006",
+      "dialogue_id": "D0300",
+      "event_id": "DEM_040_05",
+      "true_priority": 3,
+      "pred_priority": 2,
+      "window_rank": 1,
+      "reasoning": "tier=critical, deadline<=60m, hard_deadline, critical_clinical_context"
+    },
+    {
+      "time_window": "2024-03-15T03:20-03:25",
+      "demand_id": "REQ007",
+      "dialogue_id": "D0301",
+      "event_id": "DEM_040_06",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 2,
+      "reasoning": "tier=consumer, elderly_involved, vulnerable_community, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T03:20-03:25",
+      "demand_id": "REQ001",
+      "dialogue_id": "D0295",
+      "event_id": "DEM_040_00",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 3,
+      "reasoning": "tier=consumer, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T03:20-03:25",
+      "demand_id": "REQ002",
+      "dialogue_id": "D0296",
+      "event_id": "DEM_040_01",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 4,
+      "reasoning": "tier=consumer, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T03:20-03:25",
+      "demand_id": "REQ003",
+      "dialogue_id": "D0297",
+      "event_id": "DEM_040_02",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 5,
+      "reasoning": "tier=consumer, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T03:20-03:25",
+      "demand_id": "REQ004",
+      "dialogue_id": "D0298",
+      "event_id": "DEM_040_03",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 6,
+      "reasoning": "tier=consumer, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T03:20-03:25",
+      "demand_id": "REQ005",
+      "dialogue_id": "D0299",
+      "event_id": "DEM_040_04",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 7,
+      "reasoning": "tier=consumer, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T03:35-03:40",
+      "demand_id": "REQ007",
+      "dialogue_id": "D0323",
+      "event_id": "DEM_043_06",
+      "true_priority": 4,
+      "pred_priority": 2,
+      "window_rank": 1,
+      "reasoning": "tier=critical, hard_deadline, critical_clinical_context, elderly_involved"
+    },
+    {
+      "time_window": "2024-03-15T03:35-03:40",
+      "demand_id": "REQ001",
+      "dialogue_id": "D0317",
+      "event_id": "DEM_043_00",
+      "true_priority": 4,
+      "pred_priority": 2,
+      "window_rank": 2,
+      "reasoning": "tier=critical, hard_deadline, critical_clinical_context, elderly_involved"
+    },
+    {
+      "time_window": "2024-03-15T03:35-03:40",
+      "demand_id": "REQ008",
+      "dialogue_id": "D0324",
+      "event_id": "DEM_043_07",
+      "true_priority": 3,
+      "pred_priority": 3,
+      "window_rank": 3,
+      "reasoning": "tier=regular, deadline<=60m, elderly_involved, vulnerable_community"
+    },
+    {
+      "time_window": "2024-03-15T03:35-03:40",
+      "demand_id": "REQ005",
+      "dialogue_id": "D0321",
+      "event_id": "DEM_043_04",
+      "true_priority": 3,
+      "pred_priority": 3,
+      "window_rank": 4,
+      "reasoning": "tier=regular, deadline<=60m, handoff_ready, special_handling"
+    },
+    {
+      "time_window": "2024-03-15T03:35-03:40",
+      "demand_id": "REQ002",
+      "dialogue_id": "D0318",
+      "event_id": "DEM_043_01",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 5,
+      "reasoning": "tier=consumer, elderly_involved, vulnerable_community, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T03:35-03:40",
+      "demand_id": "REQ004",
+      "dialogue_id": "D0320",
+      "event_id": "DEM_043_03",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 6,
+      "reasoning": "tier=consumer, elderly_involved, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T03:35-03:40",
+      "demand_id": "REQ003",
+      "dialogue_id": "D0319",
+      "event_id": "DEM_043_02",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 7,
+      "reasoning": "tier=consumer, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T03:35-03:40",
+      "demand_id": "REQ006",
+      "dialogue_id": "D0322",
+      "event_id": "DEM_043_05",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 8,
+      "reasoning": "tier=consumer, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T03:50-03:55",
+      "demand_id": "REQ005",
+      "dialogue_id": "D0346",
+      "event_id": "DEM_046_04",
+      "true_priority": 2,
+      "pred_priority": 1,
+      "window_rank": 1,
+      "reasoning": "tier=critical, deadline<=30m, hard_deadline, cargo=ventilator"
+    },
+    {
+      "time_window": "2024-03-15T03:50-03:55",
+      "demand_id": "REQ003",
+      "dialogue_id": "D0344",
+      "event_id": "DEM_046_02",
+      "true_priority": 4,
+      "pred_priority": 2,
+      "window_rank": 2,
+      "reasoning": "tier=critical, hard_deadline, critical_clinical_context, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T03:50-03:55",
+      "demand_id": "REQ006",
+      "dialogue_id": "D0347",
+      "event_id": "DEM_046_05",
+      "true_priority": 3,
+      "pred_priority": 3,
+      "window_rank": 3,
+      "reasoning": "tier=regular, deadline<=60m, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T03:50-03:55",
+      "demand_id": "REQ004",
+      "dialogue_id": "D0345",
+      "event_id": "DEM_046_03",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 4,
+      "reasoning": "tier=consumer, elderly_involved, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T03:50-03:55",
+      "demand_id": "REQ001",
+      "dialogue_id": "D0342",
+      "event_id": "DEM_046_00",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 5,
+      "reasoning": "tier=consumer, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T03:50-03:55",
+      "demand_id": "REQ002",
+      "dialogue_id": "D0343",
+      "event_id": "DEM_046_01",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 6,
+      "reasoning": "tier=consumer, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T03:55-04:00",
+      "demand_id": "REQ003",
+      "dialogue_id": "D0350",
+      "event_id": "DEM_047_02",
+      "true_priority": 1,
+      "pred_priority": 1,
+      "window_rank": 1,
+      "reasoning": "tier=life_support, deadline<=15m, hard_deadline, cargo=thrombolytic"
+    },
+    {
+      "time_window": "2024-03-15T03:55-04:00",
+      "demand_id": "REQ005",
+      "dialogue_id": "D0352",
+      "event_id": "DEM_047_04",
+      "true_priority": 3,
+      "pred_priority": 2,
+      "window_rank": 2,
+      "reasoning": "tier=critical, deadline<=60m, hard_deadline, critical_clinical_context"
+    },
+    {
+      "time_window": "2024-03-15T03:55-04:00",
+      "demand_id": "REQ002",
+      "dialogue_id": "D0349",
+      "event_id": "DEM_047_01",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 3,
+      "reasoning": "tier=consumer, elderly_involved, vulnerable_community, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T03:55-04:00",
+      "demand_id": "REQ001",
+      "dialogue_id": "D0348",
+      "event_id": "DEM_047_00",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 4,
+      "reasoning": "tier=consumer, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T03:55-04:00",
+      "demand_id": "REQ004",
+      "dialogue_id": "D0351",
+      "event_id": "DEM_047_03",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 5,
+      "reasoning": "tier=consumer, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T04:15-04:20",
+      "demand_id": "REQ001",
+      "dialogue_id": "D0369",
+      "event_id": "DEM_051_00",
+      "true_priority": 1,
+      "pred_priority": 1,
+      "window_rank": 1,
+      "reasoning": "tier=life_support, deadline<=15m, hard_deadline, cargo=cardiac_drug"
+    },
+    {
+      "time_window": "2024-03-15T04:15-04:20",
+      "demand_id": "REQ005",
+      "dialogue_id": "D0373",
+      "event_id": "DEM_051_04",
+      "true_priority": 4,
+      "pred_priority": 2,
+      "window_rank": 2,
+      "reasoning": "tier=critical, hard_deadline, critical_clinical_context, elderly_involved"
+    },
+    {
+      "time_window": "2024-03-15T04:15-04:20",
+      "demand_id": "REQ007",
+      "dialogue_id": "D0375",
+      "event_id": "DEM_051_06",
+      "true_priority": 3,
+      "pred_priority": 2,
+      "window_rank": 3,
+      "reasoning": "tier=critical, deadline<=60m, hard_deadline, critical_clinical_context"
+    },
+    {
+      "time_window": "2024-03-15T04:15-04:20",
+      "demand_id": "REQ003",
+      "dialogue_id": "D0371",
+      "event_id": "DEM_051_02",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 4,
+      "reasoning": "tier=consumer, elderly_involved, vulnerable_community, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T04:15-04:20",
+      "demand_id": "REQ008",
+      "dialogue_id": "D0376",
+      "event_id": "DEM_051_07",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 5,
+      "reasoning": "tier=consumer, elderly_involved, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T04:15-04:20",
+      "demand_id": "REQ009",
+      "dialogue_id": "D0377",
+      "event_id": "DEM_051_08",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 6,
+      "reasoning": "tier=consumer, elderly_involved, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T04:15-04:20",
+      "demand_id": "REQ002",
+      "dialogue_id": "D0370",
+      "event_id": "DEM_051_01",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 7,
+      "reasoning": "tier=consumer, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T04:15-04:20",
+      "demand_id": "REQ004",
+      "dialogue_id": "D0372",
+      "event_id": "DEM_051_03",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 8,
+      "reasoning": "tier=consumer, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T04:15-04:20",
+      "demand_id": "REQ006",
+      "dialogue_id": "D0374",
+      "event_id": "DEM_051_05",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 9,
+      "reasoning": "tier=consumer, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T04:15-04:20",
+      "demand_id": "REQ010",
+      "dialogue_id": "D0378",
+      "event_id": "DEM_051_09",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 10,
+      "reasoning": "tier=consumer, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T04:40-04:45",
+      "demand_id": "REQ002",
+      "dialogue_id": "D0404",
+      "event_id": "DEM_056_01",
+      "true_priority": 1,
+      "pred_priority": 1,
+      "window_rank": 1,
+      "reasoning": "tier=life_support, deadline<=15m, hard_deadline, cargo=cardiac_drug"
+    },
+    {
+      "time_window": "2024-03-15T04:40-04:45",
+      "demand_id": "REQ005",
+      "dialogue_id": "D0407",
+      "event_id": "DEM_056_04",
+      "true_priority": 4,
+      "pred_priority": 2,
+      "window_rank": 2,
+      "reasoning": "tier=critical, hard_deadline, critical_clinical_context, elderly_involved"
+    },
+    {
+      "time_window": "2024-03-15T04:40-04:45",
+      "demand_id": "REQ001",
+      "dialogue_id": "D0403",
+      "event_id": "DEM_056_00",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 3,
+      "reasoning": "tier=consumer, elderly_involved, vulnerable_community, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T04:40-04:45",
+      "demand_id": "REQ004",
+      "dialogue_id": "D0406",
+      "event_id": "DEM_056_03",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 4,
+      "reasoning": "tier=consumer, elderly_involved, vulnerable_community, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T04:40-04:45",
+      "demand_id": "REQ003",
+      "dialogue_id": "D0405",
+      "event_id": "DEM_056_02",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 5,
+      "reasoning": "tier=consumer, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T04:40-04:45",
+      "demand_id": "REQ006",
+      "dialogue_id": "D0408",
+      "event_id": "DEM_056_05",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 6,
+      "reasoning": "tier=consumer, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T04:45-04:50",
+      "demand_id": "REQ001",
+      "dialogue_id": "D0409",
+      "event_id": "DEM_057_00",
+      "true_priority": 1,
+      "pred_priority": 1,
+      "window_rank": 1,
+      "reasoning": "tier=life_support, deadline<=15m, hard_deadline, cargo=blood_product"
+    },
+    {
+      "time_window": "2024-03-15T04:45-04:50",
+      "demand_id": "REQ005",
+      "dialogue_id": "D0413",
+      "event_id": "DEM_057_04",
+      "true_priority": 4,
+      "pred_priority": 2,
+      "window_rank": 2,
+      "reasoning": "tier=critical, hard_deadline, critical_clinical_context, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T04:45-04:50",
+      "demand_id": "REQ007",
+      "dialogue_id": "D0415",
+      "event_id": "DEM_057_06",
+      "true_priority": 4,
+      "pred_priority": 2,
+      "window_rank": 3,
+      "reasoning": "tier=critical, hard_deadline, critical_clinical_context, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T04:45-04:50",
+      "demand_id": "REQ006",
+      "dialogue_id": "D0414",
+      "event_id": "DEM_057_05",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 4,
+      "reasoning": "tier=consumer, elderly_involved, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T04:45-04:50",
+      "demand_id": "REQ008",
+      "dialogue_id": "D0416",
+      "event_id": "DEM_057_07",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 5,
+      "reasoning": "tier=consumer, elderly_involved, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T04:45-04:50",
+      "demand_id": "REQ009",
+      "dialogue_id": "D0417",
+      "event_id": "DEM_057_08",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 6,
+      "reasoning": "tier=consumer, elderly_involved, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T04:45-04:50",
+      "demand_id": "REQ002",
+      "dialogue_id": "D0410",
+      "event_id": "DEM_057_01",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 7,
+      "reasoning": "tier=consumer, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T04:45-04:50",
+      "demand_id": "REQ003",
+      "dialogue_id": "D0411",
+      "event_id": "DEM_057_02",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 8,
+      "reasoning": "tier=consumer, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T04:45-04:50",
+      "demand_id": "REQ004",
+      "dialogue_id": "D0412",
+      "event_id": "DEM_057_03",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 9,
+      "reasoning": "tier=consumer, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T00:25-00:30",
+      "demand_id": "REQ002",
+      "dialogue_id": "D0044",
+      "event_id": "DEM_005_01",
+      "true_priority": 1,
+      "pred_priority": 1,
+      "window_rank": 1,
+      "reasoning": "tier=life_support, deadline<=15m, hard_deadline, cargo=cardiac_drug"
+    },
+    {
+      "time_window": "2024-03-15T00:25-00:30",
+      "demand_id": "REQ004",
+      "dialogue_id": "D0046",
+      "event_id": "DEM_005_03",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 2,
+      "reasoning": "tier=consumer, elderly_involved, vulnerable_community, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T00:25-00:30",
+      "demand_id": "REQ001",
+      "dialogue_id": "D0043",
+      "event_id": "DEM_005_00",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 3,
+      "reasoning": "tier=consumer, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T00:25-00:30",
+      "demand_id": "REQ003",
+      "dialogue_id": "D0045",
+      "event_id": "DEM_005_02",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 4,
+      "reasoning": "tier=consumer, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T00:30-00:35",
+      "demand_id": "REQ005",
+      "dialogue_id": "D0051",
+      "event_id": "DEM_006_04",
+      "true_priority": 1,
+      "pred_priority": 1,
+      "window_rank": 1,
+      "reasoning": "tier=life_support, deadline<=15m, hard_deadline, cargo=thrombolytic"
+    },
+    {
+      "time_window": "2024-03-15T00:30-00:35",
+      "demand_id": "REQ002",
+      "dialogue_id": "D0048",
+      "event_id": "DEM_006_01",
+      "true_priority": 1,
+      "pred_priority": 1,
+      "window_rank": 2,
+      "reasoning": "tier=life_support, deadline<=15m, hard_deadline, cargo=blood_product"
+    },
+    {
+      "time_window": "2024-03-15T00:30-00:35",
+      "demand_id": "REQ001",
+      "dialogue_id": "D0047",
+      "event_id": "DEM_006_00",
+      "true_priority": 4,
+      "pred_priority": 2,
+      "window_rank": 3,
+      "reasoning": "tier=critical, hard_deadline, critical_clinical_context, elderly_involved"
+    },
+    {
+      "time_window": "2024-03-15T00:30-00:35",
+      "demand_id": "REQ007",
+      "dialogue_id": "D0053",
+      "event_id": "DEM_006_06",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 4,
+      "reasoning": "tier=consumer, elderly_involved, vulnerable_community, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T00:30-00:35",
+      "demand_id": "REQ003",
+      "dialogue_id": "D0049",
+      "event_id": "DEM_006_02",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 5,
+      "reasoning": "tier=consumer, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T00:30-00:35",
+      "demand_id": "REQ004",
+      "dialogue_id": "D0050",
+      "event_id": "DEM_006_03",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 6,
+      "reasoning": "tier=consumer, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T00:30-00:35",
+      "demand_id": "REQ006",
+      "dialogue_id": "D0052",
+      "event_id": "DEM_006_05",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 7,
+      "reasoning": "tier=consumer, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T00:35-00:40",
+      "demand_id": "REQ002",
+      "dialogue_id": "D0055",
+      "event_id": "DEM_007_01",
+      "true_priority": 1,
+      "pred_priority": 1,
+      "window_rank": 1,
+      "reasoning": "tier=life_support, deadline<=15m, hard_deadline, cargo=thrombolytic"
+    },
+    {
+      "time_window": "2024-03-15T00:35-00:40",
+      "demand_id": "REQ004",
+      "dialogue_id": "D0057",
+      "event_id": "DEM_007_03",
+      "true_priority": 4,
+      "pred_priority": 2,
+      "window_rank": 2,
+      "reasoning": "tier=critical, hard_deadline, critical_clinical_context, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T00:35-00:40",
+      "demand_id": "REQ001",
+      "dialogue_id": "D0054",
+      "event_id": "DEM_007_00",
+      "true_priority": 3,
+      "pred_priority": 3,
+      "window_rank": 3,
+      "reasoning": "tier=regular, deadline<=60m, elderly_involved, vulnerable_community"
+    },
+    {
+      "time_window": "2024-03-15T00:35-00:40",
+      "demand_id": "REQ003",
+      "dialogue_id": "D0056",
+      "event_id": "DEM_007_02",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 4,
+      "reasoning": "tier=consumer, elderly_involved, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T00:40-00:45",
+      "demand_id": "REQ001",
+      "dialogue_id": "D0058",
+      "event_id": "DEM_008_00",
+      "true_priority": 1,
+      "pred_priority": 1,
+      "window_rank": 1,
+      "reasoning": "tier=life_support, deadline<=15m, hard_deadline, cargo=blood_product"
+    },
+    {
+      "time_window": "2024-03-15T00:40-00:45",
+      "demand_id": "REQ004",
+      "dialogue_id": "D0061",
+      "event_id": "DEM_008_03",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 2,
+      "reasoning": "tier=consumer, elderly_involved, vulnerable_community, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T00:40-00:45",
+      "demand_id": "REQ002",
+      "dialogue_id": "D0059",
+      "event_id": "DEM_008_01",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 3,
+      "reasoning": "tier=consumer, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T00:40-00:45",
+      "demand_id": "REQ003",
+      "dialogue_id": "D0060",
+      "event_id": "DEM_008_02",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 4,
+      "reasoning": "tier=consumer, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T01:05-01:10",
+      "demand_id": "REQ001",
+      "dialogue_id": "D0094",
+      "event_id": "DEM_013_00",
+      "true_priority": 1,
+      "pred_priority": 1,
+      "window_rank": 1,
+      "reasoning": "tier=life_support, deadline<=15m, hard_deadline, cargo=aed"
+    },
+    {
+      "time_window": "2024-03-15T01:05-01:10",
+      "demand_id": "REQ002",
+      "dialogue_id": "D0095",
+      "event_id": "DEM_013_01",
+      "true_priority": 2,
+      "pred_priority": 1,
+      "window_rank": 2,
+      "reasoning": "tier=critical, deadline<=30m, hard_deadline, cargo=icu_drug"
+    },
+    {
+      "time_window": "2024-03-15T01:05-01:10",
+      "demand_id": "REQ006",
+      "dialogue_id": "D0099",
+      "event_id": "DEM_013_05",
+      "true_priority": 4,
+      "pred_priority": 2,
+      "window_rank": 3,
+      "reasoning": "tier=critical, hard_deadline, critical_clinical_context, elderly_involved"
+    },
+    {
+      "time_window": "2024-03-15T01:05-01:10",
+      "demand_id": "REQ007",
+      "dialogue_id": "D0100",
+      "event_id": "DEM_013_06",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 4,
+      "reasoning": "tier=consumer, elderly_involved, vulnerable_community, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T01:05-01:10",
+      "demand_id": "REQ008",
+      "dialogue_id": "D0101",
+      "event_id": "DEM_013_07",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 5,
+      "reasoning": "tier=consumer, elderly_involved, vulnerable_community, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T01:05-01:10",
+      "demand_id": "REQ003",
+      "dialogue_id": "D0096",
+      "event_id": "DEM_013_02",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 6,
+      "reasoning": "tier=consumer, elderly_involved, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T01:05-01:10",
+      "demand_id": "REQ004",
+      "dialogue_id": "D0097",
+      "event_id": "DEM_013_03",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 7,
+      "reasoning": "tier=consumer, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T01:05-01:10",
+      "demand_id": "REQ005",
+      "dialogue_id": "D0098",
+      "event_id": "DEM_013_04",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 8,
+      "reasoning": "tier=consumer, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T01:10-01:15",
+      "demand_id": "REQ002",
+      "dialogue_id": "D0103",
+      "event_id": "DEM_014_01",
+      "true_priority": 4,
+      "pred_priority": 2,
+      "window_rank": 1,
+      "reasoning": "tier=critical, hard_deadline, critical_clinical_context, elderly_involved"
+    },
+    {
+      "time_window": "2024-03-15T01:10-01:15",
+      "demand_id": "REQ005",
+      "dialogue_id": "D0106",
+      "event_id": "DEM_014_04",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 2,
+      "reasoning": "tier=consumer, elderly_involved, vulnerable_community, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T01:10-01:15",
+      "demand_id": "REQ001",
+      "dialogue_id": "D0102",
+      "event_id": "DEM_014_00",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 3,
+      "reasoning": "tier=consumer, elderly_involved, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T01:10-01:15",
+      "demand_id": "REQ003",
+      "dialogue_id": "D0104",
+      "event_id": "DEM_014_02",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 4,
+      "reasoning": "tier=consumer, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T01:10-01:15",
+      "demand_id": "REQ004",
+      "dialogue_id": "D0105",
+      "event_id": "DEM_014_03",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 5,
+      "reasoning": "tier=consumer, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T01:10-01:15",
+      "demand_id": "REQ006",
+      "dialogue_id": "D0107",
+      "event_id": "DEM_014_05",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 6,
+      "reasoning": "tier=consumer, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T01:15-01:20",
+      "demand_id": "REQ004",
+      "dialogue_id": "D0111",
+      "event_id": "DEM_015_03",
+      "true_priority": 1,
+      "pred_priority": 1,
+      "window_rank": 1,
+      "reasoning": "tier=life_support, deadline<=15m, hard_deadline, cargo=blood_product"
+    },
+    {
+      "time_window": "2024-03-15T01:15-01:20",
+      "demand_id": "REQ009",
+      "dialogue_id": "D0116",
+      "event_id": "DEM_015_08",
+      "true_priority": 2,
+      "pred_priority": 1,
+      "window_rank": 2,
+      "reasoning": "tier=critical, deadline<=30m, hard_deadline, cargo=ventilator"
+    },
+    {
+      "time_window": "2024-03-15T01:15-01:20",
+      "demand_id": "REQ001",
+      "dialogue_id": "D0108",
+      "event_id": "DEM_015_00",
+      "true_priority": 3,
+      "pred_priority": 2,
+      "window_rank": 3,
+      "reasoning": "tier=critical, deadline<=60m, hard_deadline, critical_clinical_context"
+    },
+    {
+      "time_window": "2024-03-15T01:15-01:20",
+      "demand_id": "REQ006",
+      "dialogue_id": "D0113",
+      "event_id": "DEM_015_05",
+      "true_priority": 4,
+      "pred_priority": 2,
+      "window_rank": 4,
+      "reasoning": "tier=critical, hard_deadline, critical_clinical_context, elderly_involved"
+    },
+    {
+      "time_window": "2024-03-15T01:15-01:20",
+      "demand_id": "REQ002",
+      "dialogue_id": "D0109",
+      "event_id": "DEM_015_01",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 5,
+      "reasoning": "tier=consumer, elderly_involved, vulnerable_community, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T01:15-01:20",
+      "demand_id": "REQ003",
+      "dialogue_id": "D0110",
+      "event_id": "DEM_015_02",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 6,
+      "reasoning": "tier=consumer, elderly_involved, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T01:15-01:20",
+      "demand_id": "REQ005",
+      "dialogue_id": "D0112",
+      "event_id": "DEM_015_04",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 7,
+      "reasoning": "tier=consumer, elderly_involved, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T01:15-01:20",
+      "demand_id": "REQ008",
+      "dialogue_id": "D0115",
+      "event_id": "DEM_015_07",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 8,
+      "reasoning": "tier=consumer, elderly_involved, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T01:15-01:20",
+      "demand_id": "REQ007",
+      "dialogue_id": "D0114",
+      "event_id": "DEM_015_06",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 9,
+      "reasoning": "tier=consumer, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T01:15-01:20",
+      "demand_id": "REQ010",
+      "dialogue_id": "D0117",
+      "event_id": "DEM_015_09",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 10,
+      "reasoning": "tier=consumer, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T01:25-01:30",
+      "demand_id": "REQ008",
+      "dialogue_id": "D0133",
+      "event_id": "DEM_017_07",
+      "true_priority": 4,
+      "pred_priority": 2,
+      "window_rank": 1,
+      "reasoning": "tier=critical, hard_deadline, critical_clinical_context, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T01:25-01:30",
+      "demand_id": "REQ002",
+      "dialogue_id": "D0127",
+      "event_id": "DEM_017_01",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 2,
+      "reasoning": "tier=consumer, elderly_involved, vulnerable_community, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T01:25-01:30",
+      "demand_id": "REQ004",
+      "dialogue_id": "D0129",
+      "event_id": "DEM_017_03",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 3,
+      "reasoning": "tier=consumer, elderly_involved, vulnerable_community, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T01:25-01:30",
+      "demand_id": "REQ001",
+      "dialogue_id": "D0126",
+      "event_id": "DEM_017_00",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 4,
+      "reasoning": "tier=consumer, elderly_involved, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T01:25-01:30",
+      "demand_id": "REQ007",
+      "dialogue_id": "D0132",
+      "event_id": "DEM_017_06",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 5,
+      "reasoning": "tier=consumer, elderly_involved, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T01:25-01:30",
+      "demand_id": "REQ003",
+      "dialogue_id": "D0128",
+      "event_id": "DEM_017_02",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 6,
+      "reasoning": "tier=consumer, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T01:25-01:30",
+      "demand_id": "REQ005",
+      "dialogue_id": "D0130",
+      "event_id": "DEM_017_04",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 7,
+      "reasoning": "tier=consumer, handoff_ready"
+    },
+    {
+      "time_window": "2024-03-15T01:25-01:30",
+      "demand_id": "REQ006",
+      "dialogue_id": "D0131",
+      "event_id": "DEM_017_05",
+      "true_priority": 4,
+      "pred_priority": 4,
+      "window_rank": 8,
+      "reasoning": "tier=consumer, handoff_ready"
+    }
+  ],
+  "accuracy": 0.7862068965517242,
+  "macro_f1": 0.5737962093400495,
+  "weighted_f1": 0.8325206004527831,
+  "confusion_matrix": [
+    [
+      13,
+      0,
+      0,
+      0
+    ],
+    [
+      8,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      5,
+      4,
+      0
+    ],
+    [
+      0,
+      18,
+      0,
+      97
+    ]
+  ],
+  "per_priority_metrics": {
+    "1": {
+      "precision": 0.6190476190476191,
+      "recall": 1.0,
+      "f1": 0.7647058823529411,
+      "support": 13
+    },
+    "2": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "support": 8
+    },
+    "3": {
+      "precision": 1.0,
+      "recall": 0.4444444444444444,
+      "f1": 0.6153846153846154,
+      "support": 9
+    },
+    "4": {
+      "precision": 1.0,
+      "recall": 0.8434782608695652,
+      "f1": 0.9150943396226415,
+      "support": 115
+    }
+  },
+  "spearman": 0.7969215088609398,
+  "kendall_tau": 0.7634059987554079,
+  "priority_1_metrics": {
+    "support": 13,
+    "predicted_positive": 21,
+    "precision": 0.6190476190476191,
+    "recall": 1.0,
+    "f1": 0.7647058823529411
+  },
+  "urgent_metrics": {
+    "support": 21,
+    "predicted_positive": 44,
+    "precision": 0.4772727272727273,
+    "recall": 1.0,
+    "f1": 0.6461538461538462
+  },
+  "top_k_hit_rate": {
+    "k": 21,
+    "hit_rate": 1.0,
+    "hits": 21
+  }
+}

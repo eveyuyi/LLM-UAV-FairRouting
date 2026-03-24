@@ -26,6 +26,8 @@ from llm4fairrouting.workflow.solver_adapter import (
     serialize_workflow_results,
     solve_windows_dynamically,
 )
+from llm4fairrouting.multiobjective.nsga3_heuristic import run_nsga3_heuristic_search
+from llm4fairrouting.multiobjective.nsga3_search import run_nsga3_pareto_search
 from llm4fairrouting.llm.priority_inference import (
     adjust_weights,
     adjust_weights_offline,
@@ -137,12 +139,17 @@ def run_workflow(
     max_solver_stations: Optional[int] = 1,
     skip_solver: bool = False,
     noise_weight: float = 0.5,
-    drone_activation_cost: float = 10000.0,
+    drone_activation_cost: float = 1000.0,
     building_path: Optional[str] = None,
     drone_speed: float = 60.0,
     time_slots: Optional[list[int]] = None,
     pareto_scan: bool = False,
     enable_conflict_refiner: bool = False,
+    solver_backend: str = "cplex",
+    nsga3_pop_size: int = 20,
+    nsga3_n_generations: int = 10,
+    nsga3_seed: int = 42,
+    nsga3_save_all_candidate_results: bool = False,
 ):
     """Run the workflow from a canonical dialogue dataset through ranking and solving."""
     base_dir = Path(output_dir)
@@ -190,6 +197,11 @@ def run_workflow(
             "skip_solver": skip_solver,
             "pareto_scan": pareto_scan,
             "enable_conflict_refiner": enable_conflict_refiner,
+            "solver_backend": solver_backend,
+            "nsga3_pop_size": nsga3_pop_size,
+            "nsga3_n_generations": nsga3_n_generations,
+            "nsga3_seed": nsga3_seed,
+            "nsga3_save_all_candidate_results": nsga3_save_all_candidate_results,
         }
         with open(run_dir / "run_meta.json", "w", encoding="utf-8") as f:
             json.dump(run_meta, f, ensure_ascii=False, indent=2)
@@ -297,9 +309,11 @@ def run_workflow(
                 }
             )
 
+        search_payload = None
+        search_results_filename = None
         if not skip_solver and windows_to_solve:
-            all_solutions.extend(
-                solve_windows_dynamically(
+            if solver_backend == "nsga3":
+                search_payload = run_nsga3_pareto_search(
                     windows=windows_to_solve,
                     weight_configs=weight_configs_by_window,
                     stations_path=resolved_stations_path,
@@ -312,12 +326,17 @@ def run_workflow(
                     noise_weight=noise_weight,
                     drone_activation_cost=drone_activation_cost,
                     drone_speed=drone_speed,
-                    analytics_output_dir=str(run_dir / "solver_analytics"),
+                    output_dir=str(run_dir / "solver_analytics" / "nsga3"),
+                    pop_size=nsga3_pop_size,
+                    n_generations=nsga3_n_generations,
+                    seed=nsga3_seed,
+                    save_all_candidate_results=nsga3_save_all_candidate_results,
                     enable_conflict_refiner=enable_conflict_refiner,
+                    problem_id=run_dir.name,
                 )
-            )
-            if pareto_scan:
-                run_multiobjective_pareto_scan(
+                search_results_filename = "nsga3_results.json"
+            elif solver_backend == "nsga3_heuristic":
+                search_payload = run_nsga3_heuristic_search(
                     windows=windows_to_solve,
                     weight_configs=weight_configs_by_window,
                     stations_path=resolved_stations_path,
@@ -330,9 +349,51 @@ def run_workflow(
                     noise_weight=noise_weight,
                     drone_activation_cost=drone_activation_cost,
                     drone_speed=drone_speed,
-                    analytics_output_dir=str(run_dir / "solver_analytics" / "pareto"),
+                    output_dir=str(run_dir / "solver_analytics" / "nsga3_heuristic"),
+                    pop_size=nsga3_pop_size,
+                    n_generations=nsga3_n_generations,
+                    seed=nsga3_seed,
+                    save_all_candidate_results=nsga3_save_all_candidate_results,
                     enable_conflict_refiner=enable_conflict_refiner,
+                    problem_id=run_dir.name,
                 )
+                search_results_filename = "nsga3_heuristic_results.json"
+            else:
+                all_solutions.extend(
+                    solve_windows_dynamically(
+                        windows=windows_to_solve,
+                        weight_configs=weight_configs_by_window,
+                        stations_path=resolved_stations_path,
+                        building_path=building_path or str(BUILDING_DATA_PATH),
+                        max_solver_stations=max_solver_stations,
+                        time_limit=time_limit,
+                        max_drones_per_station=max_drones_per_station,
+                        max_payload=max_payload,
+                        max_range=max_range,
+                        noise_weight=noise_weight,
+                        drone_activation_cost=drone_activation_cost,
+                        drone_speed=drone_speed,
+                        analytics_output_dir=str(run_dir / "solver_analytics"),
+                        enable_conflict_refiner=enable_conflict_refiner,
+                    )
+                )
+                if pareto_scan:
+                    run_multiobjective_pareto_scan(
+                        windows=windows_to_solve,
+                        weight_configs=weight_configs_by_window,
+                        stations_path=resolved_stations_path,
+                        building_path=building_path or str(BUILDING_DATA_PATH),
+                        max_solver_stations=max_solver_stations,
+                        time_limit=time_limit,
+                        max_drones_per_station=max_drones_per_station,
+                        max_payload=max_payload,
+                        max_range=max_range,
+                        noise_weight=noise_weight,
+                        drone_activation_cost=drone_activation_cost,
+                        drone_speed=drone_speed,
+                        analytics_output_dir=str(run_dir / "solver_analytics" / "pareto"),
+                        enable_conflict_refiner=enable_conflict_refiner,
+                    )
 
         # ----------------------------------------------------------------
         # 保存汇总结果（含完整 eval 字段）
@@ -345,6 +406,10 @@ def run_workflow(
                 ensure_ascii=False,
                 indent=2,
             )
+        if search_payload is not None and search_results_filename is not None:
+            search_summary_path = run_dir / search_results_filename
+            with open(search_summary_path, "w", encoding="utf-8") as f:
+                json.dump(search_payload, f, ensure_ascii=False, indent=2)
         drone_paths = _extract_drone_path_details(all_solutions)
         drone_paths_path = run_dir / "drone_path_results.json"
         legacy_drone_paths_path = run_dir / "drone_paths.json"
@@ -359,6 +424,16 @@ def run_workflow(
         print(f"  Run directory   : {run_dir}")
         print(f"  Weight configs  : {weight_configs_dir}")
         print(f"  Workflow results: {summary_path}")
+        if search_payload is not None and search_results_filename is not None:
+            print(f"  Search summary  : {run_dir / search_results_filename}")
+            search_meta = search_payload.get("search_meta") or {}
+            runtime_s = search_meta.get("search_runtime_s")
+            avg_runtime_s = search_meta.get("avg_candidate_runtime_s")
+            if runtime_s is not None:
+                if avg_runtime_s is not None:
+                    print(f"  Search runtime  : {float(runtime_s):.3f}s total, {float(avg_runtime_s):.3f}s/candidate")
+                else:
+                    print(f"  Search runtime  : {float(runtime_s):.3f}s total")
         if drone_paths:
             print(f"  Drone paths     : {drone_paths_path}")
         analytics_dir = run_dir / "solver_analytics"
@@ -479,6 +554,24 @@ def main():
         help="Maximum number of real stations to include in solving; 0 means all stations",
     )
     parser.add_argument(
+        "--max-drones-per-station",
+        type=int,
+        default=env_int("LLM4FAIRROUTING_MAX_DRONES_PER_STATION", 3),
+        help="Maximum number of drones available at each station",
+    )
+    parser.add_argument(
+        "--max-payload",
+        type=float,
+        default=env_float("LLM4FAIRROUTING_MAX_PAYLOAD", 60.0),
+        help="Maximum payload in kilograms",
+    )
+    parser.add_argument(
+        "--max-range",
+        type=float,
+        default=env_float("LLM4FAIRROUTING_MAX_RANGE", 200000.0),
+        help="Maximum drone range in meters",
+    )
+    parser.add_argument(
         "--drone-speed",
         type=float,
         default=env_float("LLM4FAIRROUTING_DRONE_SPEED", 60.0),
@@ -489,7 +582,7 @@ def main():
     parser.add_argument(
         "--drone-activation-cost",
         type=float,
-        default=env_float("LLM4FAIRROUTING_DRONE_ACTIVATION_COST", 10000.0),
+        default=env_float("LLM4FAIRROUTING_DRONE_ACTIVATION_COST", 1000.0),
         help="Activation cost per used drone in the objective",
     )
     parser.add_argument(
@@ -504,6 +597,37 @@ def main():
         default=False,
         help="Request conflict diagnostics when a solve is infeasible",
     )
+    parser.add_argument(
+        "--solver-backend",
+        type=str,
+        choices=("cplex", "nsga3", "nsga3_heuristic"),
+        default=env_text("LLM4FAIRROUTING_SOLVER_BACKEND", "cplex"),
+        help="Solver backend: exact CPLEX routing, NSGA-III over CPLEX, or NSGA-III over the greedy heuristic backend",
+    )
+    parser.add_argument(
+        "--nsga3-pop-size",
+        type=int,
+        default=env_int("LLM4FAIRROUTING_NSGA3_POP_SIZE", 20),
+        help="Population size for NSGA-III when --solver-backend nsga3 is selected",
+    )
+    parser.add_argument(
+        "--nsga3-n-generations",
+        type=int,
+        default=env_int("LLM4FAIRROUTING_NSGA3_N_GENERATIONS", 10),
+        help="Number of generations for NSGA-III when --solver-backend nsga3 is selected",
+    )
+    parser.add_argument(
+        "--nsga3-seed",
+        type=int,
+        default=env_int("LLM4FAIRROUTING_NSGA3_SEED", 42),
+        help="Random seed for NSGA-III",
+    )
+    parser.add_argument(
+        "--nsga3-save-all-candidate-results",
+        action=argparse.BooleanOptionalAction,
+        default=env_bool("LLM4FAIRROUTING_NSGA3_SAVE_ALL_RESULTS", False),
+        help="Persist per-candidate workflow results for NSGA-III",
+    )
     args = parser.parse_args()
 
     run_workflow(
@@ -517,6 +641,9 @@ def main():
         temperature=args.temperature,
         window_minutes=args.window,
         time_limit=args.time_limit,
+        max_drones_per_station=args.max_drones_per_station,
+        max_payload=args.max_payload,
+        max_range=args.max_range,
         max_solver_stations=args.max_solver_stations,
         skip_solver=args.skip_solver,
         noise_weight=args.noise_weight,
@@ -526,6 +653,11 @@ def main():
         time_slots=args.time_slots,
         pareto_scan=args.pareto_scan,
         enable_conflict_refiner=args.enable_conflict_refiner,
+        solver_backend=args.solver_backend,
+        nsga3_pop_size=args.nsga3_pop_size,
+        nsga3_n_generations=args.nsga3_n_generations,
+        nsga3_seed=args.nsga3_seed,
+        nsga3_save_all_candidate_results=args.nsga3_save_all_candidate_results,
     )
 
 

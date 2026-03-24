@@ -1,0 +1,184 @@
+[
+  {
+    "solution_id": "nsga3_gen_candidate_0000",
+    "profile_id": "nsga3_gen_candidate_0000",
+    "label": "nsga3_gen_candidate_0000",
+    "decision_vector": [
+      0.1,
+      0.1,
+      0.1,
+      0.1
+    ],
+    "weights": {
+      "w_distance": 0.5900000000000001,
+      "w_time": 0.5900000000000001,
+      "w_risk": 0.5900000000000001
+    },
+    "drone_activation_cost": 1090.0,
+    "objectives": {
+      "final_total_distance_m": 100.0,
+      "average_delivery_time_h": 1.0,
+      "final_total_noise_impact": 10.0,
+      "service_rate_loss": 0.1,
+      "n_used_drones": 1.0
+    },
+    "final_total_distance_m": 100.0,
+    "average_delivery_time_h": 1.0,
+    "final_total_noise_impact": 10.0,
+    "service_rate_loss": 0.1,
+    "n_used_drones": 1.0,
+    "run_summary": {
+      "final_total_distance_m": 100.0,
+      "average_delivery_time_h": 1.0,
+      "final_total_noise_impact": 10.0,
+      "service_rate": 0.9,
+      "service_rate_loss": 0.1,
+      "n_used_drones": 1
+    },
+    "problem_meta": {
+      "problem_type": "dynamic_routing_workflow",
+      "problem_id": "adapter_case",
+      "n_windows": 1,
+      "time_windows": [
+        "2024-03-15T00:00-00:05"
+      ],
+      "stations_path": "stations.csv",
+      "building_path": "buildings.csv",
+      "time_limit_s": 5,
+      "max_solver_stations": 1,
+      "max_drones_per_station": 2,
+      "max_payload_kg": 60.0,
+      "max_range_m": 1000.0,
+      "noise_weight": 0.5,
+      "drone_speed_ms": 60.0
+    },
+    "solver_meta": {
+      "solver_family": "evolutionary",
+      "solver_name": "nsga3",
+      "inner_solver": "cplex"
+    },
+    "is_nondominated": true,
+    "frontier_result_path": "C:\\Users\\CodexSandboxOffline\\.codex\\.sandbox\\cwd\\ffffc8844e4b0e5b\\.test_artifacts\\nsga3_search_d4268420c0c44d46b468bd2196ef4f6b\\frontier_solutions\\nsga3_gen_candidate_0000\\workflow_results.json"
+  },
+  {
+    "solution_id": "nsga3_gen_candidate_0001",
+    "profile_id": "nsga3_gen_candidate_0001",
+    "label": "nsga3_gen_candidate_0001",
+    "decision_vector": [
+      0.8,
+      0.8,
+      0.8,
+      0.8
+    ],
+    "weights": {
+      "w_distance": 4.0200000000000005,
+      "w_time": 4.0200000000000005,
+      "w_risk": 4.0200000000000005
+    },
+    "drone_activation_cost": 8020.0,
+    "objectives": {
+      "final_total_distance_m": 150.0,
+      "average_delivery_time_h": 1.5,
+      "final_total_noise_impact": 15.0,
+      "service_rate_loss": 0.2,
+      "n_used_drones": 2.0
+    },
+    "final_total_distance_m": 150.0,
+    "average_delivery_time_h": 1.5,
+    "final_total_noise_impact": 15.0,
+    "service_rate_loss": 0.2,
+    "n_used_drones": 2.0,
+    "run_summary": {
+      "final_total_distance_m": 150.0,
+      "average_delivery_time_h": 1.5,
+      "final_total_noise_impact": 15.0,
+      "service_rate": 0.8,
+      "service_rate_loss": 0.2,
+      "n_used_drones": 2
+    },
+    "problem_meta": {
+      "problem_type": "dynamic_routing_workflow",
+      "problem_id": "adapter_case",
+      "n_windows": 1,
+      "time_windows": [
+        "2024-03-15T00:00-00:05"
+      ],
+      "stations_path": "stations.csv",
+      "building_path": "buildings.csv",
+      "time_limit_s": 5,
+      "max_solver_stations": 1,
+      "max_drones_per_station": 2,
+      "max_payload_kg": 60.0,
+      "max_range_m": 1000.0,
+      "noise_weight": 0.5,
+      "drone_speed_ms": 60.0
+    },
+    "solver_meta": {
+      "solver_family": "evolutionary",
+      "solver_name": "nsga3",
+      "inner_solver": "cplex"
+    },
+    "is_nondominated": false
+  },
+  {
+    "solution_id": "nsga3_gen_candidate_0002",
+    "profile_id": "nsga3_gen_candidate_0002",
+    "label": "nsga3_gen_candidate_0002",
+    "decision_vector": [
+      0.4,
+      0.2,
+      0.7,
+      0.3
+    ],
+    "weights": {
+      "w_distance": 2.06,
+      "w_time": 1.08,
+      "w_risk": 3.5300000000000002
+    },
+    "drone_activation_cost": 3070.0,
+    "objectives": {
+      "final_total_distance_m": 90.0,
+      "average_delivery_time_h": 1.3,
+      "final_total_noise_impact": 12.0,
+      "service_rate_loss": 0.15,
+      "n_used_drones": 1.0
+    },
+    "final_total_distance_m": 90.0,
+    "average_delivery_time_h": 1.3,
+    "final_total_noise_impact": 12.0,
+    "service_rate_loss": 0.15,
+    "n_used_drones": 1.0,
+    "run_summary": {
+      "final_total_distance_m": 90.0,
+      "average_delivery_time_h": 1.3,
+      "final_total_noise_impact": 12.0,
+      "service_rate": 0.85,
+      "service_rate_loss": 0.15,
+      "n_used_drones": 1
+    },
+    "problem_meta": {
+      "problem_type": "dynamic_routing_workflow",
+      "problem_id": "adapter_case",
+      "n_windows": 1,
+      "time_windows": [
+        "2024-03-15T00:00-00:05"
+      ],
+      "stations_path": "stations.csv",
+      "building_path": "buildings.csv",
+      "time_limit_s": 5,
+      "max_solver_stations": 1,
+      "max_drones_per_station": 2,
+      "max_payload_kg": 60.0,
+      "max_range_m": 1000.0,
+      "noise_weight": 0.5,
+      "drone_speed_ms": 60.0
+    },
+    "solver_meta": {
+      "solver_family": "evolutionary",
+      "solver_name": "nsga3",
+      "inner_solver": "cplex"
+    },
+    "is_nondominated": true,
+    "frontier_result_path": "C:\\Users\\CodexSandboxOffline\\.codex\\.sandbox\\cwd\\ffffc8844e4b0e5b\\.test_artifacts\\nsga3_search_d4268420c0c44d46b468bd2196ef4f6b\\frontier_solutions\\nsga3_gen_candidate_0002\\workflow_results.json"
+  }
+]

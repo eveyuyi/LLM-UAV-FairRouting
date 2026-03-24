@@ -1,0 +1,78 @@
+{
+  "candidate_count": 18,
+  "frontier_size": 5,
+  "metrics": [
+    "final_total_distance_m",
+    "average_delivery_time_h",
+    "final_total_noise_impact",
+    "service_rate_loss",
+    "n_used_drones"
+  ],
+  "extreme_solutions": {
+    "final_total_distance_m": {
+      "best_solution_id": "nsga3_static_heuristic_candidate_0001",
+      "best_value": 142163.3055839794,
+      "worst_solution_id": "nsga3_static_heuristic_candidate_0016",
+      "worst_value": 142253.95943091484
+    },
+    "average_delivery_time_h": {
+      "best_solution_id": "nsga3_static_heuristic_candidate_0001",
+      "best_value": 0.11848,
+      "worst_solution_id": "nsga3_static_heuristic_candidate_0016",
+      "worst_value": 0.11862
+    },
+    "final_total_noise_impact": {
+      "best_solution_id": "nsga3_static_heuristic_candidate_0000",
+      "best_value": 129.0,
+      "worst_solution_id": "nsga3_static_heuristic_candidate_0017",
+      "worst_value": 129.0
+    },
+    "service_rate_loss": {
+      "best_solution_id": "nsga3_static_heuristic_candidate_0000",
+      "best_value": 0.555556,
+      "worst_solution_id": "nsga3_static_heuristic_candidate_0017",
+      "worst_value": 0.555556
+    },
+    "n_used_drones": {
+      "best_solution_id": "nsga3_static_heuristic_candidate_0000",
+      "best_value": 3.0,
+      "worst_solution_id": "nsga3_static_heuristic_candidate_0017",
+      "worst_value": 3.0
+    }
+  },
+  "metric_ranges": {
+    "final_total_distance_m": {
+      "min": 142163.3055839794,
+      "max": 142253.95943091484,
+      "spread": 90.65384693542728
+    },
+    "average_delivery_time_h": {
+      "min": 0.11848,
+      "max": 0.11862,
+      "spread": 0.00014000000000000123
+    },
+    "final_total_noise_impact": {
+      "min": 129.0,
+      "max": 129.0,
+      "spread": 0.0
+    },
+    "service_rate_loss": {
+      "min": 0.555556,
+      "max": 0.555556,
+      "spread": 0.0
+    },
+    "n_used_drones": {
+      "min": 3.0,
+      "max": 3.0,
+      "spread": 0.0
+    }
+  },
+  "dominance_check_passed": true,
+  "frontier_solution_ids": [
+    "nsga3_static_heuristic_candidate_0001",
+    "nsga3_static_heuristic_candidate_0011",
+    "nsga3_static_heuristic_candidate_0012",
+    "nsga3_static_heuristic_candidate_0015",
+    "nsga3_static_heuristic_candidate_0017"
+  ]
+}

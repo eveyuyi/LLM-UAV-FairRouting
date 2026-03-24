@@ -1,0 +1,67 @@
+{
+  "global_weights": {
+    "w_distance": 1.0,
+    "w_time": 1.0,
+    "w_risk": 1.0
+  },
+  "demand_configs": [
+    {
+      "demand_id": "REQ004",
+      "demand_tier": "critical",
+      "priority": 1,
+      "window_rank": 1,
+      "reasoning": "tier=critical, deadline<=15m, hard_deadline, role=emergency_doctor | Immediate need for cardiac emergency drug, must arrive within 15 minutes."
+    },
+    {
+      "demand_id": "REQ002",
+      "demand_tier": "critical",
+      "priority": 1,
+      "window_rank": 2,
+      "reasoning": "tier=critical, deadline<=30m, hard_deadline, critical_clinical_context | Urgent refill of ICU medication needed within 30 minutes."
+    },
+    {
+      "demand_id": "REQ007",
+      "demand_tier": "regular",
+      "priority": 3,
+      "window_rank": 3,
+      "reasoning": "tier=regular, deadline<=60m, handoff_ready | Timely delivery of medication needed within the next hour."
+    },
+    {
+      "demand_id": "REQ001",
+      "demand_tier": "regular",
+      "priority": 3,
+      "window_rank": 4,
+      "reasoning": "tier=regular, handoff_ready | Routine supply request with flexible same-day delivery."
+    },
+    {
+      "demand_id": "REQ005",
+      "demand_tier": "regular",
+      "priority": 3,
+      "window_rank": 5,
+      "reasoning": "tier=regular, handoff_ready | Routine supply request with flexible same-day delivery."
+    },
+    {
+      "demand_id": "REQ006",
+      "demand_tier": "regular",
+      "priority": 3,
+      "window_rank": 6,
+      "reasoning": "tier=regular, handoff_ready | Routine supply request with flexible same-day delivery."
+    },
+    {
+      "demand_id": "REQ008",
+      "demand_tier": "regular",
+      "priority": 3,
+      "window_rank": 7,
+      "reasoning": "tier=regular, handoff_ready | Routine supply request with flexible same-day delivery."
+    },
+    {
+      "demand_id": "REQ003",
+      "demand_tier": "consumer",
+      "priority": 4,
+      "window_rank": 8,
+      "reasoning": "tier=consumer, handoff_ready | Routine food delivery with flexible same-day delivery."
+    }
+  ],
+  "supplementary_constraints": [],
+  "time_window": "2024-03-15T00:20-00:25"
+}

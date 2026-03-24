@@ -1,0 +1,81 @@
+{
+  "global_weights": {
+    "w_distance": 1.0,
+    "w_time": 1.0,
+    "w_risk": 1.0
+  },
+  "demand_configs": [
+    {
+      "demand_id": "REQ004",
+      "demand_tier": "critical",
+      "priority": 1,
+      "window_rank": 1,
+      "reasoning": "tier=critical, deadline<=30m, hard_deadline, critical_clinical_context | ICU medication required before the next administration round."
+    },
+    {
+      "demand_id": "REQ005",
+      "demand_tier": "critical",
+      "priority": 1,
+      "window_rank": 2,
+      "reasoning": "tier=critical, deadline<=30m, hard_deadline, critical_clinical_context | ICU medication needed urgently for immediate use."
+    },
+    {
+      "demand_id": "REQ002",
+      "demand_tier": "regular",
+      "priority": 3,
+      "window_rank": 3,
+      "reasoning": "tier=regular, handoff_ready | OTC medication for same-day symptom relief at home."
+    },
+    {
+      "demand_id": "REQ001",
+      "demand_tier": "regular",
+      "priority": 3,
+      "window_rank": 4,
+      "reasoning": "tier=regular, handoff_ready | Routine food supply request with flexible same-day delivery."
+    },
+    {
+      "demand_id": "REQ003",
+      "demand_tier": "regular",
+      "priority": 3,
+      "window_rank": 5,
+      "reasoning": "tier=regular, handoff_ready | Daily supplies request with flexible same-day delivery."
+    },
+    {
+      "demand_id": "REQ006",
+      "demand_tier": "regular",
+      "priority": 3,
+      "window_rank": 6,
+      "reasoning": "tier=regular, handoff_ready | Food supply request with flexible same-day delivery."
+    },
+    {
+      "demand_id": "REQ007",
+      "demand_tier": "regular",
+      "priority": 3,
+      "window_rank": 7,
+      "reasoning": "tier=regular, handoff_ready | Meal delivery request with flexible same-day delivery."
+    },
+    {
+      "demand_id": "REQ008",
+      "demand_tier": "regular",
+      "priority": 3,
+      "window_rank": 8,
+      "reasoning": "tier=regular, handoff_ready | Meal delivery request with flexible same-day delivery."
+    },
+    {
+      "demand_id": "REQ009",
+      "demand_tier": "regular",
+      "priority": 3,
+      "window_rank": 9,
+      "reasoning": "tier=regular, handoff_ready | Daily supplies request with flexible same-day delivery."
+    },
+    {
+      "demand_id": "REQ010",
+      "demand_tier": "regular",
+      "priority": 3,
+      "window_rank": 10,
+      "reasoning": "tier=regular, handoff_ready | Daily supplies request with flexible same-day delivery."
+    }
+  ],
+  "supplementary_constraints": [],
+  "time_window": "2024-03-15T00:05-00:10"
+}

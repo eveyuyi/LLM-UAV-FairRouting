@@ -1,0 +1,75 @@
+{
+  "candidate_count": 3,
+  "frontier_size": 2,
+  "metrics": [
+    "final_total_distance_m",
+    "average_delivery_time_h",
+    "final_total_noise_impact",
+    "service_rate_loss",
+    "n_used_drones"
+  ],
+  "extreme_solutions": {
+    "final_total_distance_m": {
+      "best_solution_id": "nsga3_static_heuristic_candidate_0002",
+      "best_value": 90.0,
+      "worst_solution_id": "nsga3_static_heuristic_candidate_0001",
+      "worst_value": 140.0
+    },
+    "average_delivery_time_h": {
+      "best_solution_id": "nsga3_static_heuristic_candidate_0000",
+      "best_value": 1.0,
+      "worst_solution_id": "nsga3_static_heuristic_candidate_0001",
+      "worst_value": 1.5
+    },
+    "final_total_noise_impact": {
+      "best_solution_id": "nsga3_static_heuristic_candidate_0000",
+      "best_value": 10.0,
+      "worst_solution_id": "nsga3_static_heuristic_candidate_0001",
+      "worst_value": 12.0
+    },
+    "service_rate_loss": {
+      "best_solution_id": "nsga3_static_heuristic_candidate_0000",
+      "best_value": 0.1,
+      "worst_solution_id": "nsga3_static_heuristic_candidate_0001",
+      "worst_value": 0.2
+    },
+    "n_used_drones": {
+      "best_solution_id": "nsga3_static_heuristic_candidate_0000",
+      "best_value": 1.0,
+      "worst_solution_id": "nsga3_static_heuristic_candidate_0001",
+      "worst_value": 2.0
+    }
+  },
+  "metric_ranges": {
+    "final_total_distance_m": {
+      "min": 90.0,
+      "max": 140.0,
+      "spread": 50.0
+    },
+    "average_delivery_time_h": {
+      "min": 1.0,
+      "max": 1.5,
+      "spread": 0.5
+    },
+    "final_total_noise_impact": {
+      "min": 10.0,
+      "max": 12.0,
+      "spread": 2.0
+    },
+    "service_rate_loss": {
+      "min": 0.1,
+      "max": 0.2,
+      "spread": 0.1
+    },
+    "n_used_drones": {
+      "min": 1.0,
+      "max": 2.0,
+      "spread": 1.0
+    }
+  },
+  "dominance_check_passed": true,
+  "frontier_solution_ids": [
+    "nsga3_static_heuristic_candidate_0000",
+    "nsga3_static_heuristic_candidate_0002"
+  ]
+}

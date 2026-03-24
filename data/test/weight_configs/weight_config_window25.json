@@ -1,0 +1,67 @@
+{
+  "global_weights": {
+    "w_distance": 1.0,
+    "w_time": 1.0,
+    "w_risk": 1.0
+  },
+  "demand_configs": [
+    {
+      "demand_id": "REQ007",
+      "demand_tier": "critical",
+      "priority": 1,
+      "window_rank": 1,
+      "reasoning": "tier=critical, deadline<=30m, hard_deadline, cargo=ventilator | Respiratory support risk; backup ventilator needed within 30 minutes"
+    },
+    {
+      "demand_id": "REQ008",
+      "demand_tier": "critical",
+      "priority": 1,
+      "window_rank": 2,
+      "reasoning": "tier=critical, deadline<=30m, hard_deadline, cargo=ventilator | Respiratory support risk; backup ventilator needed within 30 minutes"
+    },
+    {
+      "demand_id": "REQ001",
+      "demand_tier": "regular",
+      "priority": 4,
+      "window_rank": 3,
+      "reasoning": "tier=regular, handoff_ready | Flexible same-day delivery of daily supplies"
+    },
+    {
+      "demand_id": "REQ002",
+      "demand_tier": "regular",
+      "priority": 4,
+      "window_rank": 4,
+      "reasoning": "tier=regular, handoff_ready | Flexible same-day delivery of food"
+    },
+    {
+      "demand_id": "REQ003",
+      "demand_tier": "regular",
+      "priority": 4,
+      "window_rank": 5,
+      "reasoning": "tier=regular, handoff_ready | Flexible same-day delivery of food"
+    },
+    {
+      "demand_id": "REQ005",
+      "demand_tier": "regular",
+      "priority": 3,
+      "window_rank": 6,
+      "reasoning": "tier=regular, hard_deadline, critical_clinical_context, handoff_ready | Serious clinical condition requiring urgent support within 120 minutes"
+    },
+    {
+      "demand_id": "REQ006",
+      "demand_tier": "regular",
+      "priority": 3,
+      "window_rank": 7,
+      "reasoning": "tier=regular, hard_deadline, handoff_ready | Important that it arrives within 120 minutes"
+    },
+    {
+      "demand_id": "REQ004",
+      "demand_tier": "regular",
+      "priority": 3,
+      "window_rank": 8,
+      "reasoning": "tier=regular, handoff_ready | Routine supply request for OTC medication within 120 minutes"
+    }
+  ],
+  "supplementary_constraints": [],
+  "time_window": "2024-03-15T02:05-02:10"
+}

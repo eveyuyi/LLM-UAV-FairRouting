@@ -1,0 +1,354 @@
+[
+  {
+    "time_window": "2024-03-15T00:25-00:30",
+    "n_demands_extracted": 4,
+    "n_demands_feasible": 4,
+    "n_demands_filtered": 0,
+    "global_weights": {
+      "w_distance": 0.9129905966363997,
+      "w_time": 2.3181327667820497,
+      "w_risk": 2.273580401731338
+    },
+    "n_supplementary_constraints": 0,
+    "solve_status": "heuristic_completed",
+    "solve_time_s": 232.873856,
+    "objective_value": 1000175019.345974,
+    "run_summary": {
+      "total_demands": 4,
+      "served_demands": 3,
+      "service_rate": 0.75,
+      "service_rate_loss": 0.25,
+      "final_total_distance_m": 163989.6738863496,
+      "final_total_noise_impact": 18.0,
+      "average_delivery_time_h": 0.151616,
+      "max_delivery_time_h": 0.180964,
+      "n_used_drones": 3,
+      "used_drone_ids": [
+        "U11",
+        "U12",
+        "U13"
+      ],
+      "n_solver_calls": 1,
+      "n_conflict_reports": 0
+    },
+    "per_demand_results": [
+      {
+        "demand_id": "REQ001",
+        "solver_event_id": "2024-03-15T00:25-00:30::REQ001::0",
+        "source_event_id": "DEM_005_00",
+        "source_dialogue_id": "D0043",
+        "request_timestamp": "2024-03-15T00:25:00",
+        "priority": 4,
+        "window_rank": 3,
+        "llm_reasoning": "tier=consumer, handoff_ready",
+        "demand_tier": "consumer",
+        "cargo_type": "food",
+        "weight_kg": 19.4,
+        "origin_fid": "COM_54",
+        "dest_fid": "DEM_7025",
+        "deadline_minutes": 120,
+        "is_served": true,
+        "assigned_drone": "U13",
+        "delivery_time_h": 0.18096395527241874,
+        "delivery_time_s": 651.5,
+        "delivery_time_min": 10.86,
+        "delivery_latency_h": 0.18096395527241874,
+        "delivery_latency_s": 651.5,
+        "delivery_latency_min": 10.86,
+        "is_deadline_met": true,
+        "required_supply_idx": 0,
+        "demand_point_id": "D_DEM_7025"
+      },
+      {
+        "demand_id": "REQ002",
+        "solver_event_id": "2024-03-15T00:25-00:30::REQ002::1",
+        "source_event_id": "DEM_005_01",
+        "source_dialogue_id": "D0044",
+        "request_timestamp": "2024-03-15T00:25:00",
+        "priority": 1,
+        "window_rank": 1,
+        "llm_reasoning": "tier=life_support, deadline<=15m, hard_deadline, cargo=cardiac_drug",
+        "demand_tier": "life_support",
+        "cargo_type": "cardiac_drug",
+        "weight_kg": 25.2,
+        "origin_fid": "MED_438",
+        "dest_fid": "DEM_13819",
+        "deadline_minutes": 15,
+        "is_served": true,
+        "assigned_drone": "U13",
+        "delivery_time_h": 0.16517321886374842,
+        "delivery_time_s": 594.6,
+        "delivery_time_min": 9.91,
+        "delivery_latency_h": 0.16517321886374842,
+        "delivery_latency_s": 594.6,
+        "delivery_latency_min": 9.91,
+        "is_deadline_met": true,
+        "required_supply_idx": 1,
+        "demand_point_id": "D_DEM_13819"
+      },
+      {
+        "demand_id": "REQ003",
+        "solver_event_id": "2024-03-15T00:25-00:30::REQ003::2",
+        "source_event_id": "DEM_005_02",
+        "source_dialogue_id": "D0045",
+        "request_timestamp": "2024-03-15T00:25:00",
+        "priority": 4,
+        "window_rank": 4,
+        "llm_reasoning": "tier=consumer, handoff_ready",
+        "demand_tier": "consumer",
+        "cargo_type": "food",
+        "weight_kg": 7.4,
+        "origin_fid": "COM_5",
+        "dest_fid": "DEM_10569",
+        "deadline_minutes": 120,
+        "is_served": true,
+        "assigned_drone": "U13",
+        "delivery_time_h": 0.10871025926321382,
+        "delivery_time_s": 391.4,
+        "delivery_time_min": 6.52,
+        "delivery_latency_h": 0.10871025926321382,
+        "delivery_latency_s": 391.4,
+        "delivery_latency_min": 6.52,
+        "is_deadline_met": true,
+        "required_supply_idx": 2,
+        "demand_point_id": "D_DEM_10569"
+      },
+      {
+        "demand_id": "REQ004",
+        "solver_event_id": "2024-03-15T00:25-00:30::REQ004::3",
+        "source_event_id": "DEM_005_03",
+        "source_dialogue_id": "D0046",
+        "request_timestamp": "2024-03-15T00:25:00",
+        "priority": 4,
+        "window_rank": 2,
+        "llm_reasoning": "tier=consumer, elderly_involved, vulnerable_community, handoff_ready",
+        "demand_tier": "consumer",
+        "cargo_type": "food",
+        "weight_kg": 15.6,
+        "origin_fid": "COM_22",
+        "dest_fid": "DEM_25427",
+        "deadline_minutes": 120,
+        "is_served": false,
+        "assigned_drone": null,
+        "delivery_time_h": null,
+        "delivery_time_s": null,
+        "delivery_time_min": null,
+        "delivery_latency_h": null,
+        "delivery_latency_s": null,
+        "delivery_latency_min": null,
+        "is_deadline_met": false,
+        "required_supply_idx": 3,
+        "demand_point_id": "D_DEM_25427"
+      }
+    ],
+    "per_drone_details": [
+      {
+        "drone_id": "U11",
+        "station_id": 0,
+        "station_name": "L1",
+        "path_node_indices": [
+          8,
+          2,
+          1,
+          0,
+          6,
+          5,
+          4,
+          8
+        ],
+        "path_node_ids": [
+          "L1",
+          "S_COM_5",
+          "S_MED_438",
+          "S_COM_54",
+          "D_DEM_10569",
+          "D_DEM_13819",
+          "D_DEM_7025",
+          "L1"
+        ],
+        "path_str": "L1 -> S_COM_5 -> S_MED_438 -> S_COM_54 -> D_DEM_10569 -> D_DEM_13819 -> D_DEM_7025 -> L1",
+        "served_demand_ids": [
+          "2024-03-15T00:25-00:30::REQ003::2",
+          "2024-03-15T00:25-00:30::REQ002::1",
+          "2024-03-15T00:25-00:30::REQ001::0"
+        ],
+        "total_distance_m": 54663.224628783195,
+        "total_mission_time_h": 0.2530704843925148,
+        "total_mission_time_s": 911.1
+      },
+      {
+        "drone_id": "U12",
+        "station_id": 0,
+        "station_name": "L1",
+        "path_node_indices": [
+          8,
+          2,
+          1,
+          0,
+          6,
+          5,
+          4,
+          8
+        ],
+        "path_node_ids": [
+          "L1",
+          "S_COM_5",
+          "S_MED_438",
+          "S_COM_54",
+          "D_DEM_10569",
+          "D_DEM_13819",
+          "D_DEM_7025",
+          "L1"
+        ],
+        "path_str": "L1 -> S_COM_5 -> S_MED_438 -> S_COM_54 -> D_DEM_10569 -> D_DEM_13819 -> D_DEM_7025 -> L1",
+        "served_demand_ids": [
+          "2024-03-15T00:25-00:30::REQ003::2",
+          "2024-03-15T00:25-00:30::REQ002::1",
+          "2024-03-15T00:25-00:30::REQ001::0"
+        ],
+        "total_distance_m": 54663.224628783195,
+        "total_mission_time_h": 0.2530704843925148,
+        "total_mission_time_s": 911.1
+      },
+      {
+        "drone_id": "U13",
+        "station_id": 0,
+        "station_name": "L1",
+        "path_node_indices": [
+          8,
+          2,
+          1,
+          0,
+          6,
+          5,
+          4,
+          8
+        ],
+        "path_node_ids": [
+          "L1",
+          "S_COM_5",
+          "S_MED_438",
+          "S_COM_54",
+          "D_DEM_10569",
+          "D_DEM_13819",
+          "D_DEM_7025",
+          "L1"
+        ],
+        "path_str": "L1 -> S_COM_5 -> S_MED_438 -> S_COM_54 -> D_DEM_10569 -> D_DEM_13819 -> D_DEM_7025 -> L1",
+        "served_demand_ids": [
+          "2024-03-15T00:25-00:30::REQ003::2",
+          "2024-03-15T00:25-00:30::REQ002::1",
+          "2024-03-15T00:25-00:30::REQ001::0"
+        ],
+        "total_distance_m": 54663.224628783195,
+        "total_mission_time_h": 0.2530704843925148,
+        "total_mission_time_s": 911.1
+      }
+    ],
+    "drone_path_details": [
+      {
+        "drone_id": "U11",
+        "station_id": 0,
+        "station_name": "L1",
+        "path_node_indices": [
+          8,
+          2,
+          1,
+          0,
+          6,
+          5,
+          4,
+          8
+        ],
+        "path_node_ids": [
+          "L1",
+          "S_COM_5",
+          "S_MED_438",
+          "S_COM_54",
+          "D_DEM_10569",
+          "D_DEM_13819",
+          "D_DEM_7025",
+          "L1"
+        ],
+        "path_str": "L1 -> S_COM_5 -> S_MED_438 -> S_COM_54 -> D_DEM_10569 -> D_DEM_13819 -> D_DEM_7025 -> L1",
+        "served_demand_ids": [
+          "2024-03-15T00:25-00:30::REQ003::2",
+          "2024-03-15T00:25-00:30::REQ002::1",
+          "2024-03-15T00:25-00:30::REQ001::0"
+        ],
+        "total_distance_m": 54663.224628783195,
+        "total_mission_time_h": 0.2530704843925148,
+        "total_mission_time_s": 911.1
+      },
+      {
+        "drone_id": "U12",
+        "station_id": 0,
+        "station_name": "L1",
+        "path_node_indices": [
+          8,
+          2,
+          1,
+          0,
+          6,
+          5,
+          4,
+          8
+        ],
+        "path_node_ids": [
+          "L1",
+          "S_COM_5",
+          "S_MED_438",
+          "S_COM_54",
+          "D_DEM_10569",
+          "D_DEM_13819",
+          "D_DEM_7025",
+          "L1"
+        ],
+        "path_str": "L1 -> S_COM_5 -> S_MED_438 -> S_COM_54 -> D_DEM_10569 -> D_DEM_13819 -> D_DEM_7025 -> L1",
+        "served_demand_ids": [
+          "2024-03-15T00:25-00:30::REQ003::2",
+          "2024-03-15T00:25-00:30::REQ002::1",
+          "2024-03-15T00:25-00:30::REQ001::0"
+        ],
+        "total_distance_m": 54663.224628783195,
+        "total_mission_time_h": 0.2530704843925148,
+        "total_mission_time_s": 911.1
+      },
+      {
+        "drone_id": "U13",
+        "station_id": 0,
+        "station_name": "L1",
+        "path_node_indices": [
+          8,
+          2,
+          1,
+          0,
+          6,
+          5,
+          4,
+          8
+        ],
+        "path_node_ids": [
+          "L1",
+          "S_COM_5",
+          "S_MED_438",
+          "S_COM_54",
+          "D_DEM_10569",
+          "D_DEM_13819",
+          "D_DEM_7025",
+          "L1"
+        ],
+        "path_str": "L1 -> S_COM_5 -> S_MED_438 -> S_COM_54 -> D_DEM_10569 -> D_DEM_13819 -> D_DEM_7025 -> L1",
+        "served_demand_ids": [
+          "2024-03-15T00:25-00:30::REQ003::2",
+          "2024-03-15T00:25-00:30::REQ002::1",
+          "2024-03-15T00:25-00:30::REQ001::0"
+        ],
+        "total_distance_m": 54663.224628783195,
+        "total_mission_time_h": 0.2530704843925148,
+        "total_mission_time_s": 911.1
+      }
+    ],
+    "analytics_artifacts": {}
+  }
+]

@@ -1,0 +1,75 @@
+{
+  "candidate_count": 3,
+  "frontier_size": 2,
+  "metrics": [
+    "final_total_distance_m",
+    "average_delivery_time_h",
+    "final_total_noise_impact",
+    "service_rate_loss",
+    "n_used_drones"
+  ],
+  "extreme_solutions": {
+    "final_total_distance_m": {
+      "best_solution_id": "nsga3_heuristic_candidate_0000",
+      "best_value": 70.0,
+      "worst_solution_id": "nsga3_heuristic_candidate_0002",
+      "worst_value": 95.0
+    },
+    "average_delivery_time_h": {
+      "best_solution_id": "nsga3_heuristic_candidate_0001",
+      "best_value": 0.7,
+      "worst_solution_id": "nsga3_heuristic_candidate_0002",
+      "worst_value": 1.0
+    },
+    "final_total_noise_impact": {
+      "best_solution_id": "nsga3_heuristic_candidate_0001",
+      "best_value": 7.5,
+      "worst_solution_id": "nsga3_heuristic_candidate_0002",
+      "worst_value": 9.0
+    },
+    "service_rate_loss": {
+      "best_solution_id": "nsga3_heuristic_candidate_0000",
+      "best_value": 0.05,
+      "worst_solution_id": "nsga3_heuristic_candidate_0002",
+      "worst_value": 0.15
+    },
+    "n_used_drones": {
+      "best_solution_id": "nsga3_heuristic_candidate_0000",
+      "best_value": 1.0,
+      "worst_solution_id": "nsga3_heuristic_candidate_0001",
+      "worst_value": 2.0
+    }
+  },
+  "metric_ranges": {
+    "final_total_distance_m": {
+      "min": 70.0,
+      "max": 95.0,
+      "spread": 25.0
+    },
+    "average_delivery_time_h": {
+      "min": 0.7,
+      "max": 1.0,
+      "spread": 0.30000000000000004
+    },
+    "final_total_noise_impact": {
+      "min": 7.5,
+      "max": 9.0,
+      "spread": 1.5
+    },
+    "service_rate_loss": {
+      "min": 0.05,
+      "max": 0.15,
+      "spread": 0.09999999999999999
+    },
+    "n_used_drones": {
+      "min": 1.0,
+      "max": 2.0,
+      "spread": 1.0
+    }
+  },
+  "dominance_check_passed": true,
+  "frontier_solution_ids": [
+    "nsga3_heuristic_candidate_0000",
+    "nsga3_heuristic_candidate_0001"
+  ]
+}

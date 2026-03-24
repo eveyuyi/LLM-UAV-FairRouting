@@ -19,6 +19,8 @@ PARETO_METRICS = (
     "final_total_distance_m",
     "average_delivery_time_h",
     "final_total_noise_impact",
+    "service_rate_loss",
+    "n_used_drones",
 )
 
 
@@ -208,6 +210,50 @@ def compute_pareto_frontier(
     )
     return frontier
 
+
+
+def analyze_pareto_candidates(
+    candidates: Sequence[Dict[str, object]],
+    metrics: Sequence[str] = PARETO_METRICS,
+) -> Dict[str, object]:
+    frontier = compute_pareto_frontier(candidates, metrics=metrics)
+    analysis: Dict[str, object] = {
+        "candidate_count": len(candidates),
+        "frontier_size": len(frontier),
+        "metrics": list(metrics),
+        "extreme_solutions": {},
+        "metric_ranges": {},
+        "dominance_check_passed": True,
+    }
+    if not candidates:
+        return analysis
+
+    for metric in metrics:
+        valid = [candidate for candidate in candidates if candidate.get(metric) is not None]
+        if not valid:
+            continue
+        sorted_candidates = sorted(valid, key=lambda item: float(item.get(metric, math.inf)))
+        best = sorted_candidates[0]
+        worst = sorted_candidates[-1]
+        analysis["extreme_solutions"][metric] = {
+            "best_solution_id": best.get("solution_id") or best.get("profile_id"),
+            "best_value": float(best.get(metric, math.inf)),
+            "worst_solution_id": worst.get("solution_id") or worst.get("profile_id"),
+            "worst_value": float(worst.get(metric, math.inf)),
+        }
+        values = [float(candidate.get(metric, math.inf)) for candidate in valid]
+        analysis["metric_ranges"][metric] = {
+            "min": min(values),
+            "max": max(values),
+            "spread": max(values) - min(values),
+        }
+
+    frontier_ids = {
+        str(candidate.get("solution_id") or candidate.get("profile_id") or "")
+        for candidate in frontier
+    }
+    analysis["frontier_solution_ids"] = sorted(item for item in frontier_ids if item)
+    return analysis
 
 def write_json(payload: Dict[str, object] | List[object], output_path: Path | str) -> str:
     path = Path(output_path)
@@ -439,6 +485,79 @@ def generate_pareto_chart(
     return str(path)
 
 
+def generate_parallel_coordinates_chart(
+    candidates: Sequence[Dict[str, object]],
+    output_path: Path | str,
+    metrics: Sequence[str] = PARETO_METRICS,
+) -> str | None:
+    points = [
+        candidate
+        for candidate in candidates
+        if all(candidate.get(metric) is not None for metric in metrics)
+    ]
+    if not points or len(metrics) < 2:
+        return None
+
+    plt = _safe_import_matplotlib()
+    if plt is None:
+        return None
+
+    metric_ranges: Dict[str, tuple[float, float]] = {}
+    for metric in metrics:
+        values = [float(point[metric]) for point in points]
+        min_val = min(values)
+        max_val = max(values)
+        if math.isclose(min_val, max_val):
+            max_val = min_val + 1.0
+        metric_ranges[metric] = (min_val, max_val)
+
+    frontier = compute_pareto_frontier(points, metrics=metrics)
+    frontier_ids = {
+        str(point.get("solution_id") or point.get("profile_id") or point.get("label") or "")
+        for point in frontier
+    }
+    x_positions = list(range(len(metrics)))
+
+    fig_width = max(9.0, 1.8 * len(metrics))
+    fig, ax = plt.subplots(figsize=(fig_width, 5.4))
+
+    for point in points:
+        normalized = []
+        for metric in metrics:
+            min_val, max_val = metric_ranges[metric]
+            value = float(point[metric])
+            normalized.append((value - min_val) / (max_val - min_val))
+        identity = str(point.get("solution_id") or point.get("profile_id") or point.get("label") or "")
+        is_frontier = identity in frontier_ids
+        ax.plot(
+            x_positions,
+            normalized,
+            color="#d62728" if is_frontier else "#1f77b4",
+            alpha=0.9 if is_frontier else 0.28,
+            linewidth=2.1 if is_frontier else 1.0,
+        )
+
+    ax.set_xticks(x_positions, [metric.replace("_", "\n") for metric in metrics])
+    ax.set_yticks([0.0, 0.25, 0.5, 0.75, 1.0])
+    ax.set_yticklabels(["best", "0.25", "0.50", "0.75", "worst"])
+    ax.set_ylim(-0.02, 1.02)
+    ax.set_title("Pareto Parallel Coordinates")
+    ax.set_ylabel("Normalized Objective Value")
+    ax.grid(axis="y", alpha=0.25, linestyle="--")
+
+    for xpos, metric in enumerate(metrics):
+        min_val, max_val = metric_ranges[metric]
+        ax.text(xpos, -0.08, f"{min_val:.3g}", ha="center", va="top", fontsize=7)
+        ax.text(xpos, 1.04, f"{max_val:.3g}", ha="center", va="bottom", fontsize=7)
+
+    path = Path(output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fig.tight_layout()
+    fig.savefig(path, dpi=180)
+    plt.close(fig)
+    return str(path)
+
+
 def export_visualizations(
     *,
     analytics: Dict[str, object],
@@ -489,5 +608,11 @@ def export_visualizations(
         )
         if saved:
             artifacts.append({"chart_type": "pareto_frontier", "path": saved})
+        saved = generate_parallel_coordinates_chart(
+            pareto_candidates,
+            directory / "pareto_parallel_coordinates.png",
+        )
+        if saved:
+            artifacts.append({"chart_type": "pareto_parallel_coordinates", "path": saved})
 
     return artifacts

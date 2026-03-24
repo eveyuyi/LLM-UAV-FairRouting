@@ -167,6 +167,7 @@ def _enrich_demands_with_metadata(demands: List[Dict], dialogues: List[Dict]) ->
         dest["coords"] = meta.get("dest_coords", [0.0, 0.0])
 
         demand["request_timestamp"] = dialogue.get("timestamp")
+        demand["source_event_id"] = meta.get("event_id", demand.get("source_event_id"))
 
     return demands
 
@@ -388,6 +389,7 @@ def _build_heuristic_demand(dialogue: Dict, demand_id: str) -> Dict:
     return {
         "demand_id": demand_id,
         "source_dialogue_id": dialogue.get("dialogue_id"),
+        "source_event_id": metadata.get("event_id"),
         "request_timestamp": dialogue.get("timestamp"),
         "origin": {
             "station_name": metadata.get("supply_station_name", ""),
@@ -452,6 +454,9 @@ def _merge_demand_records(heuristic: Dict, extracted: Dict) -> Dict:
         "demand_id": _prefer_value(extracted.get("demand_id"), heuristic["demand_id"]),
         "source_dialogue_id": _prefer_value(
             extracted.get("source_dialogue_id"), heuristic["source_dialogue_id"]
+        ),
+        "source_event_id": _prefer_value(
+            extracted.get("source_event_id"), heuristic.get("source_event_id")
         ),
         "request_timestamp": _prefer_value(
             extracted.get("request_timestamp"), heuristic["request_timestamp"]

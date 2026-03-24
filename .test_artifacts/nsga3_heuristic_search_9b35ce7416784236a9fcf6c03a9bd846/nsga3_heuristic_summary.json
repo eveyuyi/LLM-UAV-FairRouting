@@ -1,0 +1,33 @@
+{
+  "problem_meta": {
+    "problem_type": "dynamic_routing_workflow",
+    "problem_id": "heuristic_case",
+    "n_windows": 1,
+    "time_windows": [
+      "2024-03-15T00:00-00:05"
+    ],
+    "stations_path": "stations.csv",
+    "building_path": "buildings.csv",
+    "time_limit_s": 5,
+    "max_solver_stations": 1,
+    "max_drones_per_station": 2,
+    "max_payload_kg": 60.0,
+    "max_range_m": 1000.0,
+    "noise_weight": 0.5,
+    "drone_speed_ms": 60.0
+  },
+  "solver_meta": {
+    "solver_family": "evolutionary",
+    "solver_name": "nsga3_heuristic",
+    "inner_solver": "greedy_heuristic"
+  },
+  "search_meta": {
+    "pop_size": 3,
+    "n_generations": 2,
+    "seed": 11,
+    "n_candidates_evaluated": 3,
+    "search_runtime_s": 0.000167,
+    "avg_candidate_runtime_s": 5.6e-05
+  },
+  "frontier_size": 2
+}

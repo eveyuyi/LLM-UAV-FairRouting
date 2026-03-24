@@ -143,6 +143,46 @@ def test_assignment_solver_extracts_multi_stop_route(monkeypatch):
     assert (2, 3) in dist_matrix.queries
 
 
+def test_assignment_solver_accepts_time_limit_incumbent(monkeypatch):
+    solver, drone_states, demands, _dist_matrix = _build_solver_fixture()
+
+    class FakeSolver:
+        def __init__(self):
+            self.options = {}
+
+        def solve(self, model, tee=True):
+            model.used[0].set_value(1)
+            model.serve[0, 0].set_value(1)
+            model.visit[0, 0].set_value(1)
+            model.visit[0, 2].set_value(1)
+            model.x[0, -1, 0].set_value(1)
+            model.x[0, 0, 2].set_value(1)
+            model.x[0, 2, -2].set_value(1)
+            model.arrival[0, 0].set_value(0.01)
+            model.arrival[0, 2].set_value(0.03)
+            model.end_time[0].set_value(0.05)
+            model.unassigned[0].set_value(0)
+            model.unassigned[1].set_value(1)
+            return types.SimpleNamespace(
+                solver=types.SimpleNamespace(
+                    termination_condition=TerminationCondition.maxTimeLimit
+                ),
+                solution=[object()],
+            )
+
+    monkeypatch.setattr(
+        "llm4fairrouting.routing.assignment_model.SolverFactory",
+        lambda name: FakeSolver(),
+    )
+
+    assignments = solver.solve_assignment(drone_states, demands, current_time=0.0)
+
+    assert len(assignments) == 1
+    assert assignments[0]["served_demand_ids"] == ["REQ1"]
+    assert solver.last_solve_details["accepted_with_incumbent"] is True
+    assert solver.last_solve_details["termination_condition"] == str(TerminationCondition.maxTimeLimit)
+
+
 def test_simulator_executes_multi_demand_route_in_single_sortie(monkeypatch):
     supply_points = [
         Point(id="S1", lon=0.0, lat=0.0, alt=0.0, x=10.0, y=0.0, type="supply"),
@@ -185,7 +225,13 @@ def test_simulator_executes_multi_demand_route_in_single_sortie(monkeypatch):
         time_limit=1,
     )
 
-    def fake_solve_assignment(idle_drones, pending, current_time):
+    def fake_solve_assignment(
+        idle_drones,
+        pending,
+        current_time,
+        objective_weights=None,
+        solve_context=None,
+    ):
         drone = idle_drones[0]
         pending_by_id = {d.unique_id: d for d in pending}
         return [

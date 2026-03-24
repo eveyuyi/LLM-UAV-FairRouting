@@ -1,0 +1,657 @@
+[
+  {
+    "time_window": "2024-03-15T00:05-00:10",
+    "demands": [
+      {
+        "demand_id": "REQ001",
+        "source_dialogue_id": "D0010",
+        "source_event_id": "DEM_001_00",
+        "request_timestamp": "2024-03-15T00:05:00",
+        "origin": {
+          "station_name": "Commercial Distribution Hub COM_12",
+          "type": "supply_station",
+          "fid": "COM_12",
+          "coords": [
+            113.82327136439469,
+            22.6746292751996
+          ]
+        },
+        "destination": {
+          "node_id": "DEM_21271",
+          "type": "residential_area",
+          "fid": "DEM_21271",
+          "coords": [
+            113.8630138318654,
+            22.658155842131688
+          ]
+        },
+        "cargo": {
+          "type": "food",
+          "type_cn": "food",
+          "demand_tier": "consumer",
+          "weight_kg": 14.3,
+          "quantity": 14,
+          "quantity_unit": "units",
+          "temperature_sensitive": false
+        },
+        "demand_tier": "consumer",
+        "time_constraint": {
+          "type": "soft",
+          "description": "Delivery target within 120 minutes",
+          "deadline_minutes": 120
+        },
+        "priority_evaluation_signals": {
+          "patient_condition": "Routine supply request",
+          "time_sensitivity": "Flexible same-day delivery",
+          "population_vulnerability": {
+            "elderly_involved": false,
+            "children_involved": false,
+            "vulnerable_community": false,
+            "elderly_ratio": 0.15,
+            "population": 4405
+          },
+          "medical_urgency_self_report": "Flexible same-day delivery",
+          "requester_role": "family_caregiver",
+          "scenario_context": "This is part of a normal same-day household order.",
+          "nearby_critical_facility": "hospital",
+          "operational_readiness": "Receiver is ready and handoff can happen immediately",
+          "special_handling": []
+        },
+        "context_signals": [
+          "Tier inferred from dialogue: consumer",
+          "Patient or service context: Routine supply request",
+          "Delivery target mentioned in dialogue: 120 min",
+          "Requester role inferred from dialogue: family_caregiver",
+          "Receiver is ready and handoff can happen immediately",
+          "Population near destination: 4405",
+          "Elderly ratio near destination: 15%"
+        ]
+      },
+      {
+        "demand_id": "REQ002",
+        "source_dialogue_id": "D0011",
+        "source_event_id": "DEM_001_01",
+        "request_timestamp": "2024-03-15T00:05:00",
+        "origin": {
+          "station_name": "Commercial Distribution Hub COM_22",
+          "type": "supply_station",
+          "fid": "COM_22",
+          "coords": [
+            113.9352843465338,
+            22.681219811731687
+          ]
+        },
+        "destination": {
+          "node_id": "DEM_11747",
+          "type": "residential_area",
+          "fid": "DEM_11747",
+          "coords": [
+            113.8068403237939,
+            22.6857137228249
+          ]
+        },
+        "cargo": {
+          "type": "medicine",
+          "type_cn": "medication",
+          "demand_tier": "consumer",
+          "weight_kg": 22.5,
+          "quantity": 22,
+          "quantity_unit": "units",
+          "temperature_sensitive": false
+        },
+        "demand_tier": "consumer",
+        "time_constraint": {
+          "type": "soft",
+          "description": "Delivery target within 120 minutes",
+          "deadline_minutes": 120
+        },
+        "priority_evaluation_signals": {
+          "patient_condition": "Routine supply request",
+          "time_sensitivity": "Flexible same-day delivery",
+          "population_vulnerability": {
+            "elderly_involved": false,
+            "children_involved": false,
+            "vulnerable_community": false,
+            "elderly_ratio": 0.16,
+            "population": 7737
+          },
+          "medical_urgency_self_report": "Flexible same-day delivery",
+          "requester_role": "office_administrator",
+          "scenario_context": "The order is for same-day symptom relief at home.",
+          "nearby_critical_facility": "hospital",
+          "operational_readiness": "Receiver is ready and handoff can happen immediately",
+          "special_handling": []
+        },
+        "context_signals": [
+          "Tier inferred from dialogue: consumer",
+          "Patient or service context: Routine supply request",
+          "Delivery target mentioned in dialogue: 120 min",
+          "Requester role inferred from dialogue: office_administrator",
+          "Receiver is ready and handoff can happen immediately",
+          "Population near destination: 7737",
+          "Elderly ratio near destination: 16%"
+        ]
+      },
+      {
+        "demand_id": "REQ003",
+        "source_dialogue_id": "D0012",
+        "source_event_id": "DEM_001_02",
+        "request_timestamp": "2024-03-15T00:05:00",
+        "origin": {
+          "station_name": "Commercial Distribution Hub COM_5",
+          "type": "supply_station",
+          "fid": "COM_5",
+          "coords": [
+            113.8231103907918,
+            22.67455908142552
+          ]
+        },
+        "destination": {
+          "node_id": "DEM_43641",
+          "type": "residential_area",
+          "fid": "DEM_43641",
+          "coords": [
+            113.80038572679548,
+            22.67167702087772
+          ]
+        },
+        "cargo": {
+          "type": "daily_supply",
+          "type_cn": "daily supplies",
+          "demand_tier": "consumer",
+          "weight_kg": 20.2,
+          "quantity": 20,
+          "quantity_unit": "units",
+          "temperature_sensitive": false
+        },
+        "demand_tier": "consumer",
+        "time_constraint": {
+          "type": "soft",
+          "description": "Delivery target within 120 minutes",
+          "deadline_minutes": 120
+        },
+        "priority_evaluation_signals": {
+          "patient_condition": "Routine supply request",
+          "time_sensitivity": "Flexible same-day delivery",
+          "population_vulnerability": {
+            "elderly_involved": true,
+            "children_involved": false,
+            "vulnerable_community": false,
+            "elderly_ratio": 0.46,
+            "population": 4288
+          },
+          "medical_urgency_self_report": "Flexible same-day delivery",
+          "requester_role": "consumer",
+          "scenario_context": "Please move the daily supplies request without delay.",
+          "nearby_critical_facility": "hospital",
+          "operational_readiness": "Receiver is ready and handoff can happen immediately",
+          "special_handling": []
+        },
+        "context_signals": [
+          "Tier inferred from dialogue: consumer",
+          "Patient or service context: Routine supply request",
+          "Delivery target mentioned in dialogue: 120 min",
+          "Requester role inferred from dialogue: consumer",
+          "Receiver is ready and handoff can happen immediately",
+          "Population near destination: 4288",
+          "Elderly ratio near destination: 46%"
+        ]
+      },
+      {
+        "demand_id": "REQ004",
+        "source_dialogue_id": "D0013",
+        "source_event_id": "DEM_001_03",
+        "request_timestamp": "2024-03-15T00:05:00",
+        "origin": {
+          "station_name": "Medical Supply Center MED_531",
+          "type": "supply_station",
+          "fid": "MED_531",
+          "coords": [
+            113.8076652331016,
+            22.69033302747562
+          ]
+        },
+        "destination": {
+          "node_id": "DEM_9380",
+          "type": "hospital",
+          "fid": "DEM_9380",
+          "coords": [
+            113.9404173719204,
+            22.67610844180511
+          ]
+        },
+        "cargo": {
+          "type": "icu_drug",
+          "type_cn": "ICU medication",
+          "demand_tier": "critical",
+          "weight_kg": 23.2,
+          "quantity": 23,
+          "quantity_unit": "units",
+          "temperature_sensitive": false
+        },
+        "demand_tier": "critical",
+        "time_constraint": {
+          "type": "hard",
+          "description": "Delivery target within 30 minutes",
+          "deadline_minutes": 30
+        },
+        "priority_evaluation_signals": {
+          "patient_condition": "Serious clinical condition requiring urgent support",
+          "time_sensitivity": "Urgent same-window delivery required",
+          "population_vulnerability": {
+            "elderly_involved": false,
+            "children_involved": false,
+            "vulnerable_community": false,
+            "elderly_ratio": 0.2,
+            "population": 3089
+          },
+          "medical_urgency_self_report": "Urgent same-window delivery required",
+          "requester_role": "clinical_pharmacist",
+          "scenario_context": "The ICU team needs a drug refill before the next administration round.",
+          "nearby_critical_facility": "hospital",
+          "operational_readiness": "Standard handoff readiness",
+          "special_handling": []
+        },
+        "context_signals": [
+          "Tier inferred from dialogue: critical",
+          "Patient or service context: Serious clinical condition requiring urgent support",
+          "Delivery target mentioned in dialogue: 30 min",
+          "Requester role inferred from dialogue: clinical_pharmacist",
+          "Standard handoff readiness",
+          "Population near destination: 3089",
+          "Elderly ratio near destination: 20%"
+        ]
+      },
+      {
+        "demand_id": "REQ005",
+        "source_dialogue_id": "D0014",
+        "source_event_id": "DEM_001_04",
+        "request_timestamp": "2024-03-15T00:05:00",
+        "origin": {
+          "station_name": "Medical Supply Center MED_438",
+          "type": "supply_station",
+          "fid": "MED_438",
+          "coords": [
+            113.8080819750525,
+            22.69056122970081
+          ]
+        },
+        "destination": {
+          "node_id": "DEM_8889",
+          "type": "hospital",
+          "fid": "DEM_8889",
+          "coords": [
+            113.8136488724644,
+            22.66694283487466
+          ]
+        },
+        "cargo": {
+          "type": "icu_drug",
+          "type_cn": "ICU medication",
+          "demand_tier": "critical",
+          "weight_kg": 14.5,
+          "quantity": 14,
+          "quantity_unit": "units",
+          "temperature_sensitive": false
+        },
+        "demand_tier": "critical",
+        "time_constraint": {
+          "type": "hard",
+          "description": "Delivery target within 30 minutes",
+          "deadline_minutes": 30
+        },
+        "priority_evaluation_signals": {
+          "patient_condition": "Serious clinical condition requiring urgent support",
+          "time_sensitivity": "Urgent same-window delivery required",
+          "population_vulnerability": {
+            "elderly_involved": true,
+            "children_involved": false,
+            "vulnerable_community": false,
+            "elderly_ratio": 0.47,
+            "population": 5540
+          },
+          "medical_urgency_self_report": "Urgent same-window delivery required",
+          "requester_role": "clinical_pharmacist",
+          "scenario_context": "The ICU team needs a drug refill before the next administration round.",
+          "nearby_critical_facility": "hospital",
+          "operational_readiness": "Standard handoff readiness",
+          "special_handling": []
+        },
+        "context_signals": [
+          "Tier inferred from dialogue: critical",
+          "Patient or service context: Serious clinical condition requiring urgent support",
+          "Delivery target mentioned in dialogue: 30 min",
+          "Requester role inferred from dialogue: clinical_pharmacist",
+          "Standard handoff readiness",
+          "Population near destination: 5540",
+          "Elderly ratio near destination: 47%"
+        ]
+      },
+      {
+        "demand_id": "REQ006",
+        "source_dialogue_id": "D0015",
+        "source_event_id": "DEM_001_05",
+        "request_timestamp": "2024-03-15T00:05:00",
+        "origin": {
+          "station_name": "Commercial Distribution Hub COM_54",
+          "type": "supply_station",
+          "fid": "COM_54",
+          "coords": [
+            113.80529579176628,
+            22.66083003960116
+          ]
+        },
+        "destination": {
+          "node_id": "DEM_40135",
+          "type": "residential_area",
+          "fid": "DEM_40135",
+          "coords": [
+            113.8629192144854,
+            22.66383346907219
+          ]
+        },
+        "cargo": {
+          "type": "food",
+          "type_cn": "food",
+          "demand_tier": "consumer",
+          "weight_kg": 10.5,
+          "quantity": 10,
+          "quantity_unit": "units",
+          "temperature_sensitive": false
+        },
+        "demand_tier": "consumer",
+        "time_constraint": {
+          "type": "soft",
+          "description": "Delivery target within 120 minutes",
+          "deadline_minutes": 120
+        },
+        "priority_evaluation_signals": {
+          "patient_condition": "Routine supply request",
+          "time_sensitivity": "Flexible same-day delivery",
+          "population_vulnerability": {
+            "elderly_involved": false,
+            "children_involved": false,
+            "vulnerable_community": false,
+            "elderly_ratio": 0.17,
+            "population": 1183
+          },
+          "medical_urgency_self_report": "Flexible same-day delivery",
+          "requester_role": "office_administrator",
+          "scenario_context": "This is part of a normal same-day household order.",
+          "nearby_critical_facility": "residential_area",
+          "operational_readiness": "Standard handoff readiness",
+          "special_handling": []
+        },
+        "context_signals": [
+          "Tier inferred from dialogue: consumer",
+          "Patient or service context: Routine supply request",
+          "Delivery target mentioned in dialogue: 120 min",
+          "Requester role inferred from dialogue: office_administrator",
+          "Standard handoff readiness",
+          "Population near destination: 1183",
+          "Elderly ratio near destination: 17%"
+        ]
+      },
+      {
+        "demand_id": "REQ007",
+        "source_dialogue_id": "D0016",
+        "source_event_id": "DEM_001_06",
+        "request_timestamp": "2024-03-15T00:05:00",
+        "origin": {
+          "station_name": "Commercial Distribution Hub COM_5",
+          "type": "supply_station",
+          "fid": "COM_5",
+          "coords": [
+            113.8231103907918,
+            22.67455908142552
+          ]
+        },
+        "destination": {
+          "node_id": "DEM_18707",
+          "type": "residential_area",
+          "fid": "DEM_18707",
+          "coords": [
+            113.80114147325529,
+            22.67657385872136
+          ]
+        },
+        "cargo": {
+          "type": "food",
+          "type_cn": "food/meal",
+          "demand_tier": "consumer",
+          "weight_kg": 10.7,
+          "quantity": 11,
+          "quantity_unit": "units",
+          "temperature_sensitive": false
+        },
+        "demand_tier": "consumer",
+        "time_constraint": {
+          "type": "soft",
+          "description": "Delivery target within 120 minutes",
+          "deadline_minutes": 120
+        },
+        "priority_evaluation_signals": {
+          "patient_condition": "Routine supply request",
+          "time_sensitivity": "Flexible same-day delivery",
+          "population_vulnerability": {
+            "elderly_involved": true,
+            "children_involved": false,
+            "vulnerable_community": true,
+            "elderly_ratio": 0.59,
+            "population": 561
+          },
+          "medical_urgency_self_report": "Flexible same-day delivery",
+          "requester_role": "consumer",
+          "scenario_context": "This is part of a normal same-day household order.",
+          "nearby_critical_facility": "hospital",
+          "operational_readiness": "Receiver is ready and handoff can happen immediately",
+          "special_handling": []
+        },
+        "context_signals": [
+          "Tier inferred from dialogue: consumer",
+          "Patient or service context: Routine supply request",
+          "Delivery target mentioned in dialogue: 120 min",
+          "Requester role inferred from dialogue: consumer",
+          "Receiver is ready and handoff can happen immediately",
+          "Population near destination: 561",
+          "Elderly ratio near destination: 59%"
+        ]
+      },
+      {
+        "demand_id": "REQ008",
+        "source_dialogue_id": "D0017",
+        "source_event_id": "DEM_001_07",
+        "request_timestamp": "2024-03-15T00:05:00",
+        "origin": {
+          "station_name": "Commercial Distribution Hub COM_22",
+          "type": "supply_station",
+          "fid": "COM_22",
+          "coords": [
+            113.9352843465338,
+            22.681219811731687
+          ]
+        },
+        "destination": {
+          "node_id": "DEM_1473",
+          "type": "residential_area",
+          "fid": "DEM_1473",
+          "coords": [
+            113.8706782473243,
+            22.673811101182128
+          ]
+        },
+        "cargo": {
+          "type": "food",
+          "type_cn": "food/meal",
+          "demand_tier": "consumer",
+          "weight_kg": 15.0,
+          "quantity": 15,
+          "quantity_unit": "units",
+          "temperature_sensitive": false
+        },
+        "demand_tier": "consumer",
+        "time_constraint": {
+          "type": "soft",
+          "description": "Delivery target within 120 minutes",
+          "deadline_minutes": 120
+        },
+        "priority_evaluation_signals": {
+          "patient_condition": "Routine supply request",
+          "time_sensitivity": "Flexible same-day delivery",
+          "population_vulnerability": {
+            "elderly_involved": true,
+            "children_involved": false,
+            "vulnerable_community": true,
+            "elderly_ratio": 0.57,
+            "population": 7206
+          },
+          "medical_urgency_self_report": "Flexible same-day delivery",
+          "requester_role": "office_administrator",
+          "scenario_context": "This is part of a normal same-day household order.",
+          "nearby_critical_facility": "residential_area",
+          "operational_readiness": "Standard handoff readiness",
+          "special_handling": []
+        },
+        "context_signals": [
+          "Tier inferred from dialogue: consumer",
+          "Patient or service context: Routine supply request",
+          "Delivery target mentioned in dialogue: 120 min",
+          "Requester role inferred from dialogue: office_administrator",
+          "Standard handoff readiness",
+          "Population near destination: 7206",
+          "Elderly ratio near destination: 57%"
+        ]
+      },
+      {
+        "demand_id": "REQ009",
+        "source_dialogue_id": "D0018",
+        "source_event_id": "DEM_001_08",
+        "request_timestamp": "2024-03-15T00:05:00",
+        "origin": {
+          "station_name": "Commercial Distribution Hub COM_12",
+          "type": "supply_station",
+          "fid": "COM_12",
+          "coords": [
+            113.82327136439469,
+            22.6746292751996
+          ]
+        },
+        "destination": {
+          "node_id": "DEM_3250",
+          "type": "residential_area",
+          "fid": "DEM_3250",
+          "coords": [
+            113.922803727628,
+            22.651597928593247
+          ]
+        },
+        "cargo": {
+          "type": "daily_supply",
+          "type_cn": "daily supplies",
+          "demand_tier": "consumer",
+          "weight_kg": 27.8,
+          "quantity": 28,
+          "quantity_unit": "units",
+          "temperature_sensitive": false
+        },
+        "demand_tier": "consumer",
+        "time_constraint": {
+          "type": "soft",
+          "description": "Delivery target within 120 minutes",
+          "deadline_minutes": 120
+        },
+        "priority_evaluation_signals": {
+          "patient_condition": "Routine supply request",
+          "time_sensitivity": "Flexible same-day delivery",
+          "population_vulnerability": {
+            "elderly_involved": false,
+            "children_involved": false,
+            "vulnerable_community": false,
+            "elderly_ratio": 0.24,
+            "population": 1967
+          },
+          "medical_urgency_self_report": "Flexible same-day delivery",
+          "requester_role": "family_caregiver",
+          "scenario_context": "Please move the daily supplies request without delay.",
+          "nearby_critical_facility": "residential_area",
+          "operational_readiness": "Standard handoff readiness",
+          "special_handling": []
+        },
+        "context_signals": [
+          "Tier inferred from dialogue: consumer",
+          "Patient or service context: Routine supply request",
+          "Delivery target mentioned in dialogue: 120 min",
+          "Requester role inferred from dialogue: family_caregiver",
+          "Standard handoff readiness",
+          "Population near destination: 1967",
+          "Elderly ratio near destination: 24%"
+        ]
+      },
+      {
+        "demand_id": "REQ010",
+        "source_dialogue_id": "D0019",
+        "source_event_id": "DEM_001_09",
+        "request_timestamp": "2024-03-15T00:05:00",
+        "origin": {
+          "station_name": "Commercial Distribution Hub COM_22",
+          "type": "supply_station",
+          "fid": "COM_22",
+          "coords": [
+            113.9352843465338,
+            22.681219811731687
+          ]
+        },
+        "destination": {
+          "node_id": "DEM_34611",
+          "type": "residential_area",
+          "fid": "DEM_34611",
+          "coords": [
+            113.8247915720392,
+            22.67543719110325
+          ]
+        },
+        "cargo": {
+          "type": "daily_supply",
+          "type_cn": "daily supplies",
+          "demand_tier": "consumer",
+          "weight_kg": 10.3,
+          "quantity": 10,
+          "quantity_unit": "units",
+          "temperature_sensitive": false
+        },
+        "demand_tier": "consumer",
+        "time_constraint": {
+          "type": "soft",
+          "description": "Delivery target within 120 minutes",
+          "deadline_minutes": 120
+        },
+        "priority_evaluation_signals": {
+          "patient_condition": "Routine supply request",
+          "time_sensitivity": "Flexible same-day delivery",
+          "population_vulnerability": {
+            "elderly_involved": false,
+            "children_involved": false,
+            "vulnerable_community": false,
+            "elderly_ratio": 0.3,
+            "population": 6582
+          },
+          "medical_urgency_self_report": "Flexible same-day delivery",
+          "requester_role": "family_caregiver",
+          "scenario_context": "Please move the daily supplies request without delay.",
+          "nearby_critical_facility": "hospital",
+          "operational_readiness": "Standard handoff readiness",
+          "special_handling": []
+        },
+        "context_signals": [
+          "Tier inferred from dialogue: consumer",
+          "Patient or service context: Routine supply request",
+          "Delivery target mentioned in dialogue: 120 min",
+          "Requester role inferred from dialogue: family_caregiver",
+          "Standard handoff readiness",
+          "Population near destination: 6582",
+          "Elderly ratio near destination: 30%"
+        ]
+      }
+    ]
+  }
+]
