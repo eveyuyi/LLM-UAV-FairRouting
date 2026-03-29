@@ -1,0 +1,11 @@
+{
+  "time_window": "W1",
+  "demand_configs": [
+    {
+      "demand_id": "REQ001",
+      "priority": 2,
+      "window_rank": 1,
+      "reasoning": "matches extraction label"
+    }
+  ]
+}

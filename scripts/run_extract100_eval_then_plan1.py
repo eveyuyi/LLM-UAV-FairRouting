@@ -169,7 +169,7 @@ def main() -> None:
     parser.add_argument("--dialogues", default=str(ROOT / "data" / "seed" / "daily_demand_dialogues.jsonl"))
     parser.add_argument("--stations", default=str(ROOT / "data" / "seed" / "drone_station_locations.csv"))
     parser.add_argument("--building-data", default=str(ROOT / "data" / "seed" / "building_information.csv"))
-    parser.add_argument("--ground-truth", default=str(ROOT / "data" / "seed" / "daily_demand_events.csv"))
+    parser.add_argument("--ground-truth", default=str(ROOT / "data" / "seed" / "daily_demand_events_manifest.jsonl"))
     parser.add_argument("--offline", action=argparse.BooleanOptionalAction, default=False, help="Run extraction/ranking without calling an LLM")
     parser.add_argument("--extract-window-count", type=int, default=DEFAULT_EXTRACT_COUNT, help="Number of 5-minute windows to extract/evaluate")
     parser.add_argument("--extract-window-start", type=int, default=0, help="Starting slot index for extraction/evaluation")

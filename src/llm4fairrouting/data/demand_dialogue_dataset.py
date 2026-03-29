@@ -16,7 +16,7 @@ from llm4fairrouting.config.runtime_env import (
 )
 from llm4fairrouting.data.seed_paths import (
     DEMAND_DIALOGUES_PATH,
-    DEMAND_EVENTS_PATH,
+    PRIMARY_EVENT_DATA_PATH,
     STATION_DATA_PATH,
 )
 from llm4fairrouting.llm.client_utils import create_openai_client
@@ -32,7 +32,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 def build_daily_demand_dialogues(
     *,
-    csv_path: str = str(DEMAND_EVENTS_PATH),
+    csv_path: str = str(PRIMARY_EVENT_DATA_PATH),
     stations_path: str | None = str(STATION_DATA_PATH),
     output_path: str = str(DEMAND_DIALOGUES_PATH),
     api_base: str | None = None,
@@ -43,6 +43,7 @@ def build_daily_demand_dialogues(
     time_slots: list[int] | None = None,
     temperature: float = 0.2,
     batch_size: int = 5,
+    styles: list[str] | None = None,
 ) -> list[dict]:
     """Materialize one canonical dialogue dataset from the seed demand events."""
     started_at = time.perf_counter()
@@ -67,6 +68,7 @@ def build_daily_demand_dialogues(
         base_date=base_date,
         temperature=temperature,
         batch_size=batch_size,
+        styles=styles,
     )
     save_dialogues(dialogues, output_path)
     print(
@@ -80,7 +82,7 @@ def build_daily_demand_dialogues(
 def main() -> None:
     active_env_file = prepare_env_file(PROJECT_ROOT)
     parser = argparse.ArgumentParser(
-        description="Build data/seed/daily_demand_dialogues.jsonl from daily_demand_events.csv with an LLM.",
+        description="Build data/seed/daily_demand_dialogues.jsonl from the rich event manifest with an LLM.",
     )
     parser.add_argument(
         "--env-file",
@@ -90,8 +92,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--csv",
-        default=env_text("LLM4FAIRROUTING_CSV", str(DEMAND_EVENTS_PATH)),
-        help="Path to daily_demand_events.csv",
+        default=env_text("LLM4FAIRROUTING_CSV", str(PRIMARY_EVENT_DATA_PATH)),
+        help="Path to the rich event manifest JSONL",
     )
     parser.add_argument(
         "--stations",
@@ -111,6 +113,7 @@ def main() -> None:
     parser.add_argument("--time-slots", type=int, nargs="+", default=env_int_list("LLM4FAIRROUTING_TIME_SLOTS"))
     parser.add_argument("--temperature", type=float, default=env_float("LLM4FAIRROUTING_TEMPERATURE", 0.2))
     parser.add_argument("--batch-size", type=int, default=env_int("LLM4FAIRROUTING_BATCH_SIZE", 5))
+    parser.add_argument("--styles", nargs="+", default=None)
     args = parser.parse_args()
 
     dialogues = build_daily_demand_dialogues(
@@ -125,6 +128,7 @@ def main() -> None:
         time_slots=args.time_slots,
         temperature=args.temperature,
         batch_size=args.batch_size,
+        styles=args.styles,
     )
     print(f"Built {len(dialogues)} canonical seed dialogues at {args.output}", flush=True)
 

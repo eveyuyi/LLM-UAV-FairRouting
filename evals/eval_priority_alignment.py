@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from llm4fairrouting.data.event_data import load_ground_truth_event_index
 from sklearn.metrics import (
     accuracy_score,
     confusion_matrix,
@@ -88,17 +89,10 @@ def _load_dialogue_metadata(path: str) -> Tuple[Dict[str, Dict[str, object]], Di
 
 
 def _load_ground_truth_priorities(path: str) -> Dict[str, int]:
-    import csv
-
-    priorities: Dict[str, int] = {}
-    with open(path, "r", encoding="utf-8-sig") as handle:
-        reader = csv.DictReader(handle)
-        for row in reader:
-            event_id = str(row.get("event_id") or row.get("unique_id") or "").strip()
-            if not event_id:
-                continue
-            priorities[event_id] = int(row.get("priority", 4))
-    return priorities
+    return {
+        event_id: int(payload["priority"])
+        for event_id, payload in load_ground_truth_event_index(path).items()
+    }
 
 
 def _safe_rank_metric(metric_fn, y_true: List[int], y_pred: List[int]) -> Optional[float]:
@@ -204,9 +198,17 @@ def evaluate_priority_alignment(
             dialogue_id = str(demand.get("source_dialogue_id", "")).strip()
             source_event_id = str(demand.get("source_event_id", "")).strip()
             event_id = source_event_id or str((dialogue_lookup.get(dialogue_id) or {}).get("event_id", "")).strip()
-            if not event_id or event_id not in ground_truth:
+            true_priority = (
+                demand.get("labels", {}).get("extraction_observable_priority")
+                or demand.get("extraction_observable_priority")
+            )
+            if true_priority is None:
+                if not event_id or event_id not in ground_truth:
+                    continue
+                true_priority = int(ground_truth[event_id])
+            if not event_id:
                 continue
-            true_priority = int(ground_truth[event_id])
+            true_priority = int(true_priority)
             pred_priority = int(demand_config.get("priority", 4))
             y_true.append(true_priority)
             y_pred.append(pred_priority)
@@ -286,7 +288,7 @@ def main() -> None:
     parser.add_argument("--weights", required=True, help="Weight configs JSON file or directory")
     parser.add_argument("--demands", required=True, help="Extracted demands JSON file")
     parser.add_argument("--dialogues", required=True, help="Dialogue JSONL file used to build extracted demands")
-    parser.add_argument("--ground-truth", required=True, help="Ground-truth daily_demand_events.csv")
+    parser.add_argument("--ground-truth", required=True, help="Ground-truth rich event manifest or legacy CSV")
     parser.add_argument("--urgent-threshold", type=int, default=2, help="Priorities <= threshold are treated as urgent")
     parser.add_argument("--output", default="evals/results/priority_alignment.json", help="Output JSON path")
     args = parser.parse_args()

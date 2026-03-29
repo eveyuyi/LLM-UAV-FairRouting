@@ -238,7 +238,7 @@ def main() -> None:
     parser.add_argument("--dialogues", default=str(ROOT / "data" / "seed" / "daily_demand_dialogues.jsonl"))
     parser.add_argument("--stations", default=str(ROOT / "data" / "seed" / "drone_station_locations.csv"))
     parser.add_argument("--building-data", default=str(ROOT / "data" / "seed" / "building_information.csv"))
-    parser.add_argument("--ground-truth", default=str(ROOT / "data" / "seed" / "daily_demand_events.csv"))
+    parser.add_argument("--ground-truth", default=str(ROOT / "data" / "seed" / "daily_demand_events_manifest.jsonl"))
     parser.add_argument("--offline", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--time-slots", type=int, nargs="+", default=DEFAULT_SLOTS)
     parser.add_argument("--window", type=int, default=5)

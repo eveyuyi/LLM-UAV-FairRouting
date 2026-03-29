@@ -71,3 +71,55 @@ def test_evaluate_priority_alignment_reports_ranking_and_urgent_metrics():
     assert payload["priority_1_metrics"]["recall"] == 1.0
     assert payload["urgent_metrics"]["recall"] == 1.0
     assert payload["top_k_hit_rate"]["hit_rate"] == 1.0
+
+
+def test_evaluate_priority_alignment_prefers_extraction_observable_priority_when_present():
+    base = _make_case_dir("priority_alignment_eval_labels")
+    weights_dir = base / "weights"
+    weights_dir.mkdir(parents=True, exist_ok=True)
+    with open(weights_dir / "w1.json", "w", encoding="utf-8") as handle:
+        json.dump({
+            "time_window": "W1",
+            "demand_configs": [
+                {"demand_id": "REQ001", "priority": 2, "window_rank": 1, "reasoning": "matches extraction label"},
+            ],
+        }, handle, ensure_ascii=False, indent=2)
+
+    demands_path = base / "demands.json"
+    with open(demands_path, "w", encoding="utf-8") as handle:
+        json.dump([
+            {
+                "time_window": "W1",
+                "demands": [
+                    {
+                        "demand_id": "REQ001",
+                        "source_dialogue_id": "D1",
+                        "source_event_id": "E1",
+                        "labels": {"extraction_observable_priority": 2},
+                    },
+                ],
+            }
+        ], handle, ensure_ascii=False, indent=2)
+
+    dialogues_path = base / "dialogues.jsonl"
+    dialogues_path.write_text(
+        json.dumps({"dialogue_id": "D1", "metadata": {"event_id": "E1"}}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    ground_truth = base / "ground_truth.csv"
+    with open(ground_truth, "w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=["event_id", "priority"])
+        writer.writeheader()
+        writer.writerow({"event_id": "E1", "priority": 4})
+
+    payload = evaluate_priority_alignment(
+        weights_path=str(weights_dir),
+        demands_path=str(demands_path),
+        dialogues_path=str(dialogues_path),
+        ground_truth_csv=str(ground_truth),
+        urgent_threshold=2,
+    )
+
+    assert payload["accuracy"] == 1.0
+    assert payload["per_item"][0]["true_priority"] == 2

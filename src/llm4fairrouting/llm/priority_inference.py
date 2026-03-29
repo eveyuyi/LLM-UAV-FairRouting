@@ -12,6 +12,11 @@ if TYPE_CHECKING:
     from openai import OpenAI
 
 from llm4fairrouting.config.runtime_env import env_text, prepare_env_file
+from llm4fairrouting.data.priority_labels import (
+    derive_priority_assessment,
+    get_demand_tier,
+    normalize_priority,
+)
 from llm4fairrouting.llm.client_utils import (
     call_llm,
     create_openai_client,
@@ -76,19 +81,11 @@ _CRITICAL_CARGO = {"ventilator", "icu_drug"}
 
 def _get_tier(demand: Dict) -> str:
     """从需求字典中获取 demand_tier，兼容旧版 urgency 字段。"""
-    tier = demand.get("demand_tier") or demand.get("cargo", {}).get("demand_tier")
-    if tier and tier in TIER_PRIORITIES:
-        return tier
-    urgency = demand.get("urgency", "normal")
-    return _URGENCY_TIER_MAP.get(urgency, "regular")
+    return get_demand_tier(demand)
 
 
 def _normalize_priority(priority: object, default: int = 4) -> int:
-    try:
-        value = int(priority)
-    except (TypeError, ValueError):
-        value = default
-    return min(max(value, 1), 4)
+    return normalize_priority(priority, default=default)
 
 
 def _normalize_weight_config(result: Dict) -> Dict:
@@ -204,81 +201,13 @@ def _priority_from_score(
 
 
 def _assess_demand_priority(demand: Dict) -> Dict:
-    tier = _get_tier(demand)
-    score = _TIER_BASE_SCORE.get(tier, 42)
-    reasons = [f"tier={tier}"]
-    signals = demand.get("priority_evaluation_signals", {})
-    evidence_text = _collect_text_evidence(demand)
-    vuln = _extract_vulnerability(demand)
-    deadline_minutes = _extract_deadline_minutes(demand)
-    requester_role = str(signals.get("requester_role", "") or "")
-    cargo_type = str(demand.get("cargo", {}).get("type", "") or "")
-    destination_type = str(demand.get("destination", {}).get("type", "") or "")
-    special_handling = signals.get("special_handling", [])
-
-    if deadline_minutes:
-        if deadline_minutes <= 15:
-            score += 30
-            reasons.append("deadline<=15m")
-        elif deadline_minutes <= 30:
-            score += 20
-            reasons.append("deadline<=30m")
-        elif deadline_minutes <= 60:
-            score += 10
-            reasons.append("deadline<=60m")
-    if str(demand.get("time_constraint", {}).get("type", "")).lower() == "hard":
-        score += 6
-        reasons.append("hard_deadline")
-
-    if cargo_type in _LIFE_CARGO:
-        score += 24
-        reasons.append(f"cargo={cargo_type}")
-    elif cargo_type in _CRITICAL_CARGO:
-        score += 14
-        reasons.append(f"cargo={cargo_type}")
-
-    if any(keyword in evidence_text for keyword in _EXTREME_EVIDENCE):
-        score += 34
-        reasons.append("life_threatening_context")
-    elif any(keyword in evidence_text for keyword in _CRITICAL_EVIDENCE):
-        score += 18
-        reasons.append("critical_clinical_context")
-
-    if requester_role in _EMERGENCY_ROLES:
-        score += 12
-        reasons.append(f"role={requester_role}")
-    elif requester_role in _CRITICAL_ROLES:
-        score += 8
-        reasons.append(f"role={requester_role}")
-
-    if vuln["children_involved"]:
-        score += 10
-        reasons.append("children_involved")
-    if vuln["elderly_involved"]:
-        score += 8
-        reasons.append("elderly_involved")
-    if vuln["vulnerable_community"]:
-        score += 6
-        reasons.append("vulnerable_community")
-
-    if "ready" in evidence_text or "standing by" in evidence_text or "handoff" in evidence_text:
-        score += 4
-        reasons.append("handoff_ready")
-    if any(item in {"cold_chain", "shock_protection"} for item in special_handling):
-        score += 4
-        reasons.append("special_handling")
-    if destination_type in {"hospital", "clinic"} and tier in {"life_support", "critical"}:
-        score += 4
-        reasons.append(f"destination={destination_type}")
-
-    priority = _priority_from_score(score, tier, demand, evidence_text)
-    reasoning = ", ".join(reasons[:4])
+    assessment = derive_priority_assessment(demand, solver_mode=False)
     return {
         "demand_id": demand["demand_id"],
-        "demand_tier": tier,
-        "priority": priority,
-        "score": score,
-        "reasoning": reasoning,
+        "demand_tier": assessment["demand_tier"],
+        "priority": assessment["priority"],
+        "score": assessment["score"],
+        "reasoning": assessment["reasoning"],
     }
 
 

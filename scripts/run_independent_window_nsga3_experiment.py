@@ -21,6 +21,7 @@ for candidate in (ROOT, SRC):
         sys.path.insert(0, str(candidate))
 
 from evals.eval_priority_alignment import evaluate_priority_alignment
+from llm4fairrouting.data.event_data import load_ground_truth_event_index
 from llm4fairrouting.routing.rrt_visualization import select_representative_frontier_solution
 
 
@@ -156,21 +157,7 @@ def _load_dialogues(dialogues_path: str | Path) -> List[Dict[str, object]]:
 
 
 def _load_ground_truth_events(path: str | Path) -> Dict[str, Dict[str, object]]:
-    events: Dict[str, Dict[str, object]] = {}
-    with open(path, "r", encoding="utf-8-sig", newline="") as handle:
-        reader = csv.DictReader(handle)
-        for row in reader:
-            event_id = str(row.get("event_id") or row.get("unique_id") or "").strip()
-            if not event_id:
-                continue
-            events[event_id] = {
-                "event_id": event_id,
-                "priority": int(row.get("priority", 4)),
-                "supply_fid": str(row.get("supply_fid", "")).strip(),
-                "demand_fid": str(row.get("demand_fid", "")).strip(),
-                "material_weight": _safe_float(row.get("material_weight")),
-            }
-    return events
+    return load_ground_truth_event_index(path)
 
 
 def _evaluate_demand_extraction(
@@ -696,7 +683,7 @@ def main() -> None:
     parser.add_argument("--dialogues", default=str(ROOT / "data" / "seed" / "daily_demand_dialogues.jsonl"))
     parser.add_argument("--stations", default=str(ROOT / "data" / "seed" / "drone_station_locations.csv"))
     parser.add_argument("--building-data", default=str(ROOT / "data" / "seed" / "building_information.csv"))
-    parser.add_argument("--ground-truth", default=str(ROOT / "data" / "seed" / "daily_demand_events.csv"))
+    parser.add_argument("--ground-truth", default=str(ROOT / "data" / "seed" / "daily_demand_events_manifest.jsonl"))
     parser.add_argument("--offline", action=argparse.BooleanOptionalAction, default=True, help="Run extraction/ranking without calling an LLM")
     parser.add_argument("--sample-size", type=int, default=DEFAULT_SAMPLE_SIZE, help="Number of random 5-minute slots to sample")
     parser.add_argument("--sample-seed", type=int, default=42, help="Random seed used for time-slot sampling")

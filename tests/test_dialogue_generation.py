@@ -300,6 +300,135 @@ def test_load_demand_events_normalizes_supply_type_to_english(tmp_path):
     assert _infer_material_type(events[0]["supply_type"], 2, "a") in {"ventilator", "icu_drug"}
 
 
+def test_load_demand_events_reads_rich_event_manifest(tmp_path):
+    manifest_path = tmp_path / "daily_demand_events_manifest.jsonl"
+    record = {
+        "event_id": "EVT_001",
+        "time_slot": 0,
+        "time_hour": 0.0,
+        "latent_priority": 1,
+        "origin": {
+            "fid": "MED_1",
+            "coords": [113.80, 22.70],
+            "type": "supply_station",
+            "station_name": "Medical Hub 1",
+            "supply_type": "medical",
+        },
+        "destination": {
+            "fid": "D100",
+            "node_id": "D100",
+            "coords": [113.90, 22.80],
+            "type": "hospital",
+        },
+        "cargo": {
+            "type": "aed",
+            "weight_kg": 2.0,
+            "demand_tier": "life_support",
+        },
+        "deadline_minutes": 15,
+        "requester_role": "emergency_doctor",
+        "special_handling": ["shock_protection"],
+        "population_vulnerability": {
+            "elderly_ratio": 0.2,
+            "population": 1200,
+            "elderly_involved": False,
+            "children_involved": False,
+            "vulnerable_community": False,
+        },
+        "receiver_ready": True,
+    }
+    manifest_path.write_text(json.dumps(record, ensure_ascii=False) + "\n", encoding="utf-8")
+
+    events = load_demand_events(str(manifest_path))
+
+    assert len(events) == 1
+    assert events[0]["priority"] == 1
+    assert events[0]["material_type"] == "aed"
+    assert events[0]["supply_type"] == "medical"
+
+
+def test_generate_dialogues_offline_supports_multi_style_and_audit():
+    event = {
+        "event_id": "EVT_002",
+        "time_slot": 0,
+        "time_hour": 0.0,
+        "latent_priority": 1,
+        "origin": {
+            "fid": "MED_1",
+            "coords": [113.80, 22.70],
+            "type": "supply_station",
+            "station_name": "Medical Hub 1",
+            "supply_type": "medical",
+        },
+        "destination": {
+            "fid": "D100",
+            "node_id": "D100",
+            "coords": [113.90, 22.80],
+            "type": "hospital",
+        },
+        "cargo": {
+            "type": "aed",
+            "weight_kg": 2.0,
+            "demand_tier": "life_support",
+        },
+        "deadline_minutes": 15,
+        "requester_role": "emergency_doctor",
+        "special_handling": ["shock_protection"],
+        "population_vulnerability": {
+            "elderly_ratio": 0.2,
+            "population": 1200,
+            "elderly_involved": False,
+            "children_involved": False,
+            "vulnerable_community": False,
+        },
+        "receiver_ready": True,
+        "operational_readiness": "Landing zone cleared; team waiting for immediate handoff",
+        "priority_factors": {
+            "scenario_context": "CPR is already in progress and the local AED cabinet is empty.",
+        },
+        "must_mention_factors": [
+            {
+                "name": "scenario_context",
+                "value": "CPR is already in progress and the local AED cabinet is empty.",
+                "description": "CPR is already in progress and the local AED cabinet is empty.",
+                "keywords": ["cpr", "aed cabinet"],
+            },
+            {
+                "name": "deadline_minutes",
+                "value": 15,
+                "description": "Delivery is needed within 15 minutes.",
+                "keywords": ["15 min", "within 15 minutes"],
+            },
+            {
+                "name": "requester_role",
+                "value": "emergency_doctor",
+                "description": "The request comes from the emergency doctor.",
+                "keywords": ["emergency doctor"],
+            },
+            {
+                "name": "special_handling",
+                "value": ["shock_protection"],
+                "description": "Special handling is required: shock_protection.",
+                "keywords": ["shock_protection", "shock-proof"],
+            },
+            {
+                "name": "receiver_ready",
+                "value": True,
+                "description": "Landing zone cleared; team waiting for immediate handoff",
+                "keywords": ["landing zone", "team waiting"],
+            },
+        ],
+        "optional_factors": [],
+    }
+
+    dialogues = generate_dialogues_offline([event], SAMPLE_STATIONS, styles=["direct", "technical"])
+
+    assert len(dialogues) == 2
+    assert {dialogue["annotations"]["dialogue_style"] for dialogue in dialogues} == {"direct", "technical"}
+    assert all(dialogue["audit"]["passed"] for dialogue in dialogues)
+    assert all(dialogue["audit"]["dialogue_observable_priority"] == 1 for dialogue in dialogues)
+
+
 # ============================================================================
 # 文件 I/O 测试
 # ============================================================================

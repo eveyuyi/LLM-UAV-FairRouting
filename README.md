@@ -13,10 +13,24 @@ The end-to-end LLM4fairrouting workflow is organized into three modules:
 2. `Module 2`: extract structured delivery demands from dialogues
 3. `Module 3`: infer priority/weight settings and solve dynamic routing windows
 
+The data-generation stack also supports a richer training path for LLM2/LLM3 with:
+
+- seed event CSVs for solver compatibility
+- rich event manifests carrying `latent_priority`, observability factors, and gold extraction labels
+- multi-style dialogues plus automatic dialogue audit
+- extracted demands labeled with `extraction_observable_priority`
+- training corpora split into `clean_structured`, `pipeline_structured`, and `hard_contrastive`
+
 `Module 3` is implemented as two connected stages:
 
 - `Module 3a`: priority / weight inference
 - `Module 3b`: solver adapter and routing execution
+
+•	提取是否准：precision，recall，f1，exact_match_rate
+•	优先级是否准：accuracy，macro_f1，weighted_f1，confusion_matrix
+•	规划结果是否好：service_rate，service_rate_loss，final_total_distance_m，final_total_noise_impact，average_delivery_time_h，max_delivery_time_h，n_used_drones
+•	帕累托前沿是否有代表性、搜索是否高效：final_total_distance_m，average_delivery_time_h，final_total_noise_impact，service_rate_loss，n_used_drones
+•	搜索过程指标frontier_size，n_candidates_evaluated，search_runtime_s，avg_candidate_runtime_s
 
 ## Project Workflow Diagram
 
@@ -58,10 +72,16 @@ Run the baseline with:
 PYTHONPATH=src python -m llm4fairrouting.baselines.cplex_with_priority_noise
 ```
 
-Generate `data/seed/daily_demand_events.csv` with:
+Generate the primary rich event manifest with:
 
 ```bash
 llm4fairrouting-demand-events
+```
+
+Generate the richer LLM2/LLM3 training dataset with:
+
+```bash
+llm4fairrouting-training-data
 ```
 
 If the package is not installed in editable mode yet, use:
@@ -89,24 +109,32 @@ PYTHONPATH=src python -m llm4fairrouting.data.demand_event_generation
 
 | Module | Location | Purpose | Main Input | Main Output |
 | --- | --- | --- | --- | --- |
-| Module 1 | `src/llm4fairrouting/data/demand_dialogue_dataset.py`, `src/llm4fairrouting/llm/dialogue_generation.py` | Build the fixed seed dialogue dataset from structured demand events with an LLM | `data/seed/daily_demand_events.csv`, optional station file | `data/seed/daily_demand_dialogues.jsonl` |
+| Module 1 | `src/llm4fairrouting/data/demand_dialogue_dataset.py`, `src/llm4fairrouting/llm/dialogue_generation.py` | Build the fixed seed dialogue dataset from structured demand events with an LLM | `data/seed/daily_demand_events_manifest.jsonl`, optional station file | `data/seed/daily_demand_dialogues.jsonl` |
 | Module 2 | `src/llm4fairrouting/llm/demand_extraction.py` | Extract structured delivery demands from dialogues by time window | `data/seed/daily_demand_dialogues.jsonl` | `extracted_demands.json` |
 | Module 3 | `src/llm4fairrouting/llm/priority_inference.py`, `src/llm4fairrouting/workflow/solver_adapter.py` | Infer per-demand priority settings and solve routing windows | `extracted_demands.json`, weight configs, station/building data | `weight_configs.json` / `weight_configs/`, `solver_results.json`, `workflow_results.json` |
+| Training Builder | `src/llm4fairrouting/data/training_dataset_builder.py` | Build LLM2/LLM3 training data with observable priority labels and hard contrastive windows | rich event manifest or generated seed events | `data/seed/priority_training_dataset.json` |
 
 ### Demand Event Generation
 
 - File: `src/llm4fairrouting/data/demand_event_generation.py`
-- Role: generates seed demand events from `building_information.csv` and writes `data/seed/daily_demand_events.csv`
+- Role: generates seed demand events from `building_information.csv`, emits a rich manifest for the latest LLM2/LLM3 data flow, and can optionally project a legacy CSV
 - Defaults:
   - 5-minute windows across a full day
   - 4-10 demands per window
   - `medical_ratio=0.2`, so about 20% `medical` and 80% `commercial`
   - `medical` demands use priorities `1/2/3` with equal probability; `commercial` demands use priority `4`
-  - CSV output uses normalized English values such as `medical` and `commercial`
+  - manifest output carries `latent_priority`, observability factors, gold structured demand, and solver-useful labels
+  - optional CSV projection still uses normalized English values such as `medical` and `commercial`
 - Run:
 
 ```bash
-llm4fairrouting-demand-events --input data/seed/building_information.csv --output data/seed/daily_demand_events.csv
+llm4fairrouting-demand-events --manifest-output data/seed/daily_demand_events_manifest.jsonl
+```
+
+Optional rich manifest output:
+
+```bash
+llm4fairrouting-demand-events --manifest-output data/seed/daily_demand_events_manifest.jsonl
 ```
 
 #### Module 1
@@ -114,7 +142,7 @@ llm4fairrouting-demand-events --input data/seed/building_information.csv --outpu
 - Files: `src/llm4fairrouting/data/demand_dialogue_dataset.py`, `src/llm4fairrouting/llm/dialogue_generation.py`
 - Role: builds one fixed LLM-generated dialogue dataset aligned with the seed demand events
 - Input:
-  - `daily_demand_events.csv`
+  - `daily_demand_events_manifest.jsonl`
   - optional station metadata from `drone_station_locations.csv`
 - Output:
   - canonical seed dataset: `data/seed/daily_demand_dialogues.jsonl`
@@ -178,7 +206,7 @@ The baseline:
 An additional seed-aligned baseline is also available:
 
 - file: `src/llm4fairrouting/baselines/cplex_with_seed_priorities.py`
-- role: reads `data/seed/daily_demand_events.csv` directly and solves with the CSV priority values
+- role: reads `data/seed/daily_demand_events_manifest.jsonl` directly and solves with manifest-aligned priority labels
 
 ### Shared Routing Core
 

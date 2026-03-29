@@ -31,6 +31,7 @@ def test_extract_demands_offline_infers_life_support_from_dialogue_text():
     assert demand["source_event_id"] == "DEM_LIFE_001"
     assert demand["time_constraint"]["deadline_minutes"] <= 15
     assert demand["priority_evaluation_signals"]["patient_condition"]
+    assert demand["labels"]["extraction_observable_priority"] == 1
     assert "priority" not in dialogue["metadata"]
 
 
@@ -68,3 +69,4 @@ def test_extract_demands_offline_infers_consumer_request_from_app_style_dialogue
     assert demand["source_event_id"] is None
     assert demand["destination"]["type"] == "residential_area"
     assert demand["priority_evaluation_signals"]["requester_role"] == "consumer"
+    assert demand["labels"]["extraction_observable_priority"] == 4

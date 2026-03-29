@@ -1,0 +1,15 @@
+[
+  {
+    "time_window": "W1",
+    "demands": [
+      {
+        "demand_id": "REQ001",
+        "source_dialogue_id": "D1",
+        "source_event_id": "E1",
+        "labels": {
+          "extraction_observable_priority": 2
+        }
+      }
+    ]
+  }
+]

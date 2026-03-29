@@ -9,6 +9,8 @@ from typing import Dict, List, Tuple
 
 import numpy as np
 
+from llm4fairrouting.data.event_data import load_ground_truth_event_index
+
 
 PRIORITY_WEIGHTS = {1: 4.0, 2: 3.0, 3: 2.0, 4: 1.0}
 
@@ -33,17 +35,10 @@ def _parse_run_specs(specs: List[str]) -> Dict[str, Path]:
 
 
 def _load_ground_truth_priorities(path: str | Path) -> Dict[str, int]:
-    import csv
-
-    priorities: Dict[str, int] = {}
-    with open(path, "r", encoding="utf-8-sig") as handle:
-        reader = csv.DictReader(handle)
-        for row in reader:
-            event_id = str(row.get("event_id") or row.get("unique_id") or "").strip()
-            if not event_id:
-                continue
-            priorities[event_id] = int(row.get("priority", 4))
-    return priorities
+    return {
+        event_id: int(payload["priority"])
+        for event_id, payload in load_ground_truth_event_index(path).items()
+    }
 
 
 def _load_dialogue_metadata(path: str | Path) -> Tuple[Dict[str, Dict[str, object]], Dict[str, Dict[str, object]]]:
@@ -263,7 +258,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Evaluate downstream operational impact of different priority methods.")
     parser.add_argument("--run", action="append", required=True, help="Method run spec in name=run_dir format. Repeat for multiple methods.")
     parser.add_argument("--dialogues", required=True, help="Dialogue JSONL file used to build extracted demands")
-    parser.add_argument("--ground-truth", required=True, help="Ground-truth daily_demand_events.csv")
+    parser.add_argument("--ground-truth", required=True, help="Ground-truth rich event manifest or legacy CSV")
     parser.add_argument("--urgent-threshold", type=int, default=2, help="Priorities <= threshold are treated as urgent")
     parser.add_argument("--reference-method", help="Reference method name for gain/improvement calculations")
     parser.add_argument("--output", default="evals/results/priority_operational_impact.json", help="Output JSON path")
