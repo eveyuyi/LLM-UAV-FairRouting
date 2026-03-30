@@ -174,12 +174,12 @@ def summarize_operational_impact(
     *,
     run_dirs: Dict[str, Path],
     dialogues_path: str,
-    ground_truth_csv: str,
+    ground_truth_path: str,
     urgent_threshold: int = 2,
     reference_method: str | None = None,
 ) -> Dict[str, object]:
     dialogue_lookup, _event_lookup = _load_dialogue_metadata(dialogues_path)
-    ground_truth = _load_ground_truth_priorities(ground_truth_csv)
+    ground_truth = _load_ground_truth_priorities(ground_truth_path)
 
     methods: Dict[str, Dict[str, object]] = {}
     for method_name, run_dir in run_dirs.items():
@@ -258,7 +258,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Evaluate downstream operational impact of different priority methods.")
     parser.add_argument("--run", action="append", required=True, help="Method run spec in name=run_dir format. Repeat for multiple methods.")
     parser.add_argument("--dialogues", required=True, help="Dialogue JSONL file used to build extracted demands")
-    parser.add_argument("--ground-truth", required=True, help="Ground-truth rich event manifest or legacy CSV")
+    parser.add_argument("--ground-truth", required=True, help="Ground-truth rich event manifest JSONL/JSON")
     parser.add_argument("--urgent-threshold", type=int, default=2, help="Priorities <= threshold are treated as urgent")
     parser.add_argument("--reference-method", help="Reference method name for gain/improvement calculations")
     parser.add_argument("--output", default="evals/results/priority_operational_impact.json", help="Output JSON path")
@@ -267,7 +267,7 @@ def main() -> None:
     payload = summarize_operational_impact(
         run_dirs=_parse_run_specs(args.run),
         dialogues_path=args.dialogues,
-        ground_truth_csv=args.ground_truth,
+        ground_truth_path=args.ground_truth,
         urgent_threshold=args.urgent_threshold,
         reference_method=args.reference_method,
     )

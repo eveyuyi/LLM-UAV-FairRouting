@@ -13,7 +13,7 @@ def test_build_daily_demand_dialogues_wires_generation_and_save(monkeypatch, tmp
     monkeypatch.setattr(
         demand_dialogue_dataset,
         "load_demand_events",
-        lambda csv_path, n_events=None, time_slots=None: [{"event_id": "EV1", "time_slot": 0}],
+        lambda events_path, n_events=None, time_slots=None: [{"event_id": "EV1", "time_slot": 0}],
     )
     monkeypatch.setattr(
         demand_dialogue_dataset,
@@ -29,7 +29,7 @@ def test_build_daily_demand_dialogues_wires_generation_and_save(monkeypatch, tmp
 
     output_path = tmp_path / "daily_demand_dialogues.jsonl"
     dialogues = demand_dialogue_dataset.build_daily_demand_dialogues(
-        csv_path="input.csv",
+        events_path="input.jsonl",
         stations_path="stations.csv",
         output_path=str(output_path),
         api_key="test-key",

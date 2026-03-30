@@ -1,6 +1,0 @@
-﻿backend,solution_scope,solution_id,label,is_representative,source_json,frontier_result_path,search_runtime_s,avg_candidate_runtime_s,final_total_distance_m,average_delivery_time_h,final_total_noise_impact,service_rate,service_rate_loss,n_used_drones
-cplex,main_solution,cplex_main,CPLEX Main,True,D:\Git\LLM-UAV-FairRouting\.test_artifacts\five_objective_csv_3981ae716f4344edbe2bc0be56ff80ea\cplex_run\workflow_results.json,,,,120.0,1.2,12.0,0.8,0.2,2
-cplex,pareto_profile,balanced,Balanced,False,D:\Git\LLM-UAV-FairRouting\.test_artifacts\five_objective_csv_3981ae716f4344edbe2bc0be56ff80ea\cplex_run\solver_analytics\pareto\pareto_frontier.json,,,,118.0,1.1,11.0,0.82,0.18,2
-nsga3,frontier_solution,nsga3_a,NSGA3 A,True,D:\Git\LLM-UAV-FairRouting\.test_artifacts\five_objective_csv_3981ae716f4344edbe2bc0be56ff80ea\nsga3_run\nsga3_results.json,a.json,10.0,2.5,100.0,1.0,10.0,0.9,0.1,1
-nsga3,frontier_solution,nsga3_b,NSGA3 B,False,D:\Git\LLM-UAV-FairRouting\.test_artifacts\five_objective_csv_3981ae716f4344edbe2bc0be56ff80ea\nsga3_run\nsga3_results.json,b.json,10.0,2.5,130.0,0.8,9.0,0.88,0.12,2
-nsga3_heuristic,frontier_solution,heur_a,Heur A,True,D:\Git\LLM-UAV-FairRouting\.test_artifacts\five_objective_csv_3981ae716f4344edbe2bc0be56ff80ea\heuristic_run\nsga3_heuristic_results.json,h.json,4.0,1.0,110.0,0.95,9.5,0.89,0.11,1

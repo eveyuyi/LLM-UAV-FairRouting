@@ -12,7 +12,6 @@ from llm4fairrouting.data.event_data import event_record_to_solver_demand, load_
 from llm4fairrouting.data.seed_paths import (
     BUILDING_DATA_PATH,
     DEMAND_EVENTS_MANIFEST_PATH,
-    DEMAND_EVENTS_PATH,
     STATION_DATA_PATH,
 )
 from llm4fairrouting.workflow.solver_adapter import (
@@ -49,7 +48,7 @@ def _normalize_priority(priority: object) -> int:
 
 def build_uniform_priority_inputs(
         *,
-        csv_path: str,
+        events_path: str,
         base_date: str,
         window_minutes: int,
         n_events: Optional[int] = None,
@@ -62,7 +61,7 @@ def build_uniform_priority_inputs(
     """
     # 1. 调用原函数获取基础数据（需求列表、窗口划分、原始权重配置）
     windows, orig_weight_configs = _build_seed_priority_inputs(
-        csv_path=csv_path,
+        events_path=events_path,
         base_date=base_date,
         window_minutes=window_minutes,
         n_events=n_events,
@@ -97,13 +96,13 @@ def build_uniform_priority_inputs(
 
 def _build_seed_priority_inputs(
         *,
-        csv_path: str,
+        events_path: str,
         base_date: str,
         window_minutes: int,
         n_events: Optional[int] = None,
         time_slots: Optional[List[int]] = None,
 ) -> Tuple[List[Dict], Dict[str, Dict]]:
-    events = load_event_records(csv_path)
+    events = load_event_records(events_path)
     if time_slots is not None:
         allowed = {int(slot) for slot in time_slots}
         events = [event for event in events if int(event.get("time_slot", -1)) in allowed]
@@ -140,7 +139,7 @@ def _build_seed_priority_inputs(
                 "demand_id": demand_id,
                 "priority": priority,
                 "window_rank": rank,
-                "reasoning": "Seed priority from daily_demand_events.csv",
+                "reasoning": "Uniform-priority baseline from event manifest",
             })
         windows.append({"time_window": label, "demands": demands})
         weight_configs[label] = {
@@ -157,9 +156,9 @@ def main() -> None:
         description="Direct baseline that solves the shared seed event manifest with uniform priorities.",
     )
     parser.add_argument(
-        "--csv",
+        "--events",
         default=str(DEMAND_EVENTS_MANIFEST_PATH),
-        help="Path to the rich event manifest (CSV fallback still supported)",
+        help="Path to the rich event manifest JSONL",
     )
     parser.add_argument("--output-dir", default="results", help="Output root directory")
     parser.add_argument("--stations", default=str(STATION_DATA_PATH), help="Path to station metadata")
@@ -178,7 +177,7 @@ def main() -> None:
     args = parser.parse_args()
 
     windows, weight_configs = build_uniform_priority_inputs(
-        csv_path=args.csv,
+        events_path=args.events,
         base_date=args.base_date,
         window_minutes=args.window,
         n_events=args.n_events,

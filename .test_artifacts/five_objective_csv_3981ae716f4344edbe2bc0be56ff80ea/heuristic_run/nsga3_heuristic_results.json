@@ -1,1 +1,0 @@
-{"search_meta": {"search_runtime_s": 4.0, "avg_candidate_runtime_s": 1.0}, "frontier": [{"solution_id": "heur_a", "label": "Heur A", "frontier_result_path": "h.json", "final_total_distance_m": 110.0, "average_delivery_time_h": 0.95, "final_total_noise_impact": 9.5, "service_rate_loss": 0.11, "n_used_drones": 1, "run_summary": {"service_rate": 0.89}}]}

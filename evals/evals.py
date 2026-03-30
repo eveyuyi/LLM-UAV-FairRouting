@@ -213,7 +213,7 @@ if __name__ == '__main__':
     sys.argv = [
         'evals.py',
         '--model_output', 'data/test/extracted_demands.json',
-        '--ground_truth', 'data/seed/daily_demand_events.csv',
+        '--ground_truth', 'data/seed/daily_demand_events_manifest.jsonl',
         '--config', 'evals/eval_config.yaml'
     ]
     main()

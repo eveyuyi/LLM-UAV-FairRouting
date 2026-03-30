@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import pandas as pd
 
 from llm4fairrouting.data.building_information import BUILDING_DATA_COLUMNS
@@ -48,9 +50,7 @@ def test_build_priority_training_dataset_creates_three_training_layers(tmp_path)
 
     dataset = build_priority_training_dataset(
         event_records=event_records,
-        event_manifest_path=str(tmp_path / "events_manifest.jsonl"),
-        dialogue_output_path=str(tmp_path / "dialogues.jsonl"),
-        dataset_output_path=str(tmp_path / "priority_training_dataset.json"),
+        output_dir=str(tmp_path / "training_dataset"),
         stations_path=None,
         base_date="2024-03-15",
         styles=["direct", "technical"],
@@ -58,12 +58,34 @@ def test_build_priority_training_dataset_creates_three_training_layers(tmp_path)
         window_minutes=5,
     )
 
-    assert len(dataset["event_manifest"]) == len(event_records)
-    assert len(dataset["llm2_sft"]) == len(event_records) * 2
-    assert dataset["llm3_sft"]["clean_structured"]
-    assert dataset["llm3_sft"]["pipeline_structured"]
-    assert dataset["llm3_sft"]["hard_contrastive"]
-    first_pipeline_window = dataset["llm3_sft"]["pipeline_structured"][0]
+    output_dir = tmp_path / "training_dataset"
+    manifest_path = output_dir / "dataset_manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    assert dataset["counts"]["events_manifest"] == len(event_records)
+    assert dataset["counts"]["llm2_sft"] == len(event_records) * 2
+    assert manifest["counts"] == dataset["counts"]
+    assert manifest["files"] == {
+        "events_manifest": "events_manifest.jsonl",
+        "dialogues": "dialogues.jsonl",
+        "llm2_sft": "llm2_sft.jsonl",
+        "llm3_sft_clean": "llm3_sft_clean.jsonl",
+        "llm3_sft_pipeline": "llm3_sft_pipeline.jsonl",
+        "llm3_grpo_hard": "llm3_grpo_hard.jsonl",
+    }
+
+    for relative_path in manifest["files"].values():
+        assert (output_dir / relative_path).exists()
+
+    assert dataset["artifacts"]["llm3_sft_clean"]
+    assert dataset["artifacts"]["llm3_sft_pipeline"]
+    assert dataset["artifacts"]["llm3_grpo_hard"]
+    hard_window_labels = {
+        window["time_window"] for window in dataset["artifacts"]["llm3_grpo_hard"]
+    }
+    assert any("counterfactual" in label for label in hard_window_labels)
+    assert any("surface_contradiction" in label for label in hard_window_labels)
+    first_pipeline_window = dataset["artifacts"]["llm3_sft_pipeline"][0]
     assert "priority_labels" in first_pipeline_window
     assert "pairwise_preferences" in first_pipeline_window
     assert "critical_topk_targets" in first_pipeline_window

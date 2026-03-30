@@ -8,6 +8,7 @@ __pycache__/
 venv/
 .env
 .cursor/
+.idea/
 
 *.log
 
@@ -19,4 +20,16 @@ dist/
 
 # Generated outputs
 /data/drone/
+/data/cache/
+/data/compare_runs/
+/data/extract_eval_plan_runs/
+/data/independent_window_experiments/
+/data/result/
+/data/result_without_priority/
+/data/static_independent_runs/
+/data/test_one_window_nsga3h/
 /results/
+
+# Test and local verification artifacts
+/.test_artifacts/
+/verification_tmp/

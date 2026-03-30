@@ -176,13 +176,13 @@ def evaluate_priority_alignment(
     weights_path: str,
     demands_path: str,
     dialogues_path: str,
-    ground_truth_csv: str,
+    ground_truth_path: str,
     urgent_threshold: int = 2,
 ) -> Dict[str, object]:
     weight_configs = _load_weight_configs(weights_path)
     extracted_demands = _load_extracted_demands(demands_path)
     dialogue_lookup, _event_lookup = _load_dialogue_metadata(dialogues_path)
-    ground_truth = _load_ground_truth_priorities(ground_truth_csv)
+    ground_truth = _load_ground_truth_priorities(ground_truth_path)
 
     y_true: List[int] = []
     y_pred: List[int] = []
@@ -288,7 +288,7 @@ def main() -> None:
     parser.add_argument("--weights", required=True, help="Weight configs JSON file or directory")
     parser.add_argument("--demands", required=True, help="Extracted demands JSON file")
     parser.add_argument("--dialogues", required=True, help="Dialogue JSONL file used to build extracted demands")
-    parser.add_argument("--ground-truth", required=True, help="Ground-truth rich event manifest or legacy CSV")
+    parser.add_argument("--ground-truth", required=True, help="Ground-truth rich event manifest JSONL/JSON")
     parser.add_argument("--urgent-threshold", type=int, default=2, help="Priorities <= threshold are treated as urgent")
     parser.add_argument("--output", default="evals/results/priority_alignment.json", help="Output JSON path")
     args = parser.parse_args()
@@ -297,7 +297,7 @@ def main() -> None:
         weights_path=args.weights,
         demands_path=args.demands,
         dialogues_path=args.dialogues,
-        ground_truth_csv=args.ground_truth,
+        ground_truth_path=args.ground_truth,
         urgent_threshold=args.urgent_threshold,
     )
     output_path = Path(args.output)

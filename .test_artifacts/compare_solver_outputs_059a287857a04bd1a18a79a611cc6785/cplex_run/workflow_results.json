@@ -1,1 +1,0 @@
-[{"time_window": "2024-03-15T00:00-00:05", "run_summary": {"final_total_distance_m": 120.0, "average_delivery_time_h": 1.2, "final_total_noise_impact": 12.0, "service_rate": 0.8, "service_rate_loss": 0.2, "n_used_drones": 2}, "drone_path_details": [{"drone_id": "U11", "n_nodes_visited": 4, "path_node_ids": ["L1", "S1", "D1", "L1"]}]}]

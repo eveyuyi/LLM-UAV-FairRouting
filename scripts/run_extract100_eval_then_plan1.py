@@ -139,7 +139,7 @@ def _build_priority_alignment_command(
     weights_path: Path,
     demands_path: Path,
     dialogues_path: str,
-    ground_truth_csv: str,
+    ground_truth_path: str,
     urgent_threshold: int,
     output_path: Path,
 ) -> List[str]:
@@ -153,7 +153,7 @@ def _build_priority_alignment_command(
         "--dialogues",
         dialogues_path,
         "--ground-truth",
-        ground_truth_csv,
+        ground_truth_path,
         "--urgent-threshold",
         str(urgent_threshold),
         "--output",
@@ -239,7 +239,7 @@ def main() -> None:
         weights_path=extract_run_dir / "weight_configs",
         demands_path=extract_run_dir / "extracted_demands.json",
         dialogues_path=args.dialogues,
-        ground_truth_csv=args.ground_truth,
+        ground_truth_path=args.ground_truth,
         urgent_threshold=args.urgent_threshold,
         output_path=priority_eval_path,
     )
@@ -285,7 +285,7 @@ def main() -> None:
         },
         "evaluation": {
             "priority_alignment_json": str(priority_eval_path),
-            "ground_truth_csv": args.ground_truth,
+            "ground_truth_path": args.ground_truth,
             "urgent_threshold": args.urgent_threshold,
         },
         "planning": {

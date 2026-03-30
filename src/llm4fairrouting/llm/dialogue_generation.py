@@ -29,16 +29,13 @@ if TYPE_CHECKING:
     from openai import OpenAI
 
 from llm4fairrouting.config.runtime_env import env_text, prepare_env_file
-from llm4fairrouting.data.demand_event_generation import (
-    DIALOGUE_STYLE_VARIANTS,
-    build_gold_structured_demand,
-)
+from llm4fairrouting.data.event_data import load_event_records
+from llm4fairrouting.data.event_semantics import DIALOGUE_STYLE_VARIANTS
+from llm4fairrouting.data.event_structuring import build_gold_structured_demand
 from llm4fairrouting.data.priority_labels import derive_priority_labels
 from llm4fairrouting.data.seed_paths import (
     DEMAND_DIALOGUES_PATH,
-    DEMAND_EVENTS_FILENAME,
     PRIMARY_EVENT_DATA_PATH,
-    STATION_DATA_FILENAME,
     STATION_DATA_PATH,
 )
 from llm4fairrouting.data.stations import load_station_data
@@ -896,8 +893,8 @@ def _normalize_manifest_event(record: Dict) -> Dict:
         normalized.setdefault("destination_type", destination.get("type", "residential_area"))
     if cargo:
         normalized.setdefault("material_type", cargo.get("type", "medicine"))
-        normalized.setdefault("quantity_kg", cargo.get("weight_kg", record.get("weight_kg", 1.0)))
-        normalized.setdefault("demand_tier", cargo.get("demand_tier"))
+        normalized.setdefault("quantity_kg", record.get("weight_kg", cargo.get("weight_kg", 1.0)))
+    normalized.setdefault("demand_tier", record.get("demand_tier", cargo.get("demand_tier")))
     if "event_id" not in normalized and "unique_id" in normalized:
         normalized["event_id"] = normalized["unique_id"]
     if "unique_id" not in normalized and "event_id" in normalized:
@@ -910,91 +907,35 @@ def _normalize_manifest_event(record: Dict) -> Dict:
 
 
 def load_demand_events(
-    csv_path: str,
+    manifest_path: str,
     n_events: Optional[int] = None,
     time_slots: Optional[List[int]] = None,
 ) -> List[Dict]:
-    """读取需求事件数据，主路径是 rich event manifest，CSV 仅作为兼容回退。
+    """读取 rich event manifest 并归一化为 dialogue generation 使用的视图。
 
     Parameters
     ----------
-    csv_path : str
-        CSV 路径。
+    manifest_path : str
+        Rich event manifest JSONL/JSON 路径。
     n_events : int, optional
         若指定，随机采样不超过该数量的事件。
     time_slots : list[int], optional
         若指定，仅加载这些 time_slot 的事件。
     """
-    try:
-        import pandas as pd
-    except ImportError:
-        raise ImportError("需要 pandas: pip install pandas")
-
-    path = Path(csv_path)
-    if path.suffix.lower() == ".jsonl":
-        with open(path, "r", encoding="utf-8") as handle:
-            events = [
-                _normalize_manifest_event(json.loads(line))
-                for line in handle
-                if line.strip()
-            ]
-        if time_slots is not None:
-            allowed = {int(slot) for slot in time_slots}
-            events = [
-                event for event in events
-                if int(event.get("time_slot", -1)) in allowed
-            ]
-        if n_events is not None and len(events) > n_events:
-            rng = random.Random(42)
-            events = sorted(
-                rng.sample(events, k=n_events),
-                key=lambda item: (int(item.get("time_slot", 0)), str(item.get("event_id", ""))),
-            )
-        return events
-
-    df = pd.read_csv(csv_path, encoding="utf-8-sig")
-
-    if "supply_type" in df.columns:
-        df["supply_type"] = df["supply_type"].map(_normalize_supply_type)
-
-    # Auto-detect new CSV format: has "time" (float hours) instead of "time_slot" (int)
-    if "time" in df.columns and "time_slot" not in df.columns:
-        df["time_slot"] = (df["time"] * 12).round().astype(int)
-
-    # Rename new CSV columns to match expected schema
-    rename_map = {}
-    if "unique_id" in df.columns and "event_id" not in df.columns:
-        rename_map["unique_id"] = "event_id"
-    if "demand_fid" in df.columns and "demand_node_id" not in df.columns:
-        rename_map["demand_fid"] = "demand_node_id"
-    if "material_weight" in df.columns and "quantity_kg" not in df.columns:
-        rename_map["material_weight"] = "quantity_kg"
-    if rename_map:
-        df = df.rename(columns=rename_map)
-
-    # Infer material_type from supply_type if not present
-    if "material_type" not in df.columns:
-        if "supply_type" in df.columns:
-            df["material_type"] = df.apply(
-                lambda row: _infer_material_type(
-                    str(row.get("supply_type", "")),
-                    int(row.get("priority", 3)),
-                    str(row.get("event_id", "")),
-                ),
-                axis=1,
-            )
-        else:
-            df["material_type"] = "medicine"
-
+    events = [_normalize_manifest_event(record) for record in load_event_records(manifest_path)]
     if time_slots is not None:
-        df = df[df["time_slot"].isin(time_slots)]
-
-    if n_events is not None and len(df) > n_events:
-        df = df.sample(n=n_events, random_state=42).sort_values(
-            ["time_slot", "event_id"]
+        allowed = {int(slot) for slot in time_slots}
+        events = [
+            event for event in events
+            if int(event.get("time_slot", -1)) in allowed
+        ]
+    if n_events is not None and len(events) > n_events:
+        rng = random.Random(42)
+        events = sorted(
+            rng.sample(events, k=n_events),
+            key=lambda item: (int(item.get("time_slot", 0)), str(item.get("event_id", ""))),
         )
-
-    return df.to_dict(orient="records")
+    return events
 
 
 # ============================================================================
@@ -1530,7 +1471,7 @@ def load_dialogues_from_file(path: str) -> List[Dict]:
 # ============================================================================
 
 def generate_dialogues(
-    csv_path: str,
+    events_path: str,
     xlsx_path: Optional[str] = None,
     offline: bool = True,
     client: Optional["OpenAI"] = None,
@@ -1546,8 +1487,8 @@ def generate_dialogues(
 
     Parameters
     ----------
-    csv_path : str
-        需求事件路径，优先使用 rich event manifest JSONL。
+    events_path : str
+        需求事件路径，使用 rich event manifest JSONL/JSON。
     xlsx_path : str, optional
         drone_station_locations.csv（站点数据）路径。当 CSV 内含供给点信息时可省略。
     offline : bool
@@ -1573,11 +1514,11 @@ def generate_dialogues(
             stations = load_stations(xlsx_path)
             print(f"[Module 1] Loaded {len(stations)} stations")
         except Exception as e:
-            print(f"[Module 1] Station load failed ({e}); using supply data from the CSV")
+            print(f"[Module 1] Station load failed ({e}); using supply data from the event manifest")
 
-    events = load_demand_events(csv_path, n_events=n_events, time_slots=time_slots)
+    events = load_demand_events(events_path, n_events=n_events, time_slots=time_slots)
     if not events:
-        raise ValueError(f"No demand events could be loaded from {csv_path}")
+        raise ValueError(f"No demand events could be loaded from {events_path}")
     print(
         f"[Module 1] Loaded {len(events)} demand events "
         f"(time_slots={time_slots}, n_events={n_events})"
@@ -1622,7 +1563,7 @@ def main():
         help="Environment file path; defaults to the project .env when present",
     )
     parser.add_argument(
-        "--csv", type=str,
+        "--events", type=str,
         default=str(PRIMARY_EVENT_DATA_PATH),
         help="Rich event manifest JSONL path",
     )
@@ -1660,7 +1601,7 @@ def main():
         client = create_openai_client(args.api_base, args.api_key)
 
     dialogues = generate_dialogues(
-        csv_path=args.csv,
+        events_path=args.events,
         xlsx_path=args.stations,
         offline=args.offline,
         client=client,

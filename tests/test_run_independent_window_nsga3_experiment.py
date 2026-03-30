@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import csv
 import importlib.util
 import json
 from pathlib import Path
@@ -56,16 +55,54 @@ def test_evaluate_demand_extraction_reports_tp_fp_fn_and_exact_match(tmp_path):
         encoding="utf-8",
     )
 
-    ground_truth = base / "ground_truth.csv"
-    with open(ground_truth, "w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=["unique_id", "priority", "supply_fid", "demand_fid", "material_weight"])
-        writer.writeheader()
-        writer.writerows(
+    ground_truth = base / "ground_truth.jsonl"
+    ground_truth.write_text(
+        "\n".join(
             [
-                {"unique_id": "E1", "priority": 1, "supply_fid": "SUP1", "demand_fid": "DEM1", "material_weight": 5.0},
-                {"unique_id": "E2", "priority": 2, "supply_fid": "SUP2", "demand_fid": "DEM2", "material_weight": 8.0},
+                json.dumps({
+                    "event_id": "E1",
+                    "time_slot": 0,
+                    "origin": {"fid": "SUP1", "coords": [0.0, 0.0], "type": "supply_station", "station_name": "SUP1", "supply_type": "medical"},
+                    "destination": {"fid": "DEM1", "node_id": "DEM1", "coords": [0.0, 0.0], "type": "hospital"},
+                    "cargo": {"type": "aed", "type_cn": "AED", "temperature_sensitive": False},
+                    "weight_kg": 5.0,
+                    "deadline_minutes": 15,
+                    "demand_tier": "life_support",
+                    "requester_role": "emergency_doctor",
+                    "special_handling": [],
+                    "population_vulnerability": {},
+                    "receiver_ready": False,
+                    "latent_priority": 1,
+                    "scenario_context": "CPR in progress",
+                    "dialogue_styles": ["direct"],
+                    "priority_factors": {"policy_version": "human_aligned_priority_v1", "scenario_context": "CPR in progress", "reason_codes": ["tier_life_support"], "source_fields": ["demand_tier"]},
+                    "must_mention_factors": [],
+                    "optional_factors": [],
+                }, ensure_ascii=False),
+                json.dumps({
+                    "event_id": "E2",
+                    "time_slot": 1,
+                    "origin": {"fid": "SUP2", "coords": [0.0, 0.0], "type": "supply_station", "station_name": "SUP2", "supply_type": "medical"},
+                    "destination": {"fid": "DEM2", "node_id": "DEM2", "coords": [0.0, 0.0], "type": "clinic"},
+                    "cargo": {"type": "icu_drug", "type_cn": "ICU", "temperature_sensitive": False},
+                    "weight_kg": 8.0,
+                    "deadline_minutes": 30,
+                    "demand_tier": "critical",
+                    "requester_role": "icu_nurse",
+                    "special_handling": [],
+                    "population_vulnerability": {},
+                    "receiver_ready": False,
+                    "latent_priority": 2,
+                    "scenario_context": "ICU refill",
+                    "dialogue_styles": ["direct"],
+                    "priority_factors": {"policy_version": "human_aligned_priority_v1", "scenario_context": "ICU refill", "reason_codes": ["tier_critical"], "source_fields": ["demand_tier"]},
+                    "must_mention_factors": [],
+                    "optional_factors": [],
+                }, ensure_ascii=False),
             ]
-        )
+        ),
+        encoding="utf-8",
+    )
 
     extracted = base / "extracted_demands.json"
     extracted.write_text(
@@ -100,7 +137,7 @@ def test_evaluate_demand_extraction_reports_tp_fp_fn_and_exact_match(tmp_path):
     payload = module._evaluate_demand_extraction(
         extracted_demands_path=extracted,
         dialogues_path=dialogues,
-        ground_truth_csv=ground_truth,
+        ground_truth_path=ground_truth,
         selected_slots=[0, 1],
     )
 

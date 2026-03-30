@@ -308,3 +308,86 @@ def test_run_workflow_routes_to_nsga3_heuristic_backend(monkeypatch, tmp_path):
     assert captured["kwargs"]["seed"] == 55
     saved = json.loads((output_dir / "run_for_test" / "nsga3_heuristic_results.json").read_text(encoding="utf-8"))
     assert saved["frontier"][0]["solution_id"] == "nsga3_heuristic_candidate_0000"
+
+
+def test_run_workflow_writes_representative_frontier_solution_for_nsga3_heuristic(monkeypatch, tmp_path):
+    dialogue_path = tmp_path / "daily_demand_dialogues.jsonl"
+    output_dir = tmp_path / "results"
+    representative_path = tmp_path / "frontier_solution.json"
+    representative_payload = [
+        {
+            "time_window": "2024-03-15T00:00-00:05",
+            "drone_path_details": [
+                {
+                    "drone_id": "U11",
+                    "path_str": "L1 -> S1 -> D1 -> L1",
+                }
+            ],
+        }
+    ]
+    representative_path.write_text(json.dumps(representative_payload), encoding="utf-8")
+    _write_dialogues_jsonl(
+        dialogue_path,
+        [
+            {
+                "dialogue_id": "D000",
+                "timestamp": "2024-03-15T00:00:00",
+                "conversation": "slot 0",
+                "metadata": {"time_slot": 0},
+            }
+        ],
+    )
+
+    extracted_windows = [
+        {
+            "time_window": "2024-03-15T00:00-00:05",
+            "demands": [{"demand_id": "REQ001"}],
+        }
+    ]
+    weight_config = {
+        "global_weights": {"w_distance": 1.0, "w_time": 1.0, "w_risk": 1.0},
+        "demand_configs": [{"demand_id": "REQ001", "priority": 1, "reasoning": "test"}],
+        "supplementary_constraints": [],
+    }
+
+    monkeypatch.setattr(
+        workflow_module,
+        "_build_run_dir",
+        lambda base_dir, model, noise_weight: base_dir / "run_for_test",
+    )
+    monkeypatch.setattr(workflow_module, "extract_demands_offline", lambda dialogues, window_minutes: extracted_windows)
+    monkeypatch.setattr(workflow_module, "adjust_weights_offline", lambda demands: weight_config)
+    monkeypatch.setattr(
+        workflow_module,
+        "run_nsga3_heuristic_search",
+        lambda **kwargs: {
+            "frontier": [
+                {
+                    "solution_id": "sol1",
+                    "final_total_distance_m": 10.0,
+                    "average_delivery_time_h": 1.0,
+                    "final_total_noise_impact": 1.0,
+                    "service_rate_loss": 0.0,
+                    "n_used_drones": 1,
+                    "frontier_result_path": str(representative_path),
+                }
+            ]
+        },
+    )
+    monkeypatch.setattr(workflow_module, "serialize_workflow_results", lambda results: results)
+
+    workflow_module.run_workflow(
+        output_dir=str(output_dir),
+        dialogue_path=str(dialogue_path),
+        stations_path=str(tmp_path / "stations.csv"),
+        offline=True,
+        skip_solver=False,
+        solver_backend="nsga3_heuristic",
+        building_path=str(tmp_path / "buildings.csv"),
+    )
+
+    saved_workflow = json.loads((output_dir / "run_for_test" / "workflow_results.json").read_text(encoding="utf-8"))
+    saved_paths = json.loads((output_dir / "run_for_test" / "drone_paths.json").read_text(encoding="utf-8"))
+
+    assert saved_workflow == representative_payload
+    assert saved_paths == representative_payload[0]["drone_path_details"]

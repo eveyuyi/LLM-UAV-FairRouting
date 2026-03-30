@@ -32,7 +32,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 def build_daily_demand_dialogues(
     *,
-    csv_path: str = str(PRIMARY_EVENT_DATA_PATH),
+    events_path: str = str(PRIMARY_EVENT_DATA_PATH),
     stations_path: str | None = str(STATION_DATA_PATH),
     output_path: str = str(DEMAND_DIALOGUES_PATH),
     api_base: str | None = None,
@@ -47,13 +47,13 @@ def build_daily_demand_dialogues(
 ) -> list[dict]:
     """Materialize one canonical dialogue dataset from the seed demand events."""
     started_at = time.perf_counter()
-    print(f"[Module 1] Building canonical dialogue dataset from {csv_path}", flush=True)
+    print(f"[Module 1] Building canonical dialogue dataset from {events_path}", flush=True)
     client = create_openai_client(api_base, api_key)
     stations = load_stations(stations_path) if stations_path else []
     print(f"[Module 1] Loaded {len(stations)} stations", flush=True)
-    events = load_demand_events(csv_path, n_events=n_events, time_slots=time_slots)
+    events = load_demand_events(events_path, n_events=n_events, time_slots=time_slots)
     if not events:
-        raise ValueError(f"No demand events could be loaded from {csv_path}")
+        raise ValueError(f"No demand events could be loaded from {events_path}")
     print(
         f"[Module 1] Loaded {len(events)} seed demand events "
         f"(time_slots={time_slots}, n_events={n_events})",
@@ -91,8 +91,8 @@ def main() -> None:
         help="Environment file path; defaults to the project .env when present",
     )
     parser.add_argument(
-        "--csv",
-        default=env_text("LLM4FAIRROUTING_CSV", str(PRIMARY_EVENT_DATA_PATH)),
+        "--events",
+        default=env_text("LLM4FAIRROUTING_EVENTS", str(PRIMARY_EVENT_DATA_PATH)),
         help="Path to the rich event manifest JSONL",
     )
     parser.add_argument(
@@ -117,7 +117,7 @@ def main() -> None:
     args = parser.parse_args()
 
     dialogues = build_daily_demand_dialogues(
-        csv_path=args.csv,
+        events_path=args.events,
         stations_path=args.stations,
         output_path=args.output,
         api_base=args.api_base,

@@ -513,6 +513,13 @@ class HeuristicAssignmentSolver:
             objective_breakdown["delivery_time_s"] += float(metrics["delivery_time_s"])
             objective_breakdown["noise_impact"] += float(metrics["noise_impact"])
             objective_breakdown["activation_cost"] += float(metrics["activation_cost"])
+            # Prevent later drones from being assigned the same demand bundle again.
+            available_demands = [
+                demand for demand in available_demands
+                if demand.unique_id not in served_ids
+            ]
+            if not available_demands:
+                break
 
         remaining_demands = [demand for demand in available_demands if demand.unique_id not in served_ids]
         for demand in remaining_demands:

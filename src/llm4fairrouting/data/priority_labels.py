@@ -1,9 +1,16 @@
-"""Canonical observable-priority labels derived from structured demands."""
+"""Canonical observable-priority labels derived from structured demands.
+
+The rules in this module implement the human-aligned allocation policy behind
+LLM3: prioritize scarce delivery capacity for requests with the strongest
+evidence of severity, urgency, vulnerability, and operational actionability.
+"""
 
 from __future__ import annotations
 
 import copy
 from typing import Dict, List
+
+from llm4fairrouting.data.priority_policy import PRIORITY_POLICY_VERSION
 
 TIER_PRIORITIES = {
     "life_support": 1,
@@ -51,6 +58,33 @@ _EMERGENCY_ROLES = {"emergency_doctor", "paramedic", "triage_nurse"}
 _CRITICAL_ROLES = {"icu_nurse", "clinical_pharmacist", "ward_coordinator"}
 _LIFE_CARGO = {"aed", "blood_product", "cardiac_drug", "thrombolytic"}
 _CRITICAL_CARGO = {"ventilator", "icu_drug"}
+
+_SCORE_BONUSES = {
+    "deadline_le_15m": 30,
+    "deadline_le_30m": 20,
+    "deadline_le_60m": 10,
+    "hard_deadline": 6,
+    "life_cargo": 24,
+    "critical_cargo": 14,
+    "life_threatening_context": 34,
+    "critical_clinical_context": 18,
+    "emergency_requester": 12,
+    "critical_requester": 8,
+    "children_involved": 10,
+    "elderly_involved": 8,
+    "vulnerable_community": 6,
+    "handoff_ready": 4,
+    "special_handling": 4,
+    "destination_hospital_like": 4,
+    "solver_ready_receiver": 6,
+    "solver_routeable": 2,
+}
+
+_PRIORITY_THRESHOLDS = (
+    (125, 1),
+    (82, 2),
+    (42, 3),
+)
 
 
 def normalize_priority(priority: object, default: int = 4) -> int:
@@ -121,12 +155,10 @@ def _priority_from_score(
     evidence_text: str,
 ) -> int:
     priority = 4
-    if score >= 125:
-        priority = 1
-    elif score >= 82:
-        priority = 2
-    elif score >= 42:
-        priority = 3
+    for threshold, mapped_priority in _PRIORITY_THRESHOLDS:
+        if score >= threshold:
+            priority = mapped_priority
+            break
 
     cargo_type = str(demand.get("cargo", {}).get("type", "") or "")
     if tier == "life_support":
@@ -169,65 +201,65 @@ def derive_priority_assessment(demand: Dict, *, solver_mode: bool = False) -> Di
 
     if deadline_minutes:
         if deadline_minutes <= 15:
-            score += 30
+            score += _SCORE_BONUSES["deadline_le_15m"]
             reasons.append("deadline<=15m")
         elif deadline_minutes <= 30:
-            score += 20
+            score += _SCORE_BONUSES["deadline_le_30m"]
             reasons.append("deadline<=30m")
         elif deadline_minutes <= 60:
-            score += 10
+            score += _SCORE_BONUSES["deadline_le_60m"]
             reasons.append("deadline<=60m")
     if str(demand.get("time_constraint", {}).get("type", "")).lower() == "hard":
-        score += 6
+        score += _SCORE_BONUSES["hard_deadline"]
         reasons.append("hard_deadline")
 
     if cargo_type in _LIFE_CARGO:
-        score += 24
+        score += _SCORE_BONUSES["life_cargo"]
         reasons.append(f"cargo={cargo_type}")
     elif cargo_type in _CRITICAL_CARGO:
-        score += 14
+        score += _SCORE_BONUSES["critical_cargo"]
         reasons.append(f"cargo={cargo_type}")
 
     if any(keyword in evidence_text for keyword in _EXTREME_EVIDENCE):
-        score += 34
+        score += _SCORE_BONUSES["life_threatening_context"]
         reasons.append("life_threatening_context")
     elif any(keyword in evidence_text for keyword in _CRITICAL_EVIDENCE):
-        score += 18
+        score += _SCORE_BONUSES["critical_clinical_context"]
         reasons.append("critical_clinical_context")
 
     if requester_role in _EMERGENCY_ROLES:
-        score += 12
+        score += _SCORE_BONUSES["emergency_requester"]
         reasons.append(f"role={requester_role}")
     elif requester_role in _CRITICAL_ROLES:
-        score += 8
+        score += _SCORE_BONUSES["critical_requester"]
         reasons.append(f"role={requester_role}")
 
     if vuln["children_involved"]:
-        score += 10
+        score += _SCORE_BONUSES["children_involved"]
         reasons.append("children_involved")
     if vuln["elderly_involved"]:
-        score += 8
+        score += _SCORE_BONUSES["elderly_involved"]
         reasons.append("elderly_involved")
     if vuln["vulnerable_community"]:
-        score += 6
+        score += _SCORE_BONUSES["vulnerable_community"]
         reasons.append("vulnerable_community")
 
     if "ready" in evidence_text or "standing by" in evidence_text or "handoff" in evidence_text:
-        score += 4
+        score += _SCORE_BONUSES["handoff_ready"]
         reasons.append("handoff_ready")
     if any(item in {"cold_chain", "shock_protection"} for item in special_handling):
-        score += 4
+        score += _SCORE_BONUSES["special_handling"]
         reasons.append("special_handling")
     if destination_type in {"hospital", "clinic"} and tier in {"life_support", "critical"}:
-        score += 4
+        score += _SCORE_BONUSES["destination_hospital_like"]
         reasons.append(f"destination={destination_type}")
 
     if solver_mode:
         if demand.get("receiver_ready") or "landing zone cleared" in evidence_text:
-            score += 6
+            score += _SCORE_BONUSES["solver_ready_receiver"]
             reasons.append("solver_ready_receiver")
         if demand.get("origin", {}).get("fid") and demand.get("destination", {}).get("fid"):
-            score += 2
+            score += _SCORE_BONUSES["solver_routeable"]
             reasons.append("solver_routeable")
 
     priority = _priority_from_score(score, tier, demand, evidence_text)
@@ -264,6 +296,7 @@ def derive_priority_labels(
     extraction = derive_priority_assessment(demand, solver_mode=False)
     solver = derive_priority_assessment(demand, solver_mode=True)
     labels = {
+        "priority_policy_version": PRIORITY_POLICY_VERSION,
         "extraction_observable_priority": extraction["priority"],
         "extraction_observable_score": extraction["score"],
         "extraction_observable_reasoning": extraction["reasoning"],

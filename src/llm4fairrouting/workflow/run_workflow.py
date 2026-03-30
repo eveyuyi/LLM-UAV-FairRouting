@@ -28,6 +28,7 @@ from llm4fairrouting.workflow.solver_adapter import (
 )
 from llm4fairrouting.multiobjective.nsga3_heuristic import run_nsga3_heuristic_search
 from llm4fairrouting.multiobjective.nsga3_search import run_nsga3_pareto_search
+from llm4fairrouting.routing.rrt_visualization import select_representative_frontier_solution
 from llm4fairrouting.llm.priority_inference import (
     adjust_weights,
     adjust_weights_offline,
@@ -115,7 +116,39 @@ def _extract_drone_path_details(all_solutions: list[Dict]) -> list[Dict]:
         details = solution.get("drone_path_details")
         if details:
             return list(details)
+        details = solution_entry.get("drone_path_details")
+        if details:
+            return list(details)
     return []
+
+
+def _resolve_search_result_path(path_text: str) -> Optional[Path]:
+    candidate = Path(path_text).expanduser()
+    if candidate.is_absolute():
+        return candidate if candidate.exists() else None
+    if candidate.exists():
+        return candidate.resolve()
+    project_candidate = (PROJECT_ROOT / candidate).resolve()
+    return project_candidate if project_candidate.exists() else None
+
+
+def _load_representative_search_workflow_results(search_payload: Optional[Dict]) -> list[Dict]:
+    frontier = list((search_payload or {}).get("frontier") or [])
+    representative = select_representative_frontier_solution(frontier)
+    if not representative:
+        return []
+
+    result_path_text = str(representative.get("frontier_result_path") or "").strip()
+    if not result_path_text:
+        return []
+
+    result_path = _resolve_search_result_path(result_path_text)
+    if result_path is None:
+        return []
+
+    with open(result_path, "r", encoding="utf-8") as handle:
+        payload = json.load(handle)
+    return payload if isinstance(payload, list) else []
 
 
 # ============================================================================
@@ -398,10 +431,16 @@ def run_workflow(
         # ----------------------------------------------------------------
         # 保存汇总结果（含完整 eval 字段）
         # ----------------------------------------------------------------
+        workflow_results_payload = serialize_workflow_results(all_solutions)
+        if not workflow_results_payload and search_payload is not None:
+            workflow_results_payload = _load_representative_search_workflow_results(search_payload)
+            if not workflow_results_payload:
+                print("  Warning: no representative frontier workflow result could be loaded")
+
         summary_path = run_dir / "workflow_results.json"
         with open(summary_path, "w", encoding="utf-8") as f:
             json.dump(
-                serialize_workflow_results(all_solutions),
+                workflow_results_payload,
                 f,
                 ensure_ascii=False,
                 indent=2,
@@ -410,7 +449,7 @@ def run_workflow(
             search_summary_path = run_dir / search_results_filename
             with open(search_summary_path, "w", encoding="utf-8") as f:
                 json.dump(search_payload, f, ensure_ascii=False, indent=2)
-        drone_paths = _extract_drone_path_details(all_solutions)
+        drone_paths = _extract_drone_path_details(workflow_results_payload)
         drone_paths_path = run_dir / "drone_path_results.json"
         legacy_drone_paths_path = run_dir / "drone_paths.json"
         if drone_paths:

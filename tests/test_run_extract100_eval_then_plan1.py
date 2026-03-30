@@ -58,7 +58,7 @@ def test_priority_alignment_command_building():
         weights_path=Path("run") / "weight_configs",
         demands_path=Path("run") / "extracted_demands.json",
         dialogues_path="dialogues.jsonl",
-        ground_truth_csv="events.csv",
+        ground_truth_path="events.jsonl",
         urgent_threshold=2,
         output_path=Path("evals") / "priority_alignment.json",
     )

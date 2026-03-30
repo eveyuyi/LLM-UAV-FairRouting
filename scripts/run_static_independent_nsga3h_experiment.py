@@ -152,12 +152,12 @@ def _evaluate_demand_extraction(
     *,
     extracted_demands_path: str | Path,
     dialogues_path: str | Path,
-    ground_truth_csv: str | Path,
+    ground_truth_path: str | Path,
     selected_slots: Sequence[int],
 ) -> Dict[str, object]:
     selected = {int(slot) for slot in selected_slots}
     dialogues = _load_dialogues(dialogues_path)
-    ground_truth = _load_ground_truth_events(ground_truth_csv)
+    ground_truth = _load_ground_truth_events(ground_truth_path)
 
     dialogue_to_event: Dict[str, str] = {}
     selected_event_ids = set()
@@ -444,7 +444,7 @@ def main() -> None:
     extraction_metrics = _evaluate_demand_extraction(
         extracted_demands_path=extract_run_dir / "extracted_demands.json",
         dialogues_path=args.dialogues,
-        ground_truth_csv=args.ground_truth,
+        ground_truth_path=args.ground_truth,
         selected_slots=selected_slots,
     )
     extraction_metrics_path = session_dir / "demand_extraction_metrics.json"
@@ -454,7 +454,7 @@ def main() -> None:
         weights_path=str(extract_run_dir / "weight_configs"),
         demands_path=str(extract_run_dir / "extracted_demands.json"),
         dialogues_path=str(args.dialogues),
-        ground_truth_csv=str(args.ground_truth),
+        ground_truth_path=str(args.ground_truth),
         urgent_threshold=args.urgent_threshold,
     )
     priority_metrics_path = session_dir / "priority_alignment.json"

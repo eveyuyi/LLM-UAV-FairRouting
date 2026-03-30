@@ -11,8 +11,6 @@ import random
 import tempfile
 from pathlib import Path
 
-import pandas as pd
-
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 import pytest
@@ -22,7 +20,6 @@ from llm4fairrouting.llm.dialogue_generation import (
     _find_nearest_station,
     _generate_rule_conversation,
     _haversine,
-    _infer_material_type,
     _infer_poi,
     _map_priority_to_tier,
     _pick_tier_template,
@@ -31,7 +28,7 @@ from llm4fairrouting.llm.dialogue_generation import (
     load_stations,
     save_dialogues,
 )
-from llm4fairrouting.data.seed_paths import DEMAND_EVENTS_PATH, STATION_DATA_PATH
+from llm4fairrouting.data.seed_paths import DEMAND_EVENTS_MANIFEST_PATH, STATION_DATA_PATH
 
 # ============================================================================
 # 测试固件
@@ -263,43 +260,6 @@ class TestGenerateDialoguesOffline:
         assert dialogues == []
 
 
-def test_load_demand_events_normalizes_supply_type_to_english(tmp_path):
-    csv_path = tmp_path / "daily_demand_events.csv"
-    pd.DataFrame([
-        {
-            "time": 0.0,
-            "demand_fid": "DEM_1",
-            "demand_lon": 113.90,
-            "demand_lat": 22.80,
-            "priority": 2,
-            "supply_fid": "MED_1",
-            "supply_lon": 113.80,
-            "supply_lat": 22.70,
-            "supply_type": "医疗",
-            "material_weight": 3.2,
-            "unique_id": "DEM_000_00",
-        },
-        {
-            "time": 0.0833,
-            "demand_fid": "DEM_2",
-            "demand_lon": 113.91,
-            "demand_lat": 22.81,
-            "priority": 4,
-            "supply_fid": "COM_1",
-            "supply_lon": 113.81,
-            "supply_lat": 22.71,
-            "supply_type": "commercial",
-            "material_weight": 1.8,
-            "unique_id": "DEM_001_00",
-        },
-    ]).to_csv(csv_path, index=False, encoding="utf-8-sig")
-
-    events = load_demand_events(str(csv_path))
-
-    assert [event["supply_type"] for event in events] == ["medical", "commercial"]
-    assert _infer_material_type(events[0]["supply_type"], 2, "a") in {"ventilator", "icu_drug"}
-
-
 def test_load_demand_events_reads_rich_event_manifest(tmp_path):
     manifest_path = tmp_path / "daily_demand_events_manifest.jsonl"
     record = {
@@ -322,10 +282,12 @@ def test_load_demand_events_reads_rich_event_manifest(tmp_path):
         },
         "cargo": {
             "type": "aed",
-            "weight_kg": 2.0,
-            "demand_tier": "life_support",
+            "type_cn": "AED defibrillator",
+            "temperature_sensitive": False,
         },
+        "weight_kg": 2.0,
         "deadline_minutes": 15,
+        "demand_tier": "life_support",
         "requester_role": "emergency_doctor",
         "special_handling": ["shock_protection"],
         "population_vulnerability": {
@@ -336,6 +298,16 @@ def test_load_demand_events_reads_rich_event_manifest(tmp_path):
             "vulnerable_community": False,
         },
         "receiver_ready": True,
+        "scenario_context": "CPR is already in progress and the local AED cabinet is empty.",
+        "dialogue_styles": ["direct", "technical"],
+        "priority_factors": {
+            "policy_version": "human_aligned_priority_v1",
+            "scenario_context": "CPR is already in progress and the local AED cabinet is empty.",
+            "reason_codes": ["tier_life_support", "deadline_le_15m"],
+            "source_fields": ["demand_tier", "deadline_minutes", "scenario_context"],
+        },
+        "must_mention_factors": [],
+        "optional_factors": [],
     }
     manifest_path.write_text(json.dumps(record, ensure_ascii=False) + "\n", encoding="utf-8")
 
@@ -457,7 +429,7 @@ class TestSaveDialogues:
 # 真实文件测试（integration）
 # ============================================================================
 
-CSV_PATH = str(DEMAND_EVENTS_PATH)
+CSV_PATH = str(DEMAND_EVENTS_MANIFEST_PATH)
 XLSX_PATH = str(STATION_DATA_PATH)
 
 

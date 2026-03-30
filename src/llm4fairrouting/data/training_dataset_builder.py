@@ -10,13 +10,11 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from llm4fairrouting.config.runtime_env import env_text, prepare_env_file
-from llm4fairrouting.data.demand_event_generation import (
-    DIALOGUE_STYLE_VARIANTS,
-    build_gold_structured_demand,
-    generate_daily_demand_dataset,
-    generate_daily_demand_records,
-    save_event_manifest,
-)
+from llm4fairrouting.data.demand_event_generation import generate_daily_demand_dataset
+from llm4fairrouting.data.event_semantics import DIALOGUE_STYLE_VARIANTS
+from llm4fairrouting.data.event_structuring import build_gold_structured_demand
+from llm4fairrouting.data.priority_policy import PRIORITY_POLICY_VERSION
+from llm4fairrouting.data.demand_event_generation import save_event_manifest
 from llm4fairrouting.data.priority_labels import (
     attach_priority_labels,
     build_window_priority_targets,
@@ -128,6 +126,26 @@ def _build_llm2_sft_records(dialogues: List[Dict]) -> List[Dict]:
     return records
 
 
+def _append_context_signal(demand: Dict, note: str) -> None:
+    demand["context_signals"] = list(
+        dict.fromkeys(list(demand.get("context_signals", [])) + [note])
+    )
+
+
+def _refresh_synthetic_labels(demand: Dict) -> Dict:
+    """Recompute labels for synthetic hard cases and align latent to the new variant."""
+    labels = dict(demand.get("labels", {}) or {})
+    attach_priority_labels(
+        demand,
+        latent_priority=labels.get("latent_priority"),
+        dialogue_observable_priority=labels.get("dialogue_observable_priority"),
+    )
+    synthetic_latent = int(demand.get("labels", {}).get("extraction_observable_priority", 4))
+    attach_priority_labels(demand, latent_priority=synthetic_latent)
+    demand["latent_priority"] = synthetic_latent
+    return demand
+
+
 def _counterfactual_variants(gold: Dict) -> List[Dict]:
     variants = []
 
@@ -138,10 +156,8 @@ def _counterfactual_variants(gold: Dict) -> List[Dict]:
         deadline_variant["time_constraint"]["type"] = "hard"
         deadline_variant["time_constraint"]["description"] = "Counterfactual hard deadline within 15 minutes"
         deadline_variant["priority_evaluation_signals"]["time_sensitivity"] = "Immediate action required"
-        deadline_variant["context_signals"] = list(deadline_variant.get("context_signals", [])) + [
-            "Counterfactual: deadline tightened to 15 minutes",
-        ]
-        attach_priority_labels(deadline_variant, latent_priority=gold.get("labels", {}).get("latent_priority"))
+        _append_context_signal(deadline_variant, "Counterfactual: deadline tightened to 15 minutes")
+        _refresh_synthetic_labels(deadline_variant)
         variants.append(deadline_variant)
 
     role_variant = deepcopy(gold)
@@ -149,10 +165,8 @@ def _counterfactual_variants(gold: Dict) -> List[Dict]:
         role_variant["demand_id"] = f"{role_variant['demand_id']}_cf_emergency_role"
         role_variant["requester_role"] = "emergency_doctor"
         role_variant["priority_evaluation_signals"]["requester_role"] = "emergency_doctor"
-        role_variant["context_signals"] = list(role_variant.get("context_signals", [])) + [
-            "Counterfactual: requester role upgraded to emergency doctor",
-        ]
-        attach_priority_labels(role_variant, latent_priority=gold.get("labels", {}).get("latent_priority"))
+        _append_context_signal(role_variant, "Counterfactual: requester role upgraded to emergency doctor")
+        _refresh_synthetic_labels(role_variant)
         variants.append(role_variant)
 
     handling_variant = deepcopy(gold)
@@ -161,13 +175,130 @@ def _counterfactual_variants(gold: Dict) -> List[Dict]:
         handling_variant["demand_id"] = f"{handling_variant['demand_id']}_cf_cold_chain"
         handling_variant["special_handling"] = special_handling + ["cold_chain"]
         handling_variant["priority_evaluation_signals"]["special_handling"] = list(handling_variant["special_handling"])
-        handling_variant["context_signals"] = list(handling_variant.get("context_signals", [])) + [
-            "Counterfactual: cold-chain handling added",
-        ]
-        attach_priority_labels(handling_variant, latent_priority=gold.get("labels", {}).get("latent_priority"))
+        _append_context_signal(handling_variant, "Counterfactual: cold-chain handling added")
+        _refresh_synthetic_labels(handling_variant)
         variants.append(handling_variant)
 
+    readiness_variant = deepcopy(gold)
+    if readiness_variant.get("receiver_ready", False):
+        readiness_variant["demand_id"] = f"{readiness_variant['demand_id']}_cf_not_ready"
+        readiness_variant["receiver_ready"] = False
+        readiness_variant["operational_readiness"] = "Standard handoff readiness"
+        readiness_variant["priority_evaluation_signals"]["operational_readiness"] = "Standard handoff readiness"
+        _append_context_signal(readiness_variant, "Counterfactual: receiver is not ready for immediate handoff")
+        _refresh_synthetic_labels(readiness_variant)
+        variants.append(readiness_variant)
+
+    vulnerability_variant = deepcopy(gold)
+    vulnerability = dict(vulnerability_variant.get("population_vulnerability", {}) or {})
+    if not vulnerability.get("vulnerable_community"):
+        vulnerability.update({
+            "elderly_ratio": max(float(vulnerability.get("elderly_ratio", 0.0) or 0.0), 0.55),
+            "population": max(int(vulnerability.get("population", 0) or 0), 2500),
+            "elderly_involved": True,
+            "children_involved": True,
+            "vulnerable_community": True,
+        })
+        vulnerability_variant["demand_id"] = f"{vulnerability_variant['demand_id']}_cf_vulnerable"
+        vulnerability_variant["population_vulnerability"] = vulnerability
+        vulnerability_variant["priority_evaluation_signals"]["population_vulnerability"] = dict(vulnerability)
+        _append_context_signal(vulnerability_variant, "Counterfactual: vulnerable community evidence strengthened")
+        _refresh_synthetic_labels(vulnerability_variant)
+        variants.append(vulnerability_variant)
+
+    destination_variant = deepcopy(gold)
+    destination = dict(destination_variant.get("destination", {}) or {})
+    if str(destination.get("type", "")) not in {"hospital", "clinic", "community_health_center"}:
+        destination_variant["demand_id"] = f"{destination_variant['demand_id']}_cf_clinic"
+        destination["type"] = "clinic"
+        destination_variant["destination"] = destination
+        destination_variant["priority_evaluation_signals"]["nearby_critical_facility"] = "clinic"
+        _append_context_signal(destination_variant, "Counterfactual: receiving point changed to a clinic handoff")
+        _refresh_synthetic_labels(destination_variant)
+        variants.append(destination_variant)
+
     return variants
+
+
+def _surface_contradiction_variants(flattened: List[Dict]) -> List[Dict]:
+    if len(flattened) < 2:
+        return []
+
+    ranked = sorted(
+        (deepcopy(demand) for demand in flattened),
+        key=lambda item: (
+            int(item.get("labels", {}).get("extraction_observable_priority", 4)),
+            -int(item.get("labels", {}).get("extraction_observable_score", 0)),
+            str(item.get("demand_id", "")),
+        ),
+    )
+    high_need = deepcopy(ranked[0])
+    low_need = deepcopy(ranked[-1])
+
+    low_need["demand_id"] = f"{low_need['demand_id']}_surface_urgent"
+    low_need["priority_evaluation_signals"]["medical_urgency_self_report"] = (
+        "The requester repeatedly says this feels urgent, but provides no stronger structural evidence."
+    )
+    low_need["priority_evaluation_signals"]["time_sensitivity"] = (
+        "The caller sounds highly anxious and keeps using urgent wording."
+    )
+    _append_context_signal(low_need, "Hard case: urgent wording without strong structural need")
+    _refresh_synthetic_labels(low_need)
+
+    high_need["demand_id"] = f"{high_need['demand_id']}_surface_calm"
+    high_need["priority_evaluation_signals"]["medical_urgency_self_report"] = (
+        "The requester speaks calmly and clinically while the structural need remains unchanged."
+    )
+    high_need["priority_evaluation_signals"]["time_sensitivity"] = (
+        "The team communicates in a calm tone, but the operational deadline still stands."
+    )
+    _append_context_signal(high_need, "Hard case: calm wording despite stronger structural need")
+    _refresh_synthetic_labels(high_need)
+
+    return [high_need, low_need]
+
+
+def _near_tie_window_demands(flattened: List[Dict]) -> List[Dict]:
+    by_priority: Dict[int, List[Dict]] = {}
+    for demand in flattened:
+        priority = int(demand.get("labels", {}).get("extraction_observable_priority", 4))
+        by_priority.setdefault(priority, []).append(deepcopy(demand))
+
+    for priority in sorted(by_priority):
+        candidates = by_priority[priority]
+        if len(candidates) < 2:
+            continue
+        candidates.sort(
+            key=lambda item: (
+                int(item.get("labels", {}).get("extraction_observable_score", 0)),
+                str(item.get("demand_id", "")),
+            )
+        )
+        tightest_pair = min(
+            zip(candidates, candidates[1:]),
+            key=lambda pair: abs(
+                int(pair[0].get("labels", {}).get("extraction_observable_score", 0))
+                - int(pair[1].get("labels", {}).get("extraction_observable_score", 0))
+            ),
+        )
+        neighbor = None
+        for delta in (1, -1, 2):
+            neighbor_priority = priority + delta
+            if neighbor_priority in by_priority and by_priority[neighbor_priority]:
+                neighbor = deepcopy(
+                    sorted(
+                        by_priority[neighbor_priority],
+                        key=lambda item: (
+                            -int(item.get("labels", {}).get("extraction_observable_score", 0)),
+                            str(item.get("demand_id", "")),
+                        ),
+                    )[0]
+                )
+                break
+        if neighbor is None:
+            continue
+        return [deepcopy(tightest_pair[0]), deepcopy(tightest_pair[1]), neighbor]
+    return []
 
 
 def _build_hard_contrastive_windows(clean_windows: List[Dict]) -> List[Dict]:
@@ -178,11 +309,14 @@ def _build_hard_contrastive_windows(clean_windows: List[Dict]) -> List[Dict]:
             continue
         base = deepcopy(demands[0])
         variants = _counterfactual_variants(base)
-        if variants:
+        for chunk_index in range(0, len(variants), 2):
+            chunk = variants[chunk_index: chunk_index + 2]
+            if not chunk:
+                continue
             hard_windows.append(
                 _window_sample(
-                    time_window=f"{window['time_window']}::counterfactual",
-                    demands=[base] + variants[:2],
+                    time_window=f"{window['time_window']}::counterfactual_{chunk_index // 2 + 1}",
+                    demands=[deepcopy(base)] + chunk,
                     dataset_source="hard_contrastive",
                 )
             )
@@ -200,6 +334,26 @@ def _build_hard_contrastive_windows(clean_windows: List[Dict]) -> List[Dict]:
             _window_sample(
                 time_window="hard_window::mixed_priority",
                 demands=hard_mix,
+                dataset_source="hard_contrastive",
+            )
+        )
+
+    surface_contrast = _surface_contradiction_variants(flattened)
+    if surface_contrast:
+        hard_windows.append(
+            _window_sample(
+                time_window="hard_window::surface_contradiction",
+                demands=surface_contrast,
+                dataset_source="hard_contrastive",
+            )
+        )
+
+    near_tie = _near_tie_window_demands(flattened)
+    if near_tie:
+        hard_windows.append(
+            _window_sample(
+                time_window="hard_window::near_tie",
+                demands=near_tie,
                 dataset_source="hard_contrastive",
             )
         )
@@ -257,7 +411,6 @@ def build_priority_training_dataset(
     *,
     event_records: Optional[List[Dict]] = None,
     building_file: str = str(BUILDING_DATA_PATH),
-    events_csv_path: Optional[str] = None,
     output_dir: Optional[str] = str(DEMAND_TRAINING_DATASET_DIR),
     stations_path: Optional[str] = str(STATION_DATA_PATH),
     base_date: str = "2024-03-15",
@@ -282,15 +435,11 @@ def build_priority_training_dataset(
     dialogue_output_path = str(output_paths["dialogues"]) if output_paths else None
 
     if event_records is None:
-        _, event_records = generate_daily_demand_dataset(
+        event_records = generate_daily_demand_dataset(
             building_file=building_file,
-            output_file=events_csv_path,
             manifest_file=event_manifest_path,
             **event_generation_kwargs,
         )
-    else:
-        if event_manifest_path:
-            save_event_manifest(event_records, event_manifest_path)
 
     stations = load_stations(stations_path) if stations_path else []
     client = None if offline else create_openai_client(api_base, api_key)
@@ -307,8 +456,6 @@ def build_priority_training_dataset(
             batch_size=batch_size,
             styles=styles,
         )
-    if dialogue_output_path:
-        save_dialogues(dialogues, dialogue_output_path)
 
     clean_windows = _build_clean_structured_windows(
         event_records,
@@ -346,6 +493,7 @@ def build_priority_training_dataset(
         "offline": offline,
         "model": model,
         "window_minutes": window_minutes,
+        "priority_policy_version": PRIORITY_POLICY_VERSION,
         "output_dir": str(Path(output_dir).resolve()) if output_dir else None,
         "files": {
             name: TRAINING_OUTPUT_FILENAMES[name]
@@ -388,7 +536,6 @@ def main() -> None:
         help="Environment file path; defaults to the project .env when present",
     )
     parser.add_argument("--building-input", default=str(BUILDING_DATA_PATH))
-    parser.add_argument("--events-csv", default=None)
     parser.add_argument("--output-dir", default=str(DEMAND_TRAINING_DATASET_DIR))
     parser.add_argument("--stations", default=str(STATION_DATA_PATH))
     parser.add_argument("--base-date", default="2024-03-15")
@@ -411,7 +558,6 @@ def main() -> None:
 
     dataset = build_priority_training_dataset(
         building_file=args.building_input,
-        events_csv_path=args.events_csv,
         output_dir=args.output_dir,
         stations_path=args.stations,
         base_date=args.base_date,
