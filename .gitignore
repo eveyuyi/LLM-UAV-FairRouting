@@ -28,7 +28,10 @@ dist/
 /data/result_without_priority/
 /data/static_independent_runs/
 /data/test_one_window_nsga3h/
+/data/train/
 /results/
+/scripts/build_training_data.sh
+/scripts/occupy_GPU.sh
 
 # Test and local verification artifacts
 /.test_artifacts/
