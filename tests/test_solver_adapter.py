@@ -146,3 +146,75 @@ def test_serialize_workflow_results_keeps_dynamic_drone_path_details():
     assert serialized[0]["drone_path_details"][0]["path_str"] == "L1 -> S_COM_A -> D_DEM_1 -> L1"
     assert serialized[0]["run_summary"]["final_total_distance_m"] == 1400.0
     assert serialized[0]["analytics_artifacts"]["charts"][0]["chart_type"] == "gantt"
+
+
+def test_serialize_workflow_results_includes_source_event_and_latency_fields():
+    all_solutions = [
+        {
+            "time_window": "2024-03-15T09:00-09:05",
+            "weight_config": {
+                "global_weights": {"w_distance": 1.0, "w_time": 1.0, "w_risk": 1.0},
+                "demand_configs": [
+                    {"demand_id": "REQ001", "priority": 1, "window_rank": 1, "reasoning": "urgent"}
+                ],
+                "supplementary_constraints": [],
+            },
+            "feasible_demands": [
+                {
+                    "demand_id": "REQ001",
+                    "solver_event_id": "W::REQ001::0",
+                    "source_event_id": "EV001",
+                    "source_dialogue_id": "D001",
+                    "request_timestamp": "2024-03-15T09:00:00",
+                    "demand_tier": "critical",
+                    "origin": {"fid": "COM_A", "coords": [113.88, 22.80]},
+                    "destination": {"fid": "DEM_1", "coords": [113.89, 22.81], "type": "clinic"},
+                    "cargo": {"weight_kg": 2.0, "type": "medicine", "type_cn": "medicine", "temperature_sensitive": False},
+                    "priority_evaluation_signals": {"population_vulnerability": {}},
+                    "time_constraint": {"deadline_minutes": 20},
+                }
+            ],
+            "n_demands_total": 1,
+            "n_demands_filtered": 0,
+            "solution": {
+                "solve_mode": "dynamic_periodic",
+                "solve_status": "completed",
+                "solve_time_s": 0.1,
+                "drone_speed_ms": 60.0,
+                "snapshot_time_h": 0.0,
+                "snapshot_time_window_end": "2024-03-15T09:05:00",
+                "busy_drones": [],
+                "total_distance": 100.0,
+                "total_noise_impact": 1.0,
+                "objective_value": None,
+                "run_summary": {},
+                "analytics_artifacts": {},
+                "demand_event_results": {
+                    "W::REQ001::0": {
+                        "event_id": "W::REQ001::0",
+                        "source_event_id": "EV001",
+                        "assigned_drone": "U11",
+                        "assigned_time_h": 0.02,
+                        "served_time_h": 0.1,
+                        "served_time_s": 360.0,
+                        "delivery_latency_h": 0.08,
+                        "delivery_latency_s": 288.0,
+                        "is_assigned_by_snapshot": True,
+                        "is_served_by_snapshot": True,
+                        "is_served_eventually": True,
+                    }
+                },
+                "drone_path_details": [],
+            },
+            "n_supply": 1,
+        }
+    ]
+
+    serialized = serialize_workflow_results(all_solutions)
+    per_demand = serialized[0]["per_demand_results"][0]
+
+    assert per_demand["source_event_id"] == "EV001"
+    assert per_demand["window_rank"] == 1
+    assert per_demand["deadline_minutes"] == 20
+    assert per_demand["delivery_latency_s"] == 288.0
+    assert per_demand["is_deadline_met"] is True

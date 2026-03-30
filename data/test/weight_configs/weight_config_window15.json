@@ -1,0 +1,86 @@
+{
+  "global_weights": {
+    "w_distance": 1.0,
+    "w_time": 1.0,
+    "w_risk": 1.0
+  },
+  "demand_configs": [
+    {
+      "demand_id": "REQ004",
+      "demand_tier": "life_support",
+      "priority": 1,
+      "window_rank": 1,
+      "reasoning": "tier=life_support, deadline<=15m, hard_deadline, life_threatening_context | Active transfusion case, must arrive within 15 minutes"
+    },
+    {
+      "demand_id": "REQ001",
+      "demand_tier": "critical",
+      "priority": 2,
+      "window_rank": 2,
+      "reasoning": "tier=critical, deadline<=60m, critical_clinical_context, handoff_ready | Serious clinical condition requiring urgent support, delivery within 60 minutes"
+    },
+    {
+      "demand_id": "REQ009",
+      "demand_tier": "critical",
+      "priority": 2,
+      "window_rank": 3,
+      "reasoning": "tier=critical, cargo=ventilator, critical_clinical_context, role=icu_nurse | Respiratory support risk; backup ventilator needed, urgent same-window delivery"
+    },
+    {
+      "demand_id": "REQ006",
+      "demand_tier": "regular",
+      "priority": 2,
+      "window_rank": 4,
+      "reasoning": "tier=regular, critical_clinical_context, handoff_ready | Serious clinical condition requiring urgent support, no specific time constraint"
+    },
+    {
+      "demand_id": "REQ005",
+      "demand_tier": "regular",
+      "priority": 4,
+      "window_rank": 5,
+      "reasoning": "tier=regular, handoff_ready | Routine supply request, no specific time constraint"
+    },
+    {
+      "demand_id": "REQ007",
+      "demand_tier": "regular",
+      "priority": 4,
+      "window_rank": 6,
+      "reasoning": "tier=regular, handoff_ready | Routine supply request, no specific time constraint"
+    },
+    {
+      "demand_id": "REQ008",
+      "demand_tier": "regular",
+      "priority": 4,
+      "window_rank": 7,
+      "reasoning": "tier=regular, handoff_ready | Routine supply request, no specific time constraint"
+    },
+    {
+      "demand_id": "REQ010",
+      "demand_tier": "regular",
+      "priority": 4,
+      "window_rank": 8,
+      "reasoning": "tier=regular, handoff_ready | Routine supply request, no specific time constraint"
+    },
+    {
+      "demand_id": "REQ002",
+      "demand_tier": "regular",
+      "priority": 3,
+      "window_rank": 9,
+      "reasoning": "tier=regular, handoff_ready | Routine supply request, flexible same-day delivery"
+    },
+    {
+      "demand_id": "REQ003",
+      "demand_tier": "regular",
+      "priority": 3,
+      "window_rank": 10,
+      "reasoning": "tier=regular, handoff_ready | Routine supply request, flexible same-day delivery"
+    }
+  ],
+  "supplementary_constraints": [
+    {
+      "type": "speed_override",
+      "description": "Prioritize a direct path for REQ004 to reduce thermal exposure."
+    }
+  ],
+  "time_window": "2024-03-15T01:15-01:20"
+}

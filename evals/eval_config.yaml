@@ -1,0 +1,4 @@
+matching:
+  quantity_tolerance: 0.1  # 10% 误差
+  # 可扩展其他容差，如地点距离
+  location_distance_threshold: 50  # 米（需要坐标支持）

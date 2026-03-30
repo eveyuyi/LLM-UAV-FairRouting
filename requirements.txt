@@ -1,7 +1,9 @@
+scikit-learn
 openai
 numpy
 pandas
 pyomo
 matplotlib
 openpyxl
+pymoo
 pytest

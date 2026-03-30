@@ -13,10 +13,34 @@ The end-to-end LLM4fairrouting workflow is organized into three modules:
 2. `Module 2`: extract structured delivery demands from dialogues
 3. `Module 3`: infer priority/weight settings and solve dynamic routing windows
 
+The data-generation stack also supports a richer training path for LLM2/LLM3 with:
+
+- rich event manifests carrying canonical event truth plus dialogue-control signals
+- multi-style dialogues plus automatic dialogue audit
+- extracted demands labeled with `extraction_observable_priority`
+- training corpora split into `clean_structured`, `pipeline_structured`, and `hard_contrastive`
+
+### Data-Generation Refactor Principles
+
+The current data-generation stack follows a few explicit refactor rules:
+
+- `events_manifest.jsonl` is the canonical event source of truth
+- no legacy CSV compatibility path is kept in the main generation flow
+- event truth, dialogue control, structured extraction labels, and LLM3 ranking targets are produced in separate stages
+- `latent_priority` is the simulator truth anchor, while `extraction_observable_priority` is the main LLM3 supervision label
+- `dialogue_observable_priority` is mainly an audit-stage label, and `solver_useful_priority` is mainly an analysis-stage label
+- priority rules must stay transparent and human-aligned: scarce delivery capacity should be allocated by concrete need, deadline pressure, vulnerable populations, and operational actionability rather than surface urgency wording alone
+
 `Module 3` is implemented as two connected stages:
 
 - `Module 3a`: priority / weight inference
 - `Module 3b`: solver adapter and routing execution
+
+•	提取是否准：precision，recall，f1，exact_match_rate
+•	优先级是否准：accuracy，macro_f1，weighted_f1，confusion_matrix
+•	规划结果是否好：service_rate，service_rate_loss，final_total_distance_m，final_total_noise_impact，average_delivery_time_h，max_delivery_time_h，n_used_drones
+•	帕累托前沿是否有代表性、搜索是否高效：final_total_distance_m，average_delivery_time_h，final_total_noise_impact，service_rate_loss，n_used_drones
+•	搜索过程指标frontier_size，n_candidates_evaluated，search_runtime_s，avg_candidate_runtime_s
 
 ## Project Workflow Diagram
 
@@ -58,10 +82,16 @@ Run the baseline with:
 PYTHONPATH=src python -m llm4fairrouting.baselines.cplex_with_priority_noise
 ```
 
-Generate `data/seed/daily_demand_events.csv` with:
+Generate the primary rich event manifest with:
 
 ```bash
 llm4fairrouting-demand-events
+```
+
+Generate the richer LLM2/LLM3 training dataset with:
+
+```bash
+llm4fairrouting-training-data
 ```
 
 If the package is not installed in editable mode yet, use:
@@ -89,32 +119,77 @@ PYTHONPATH=src python -m llm4fairrouting.data.demand_event_generation
 
 | Module | Location | Purpose | Main Input | Main Output |
 | --- | --- | --- | --- | --- |
-| Module 1 | `src/llm4fairrouting/data/demand_dialogue_dataset.py`, `src/llm4fairrouting/llm/dialogue_generation.py` | Build the fixed seed dialogue dataset from structured demand events with an LLM | `data/seed/daily_demand_events.csv`, optional station file | `data/seed/daily_demand_dialogues.jsonl` |
+| Module 1 | `src/llm4fairrouting/data/demand_dialogue_dataset.py`, `src/llm4fairrouting/llm/dialogue_generation.py` | Build the fixed seed dialogue dataset from structured demand events with an LLM | `data/seed/daily_demand_events_manifest.jsonl`, optional station file | `data/seed/daily_demand_dialogues.jsonl` |
 | Module 2 | `src/llm4fairrouting/llm/demand_extraction.py` | Extract structured delivery demands from dialogues by time window | `data/seed/daily_demand_dialogues.jsonl` | `extracted_demands.json` |
 | Module 3 | `src/llm4fairrouting/llm/priority_inference.py`, `src/llm4fairrouting/workflow/solver_adapter.py` | Infer per-demand priority settings and solve routing windows | `extracted_demands.json`, weight configs, station/building data | `weight_configs.json` / `weight_configs/`, `solver_results.json`, `workflow_results.json` |
+| Training Builder | `src/llm4fairrouting/data/training_dataset_builder.py` | Build LLM2/LLM3 training data with observable priority labels and hard contrastive windows | rich event manifest or generated seed events | `data/seed/priority_training_dataset/` |
 
 ### Demand Event Generation
 
 - File: `src/llm4fairrouting/data/demand_event_generation.py`
-- Role: generates seed demand events from `building_information.csv` and writes `data/seed/daily_demand_events.csv`
+- Role: generates seed demand events from `building_information.csv` and emits the canonical rich manifest for the latest LLM2/LLM3 data flow
 - Defaults:
   - 5-minute windows across a full day
   - 4-10 demands per window
   - `medical_ratio=0.2`, so about 20% `medical` and 80% `commercial`
   - `medical` demands use priorities `1/2/3` with equal probability; `commercial` demands use priority `4`
-  - CSV output uses normalized English values such as `medical` and `commercial`
+  - manifest output carries canonical event fields, `latent_priority`, lightweight `priority_factors`, and `must_mention_factors` / `optional_factors`
 - Run:
 
 ```bash
-llm4fairrouting-demand-events --input data/seed/building_information.csv --output data/seed/daily_demand_events.csv
+llm4fairrouting-demand-events --manifest-output data/seed/daily_demand_events_manifest.jsonl
 ```
+
+#### EventCore Rule Tables
+
+`EventCore` is currently produced by explicit heuristic rule tables plus bounded random sampling. The rules are centralized in [event_semantics.py](/Users/eveyu/Downloads/githubs/drone-delivery-pipeline/src/llm4fairrouting/data/event_semantics.py) so they stay transparent and can later be externalized into YAML/JSON config without changing the rest of the pipeline.
+
+Current rule families:
+
+- `supply_type + latent_priority -> material candidates`
+- `latent_priority -> demand_tier`
+- `latent_priority -> deadline_minutes`
+- `latent_priority -> requester role options`
+- `latent_priority + material_type -> destination options`
+- `material_type -> special handling`
+- `priority/material/destination -> population_vulnerability heuristic`
+- `latent_priority -> receiver_ready probability`
+- `(priority, material_type) -> scenario_context` overrides plus safe fallbacks
+
+This means the simulator policy is intended to be legible and reviewable, not hidden inside scattered code paths.
+
+Optional rich manifest output:
+
+```bash
+llm4fairrouting-demand-events --manifest-output data/seed/daily_demand_events_manifest.jsonl
+```
+
+### Training Dataset Outputs
+
+`llm4fairrouting-training-data` now writes a directory instead of a single monolithic JSON. The default output directory is `data/seed/priority_training_dataset/`, and it contains:
+
+- `events_manifest.jsonl`
+- `dialogues.jsonl`
+- `llm2_sft.jsonl`
+- `llm3_sft_clean.jsonl`
+- `llm3_sft_pipeline.jsonl`
+- `llm3_grpo_hard.jsonl`
+- `dataset_manifest.json`
+
+`dataset_manifest.json` stores the schema version, generation time, sample counts, and relative artifact paths.
+
+`llm3_grpo_hard.jsonl` now mixes several kinds of hard cases:
+
+- factor-isolated counterfactuals such as tighter deadlines, upgraded requester roles, added cold-chain handling, changed receiver readiness, and stronger vulnerability signals
+- surface-vs-structure contradiction windows, where low-need requests can use urgent wording while higher-need requests remain calm and clinical
+- near-tie ranking windows, where multiple requests have similar observable priority and require finer ordering
 
 #### Module 1
 
 - Files: `src/llm4fairrouting/data/demand_dialogue_dataset.py`, `src/llm4fairrouting/llm/dialogue_generation.py`
 - Role: builds one fixed LLM-generated dialogue dataset aligned with the seed demand events
 - Input:
-  - `daily_demand_events.csv`
+  - `daily_demand_events_manifest.jsonl`
   - optional station metadata from `drone_station_locations.csv`
 - Output:
   - canonical seed dataset: `data/seed/daily_demand_dialogues.jsonl`
@@ -178,7 +253,7 @@ The baseline:
 An additional seed-aligned baseline is also available:
 
 - file: `src/llm4fairrouting/baselines/cplex_with_seed_priorities.py`
-- role: reads `data/seed/daily_demand_events.csv` directly and solves with the CSV priority values
+- role: reads `data/seed/daily_demand_events_manifest.jsonl` directly and solves with manifest-aligned priority labels
 
 ### Shared Routing Core
 

@@ -1,0 +1,60 @@
+{
+  "global_weights": {
+    "w_distance": 1.0,
+    "w_time": 1.0,
+    "w_risk": 1.0
+  },
+  "demand_configs": [
+    {
+      "demand_id": "REQ002",
+      "demand_tier": "critical",
+      "priority": 1,
+      "window_rank": 1,
+      "reasoning": "tier=critical, deadline<=15m, hard_deadline, life_threatening_context | Immediate delivery required for active transfusion case, strict 15-minute deadline."
+    },
+    {
+      "demand_id": "REQ005",
+      "demand_tier": "critical",
+      "priority": 1,
+      "window_rank": 2,
+      "reasoning": "tier=critical, deadline<=15m, hard_deadline, life_threatening_context | Immediate action required for stroke treatment, strict 15-minute deadline."
+    },
+    {
+      "demand_id": "REQ001",
+      "demand_tier": "regular",
+      "priority": 3,
+      "window_rank": 3,
+      "reasoning": "tier=regular, critical_clinical_context, handoff_ready | Urgent delivery needed for symptom relief, 120-minute deadline."
+    },
+    {
+      "demand_id": "REQ003",
+      "demand_tier": "regular",
+      "priority": 3,
+      "window_rank": 4,
+      "reasoning": "tier=regular, handoff_ready | Routine delivery of OTC medication, 120-minute deadline."
+    },
+    {
+      "demand_id": "REQ004",
+      "demand_tier": "regular",
+      "priority": 3,
+      "window_rank": 5,
+      "reasoning": "tier=regular, handoff_ready | Normal household food order, 120-minute deadline."
+    },
+    {
+      "demand_id": "REQ006",
+      "demand_tier": "regular",
+      "priority": 3,
+      "window_rank": 6,
+      "reasoning": "tier=regular, handoff_ready | Routine household food order, no strict time mentioned."
+    },
+    {
+      "demand_id": "REQ007",
+      "demand_tier": "regular",
+      "priority": 3,
+      "window_rank": 7,
+      "reasoning": "tier=regular, handoff_ready | Same-day food order, no strict time mentioned."
+    }
+  ],
+  "supplementary_constraints": [],
+  "time_window": "2024-03-15T00:30-00:35"
+}

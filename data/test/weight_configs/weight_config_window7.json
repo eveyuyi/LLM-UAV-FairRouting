@@ -1,0 +1,39 @@
+{
+  "global_weights": {
+    "w_distance": 1.0,
+    "w_time": 1.0,
+    "w_risk": 1.0
+  },
+  "demand_configs": [
+    {
+      "demand_id": "REQ002",
+      "demand_tier": "critical",
+      "priority": 1,
+      "window_rank": 1,
+      "reasoning": "tier=critical, deadline<=15m, hard_deadline, life_threatening_context | Stroke window is closing, urgent treatment required."
+    },
+    {
+      "demand_id": "REQ001",
+      "demand_tier": "critical",
+      "priority": 2,
+      "window_rank": 2,
+      "reasoning": "tier=critical, handoff_ready | Afternoon vaccination block starting soon."
+    },
+    {
+      "demand_id": "REQ003",
+      "demand_tier": "regular",
+      "priority": 3,
+      "window_rank": 3,
+      "reasoning": "tier=regular, handoff_ready | Routine food delivery requested within 120 minutes."
+    },
+    {
+      "demand_id": "REQ004",
+      "demand_tier": "regular",
+      "priority": 3,
+      "window_rank": 4,
+      "reasoning": "tier=regular, critical_clinical_context, handoff_ready | Routine OTC medication delivery requested within 120 minutes."
+    }
+  ],
+  "supplementary_constraints": [],
+  "time_window": "2024-03-15T00:35-00:40"
+}

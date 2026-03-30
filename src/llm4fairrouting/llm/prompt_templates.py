@@ -44,12 +44,15 @@ For each of the {len(batch_context)} delivery events below, generate one realist
 ## Requirements
 1. Use the format `[HH:MM] Role: message`.
 2. Write 2-4 turns per dialogue.
-3. Match the requester role, request channel, handling notes, and receiver notes in the input.
-4. Naturally mention the item, quantity or weight, origin station, destination node, and delivery target.
-5. Do not mention internal labels such as numeric priority.
-6. Keep the tone operational and realistic. Avoid generic filler.
-7. Keep each dialogue between 60 and 180 words.
-8. Output English only.
+3. Match the requester role, request channel, handling notes, receiver notes, and requested `dialogue_style`.
+4. You MUST verbalize every item listed in `must_mention_factors`.
+5. You MAY weave `optional_factors` into the dialogue as natural supporting evidence.
+6. Naturally mention the item, quantity or weight, origin station, destination node, and delivery target.
+7. Preserve observability: the dialogue must contain enough explicit evidence for a downstream extractor to recover urgency, requester role, special handling, and readiness.
+8. Do not mention internal labels such as numeric priority.
+9. Keep the tone operational and realistic. Avoid generic filler.
+10. Keep each dialogue between 60 and 180 words.
+11. Output English only.
 
 ## Output Format
 ```json

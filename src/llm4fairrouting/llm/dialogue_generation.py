@@ -1,5 +1,5 @@
 """
-Module 1: Dialogue Generator — 从 daily_demand_events.csv 读取结构化需求事件，
+Module 1: Dialogue Generator — 从 rich event manifest 读取结构化需求事件，
 生成 Module 2 所需的对话 JSON 格式数据。
 
 需求层级（优先级由高到低）：
@@ -18,6 +18,7 @@ import hashlib
 import math
 import random
 import time
+from copy import deepcopy
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -28,11 +29,13 @@ if TYPE_CHECKING:
     from openai import OpenAI
 
 from llm4fairrouting.config.runtime_env import env_text, prepare_env_file
+from llm4fairrouting.data.event_data import load_event_records
+from llm4fairrouting.data.event_semantics import DIALOGUE_STYLE_VARIANTS
+from llm4fairrouting.data.event_structuring import build_gold_structured_demand
+from llm4fairrouting.data.priority_labels import derive_priority_labels
 from llm4fairrouting.data.seed_paths import (
     DEMAND_DIALOGUES_PATH,
-    DEMAND_EVENTS_FILENAME,
-    DEMAND_EVENTS_PATH,
-    STATION_DATA_FILENAME,
+    PRIMARY_EVENT_DATA_PATH,
     STATION_DATA_PATH,
 )
 from llm4fairrouting.data.stations import load_station_data
@@ -531,6 +534,166 @@ def _time_of_day_bucket(ts_hhmm: str) -> str:
     return "evening"
 
 
+def _normalize_dialogue_style(style: str) -> str:
+    normalized = str(style or "direct").strip().lower().replace("-", "_").replace(" ", "_")
+    aliases = {
+        "plain": "direct",
+        "direct": "direct",
+        "technical": "technical",
+        "term_heavy": "technical",
+        "colloquial": "conversational",
+        "spoken": "conversational",
+        "conversational": "conversational",
+        "dispatch": "dispatch_brief",
+        "dispatch_brief": "dispatch_brief",
+        "dispatch_style": "dispatch_brief",
+    }
+    canonical = aliases.get(normalized, normalized)
+    if canonical not in DIALOGUE_STYLE_VARIANTS:
+        return "direct"
+    return canonical
+
+
+def _normalize_dialogue_text(text: str) -> str:
+    return " ".join(str(text or "").lower().split())
+
+
+def _event_must_mention_factors(event: Dict) -> List[Dict]:
+    return list(event.get("must_mention_factors", []) or [])
+
+
+def _event_optional_factors(event: Dict) -> List[Dict]:
+    return list(event.get("optional_factors", []) or [])
+
+
+def _matches_factor(text: str, factor: Dict) -> bool:
+    keywords = [
+        str(keyword).strip().lower()
+        for keyword in factor.get("keywords", [])
+        if str(keyword).strip()
+    ]
+    if not keywords:
+        description = str(factor.get("description", "")).strip().lower()
+        keywords = [description] if description else []
+    return any(keyword in text for keyword in keywords)
+
+
+def _mask_gold_demand_for_unobserved_factors(gold: Dict, observed_factor_names: set[str]) -> Dict:
+    masked = deepcopy(gold)
+    if "scenario_context" not in observed_factor_names:
+        masked["priority_evaluation_signals"]["patient_condition"] = "Routine supply request"
+        masked["priority_evaluation_signals"]["medical_urgency_self_report"] = "Routine supply request"
+        masked["priority_evaluation_signals"]["scenario_context"] = "Routine supply request"
+        masked["context_signals"] = [
+            signal for signal in masked.get("context_signals", [])
+            if "Structured deadline" in signal or "Requester role" in signal
+        ]
+    if "deadline_minutes" not in observed_factor_names:
+        masked["time_constraint"]["deadline_minutes"] = max(
+            120,
+            int(masked.get("time_constraint", {}).get("deadline_minutes", 120) or 120),
+        )
+        masked["time_constraint"]["type"] = "soft"
+        masked["time_constraint"]["description"] = "No explicit hard deadline observed in the dialogue"
+    if "requester_role" not in observed_factor_names:
+        default_role = "consumer" if masked.get("demand_tier") == "consumer" else "community_health_worker"
+        masked["requester_role"] = default_role
+        masked["priority_evaluation_signals"]["requester_role"] = default_role
+    if "special_handling" not in observed_factor_names:
+        masked["special_handling"] = []
+        masked["priority_evaluation_signals"]["special_handling"] = []
+    if "population_vulnerability" not in observed_factor_names:
+        masked["population_vulnerability"] = {
+            "elderly_ratio": 0.0,
+            "population": 0,
+            "elderly_involved": False,
+            "children_involved": False,
+            "vulnerable_community": False,
+        }
+        masked["priority_evaluation_signals"]["population_vulnerability"] = dict(masked["population_vulnerability"])
+    if "receiver_ready" not in observed_factor_names:
+        masked["receiver_ready"] = False
+        masked["operational_readiness"] = "Standard handoff readiness"
+        masked["priority_evaluation_signals"]["operational_readiness"] = "Standard handoff readiness"
+    return masked
+
+
+def audit_dialogue(dialogue: Dict) -> Dict[str, object]:
+    """Check whether the dialogue exposes the factors needed to recover its priority."""
+    annotations = dialogue.get("annotations", {})
+    gold_demand = annotations.get("gold_structured_demand")
+    latent_priority = annotations.get("latent_priority")
+    must_mention = list(annotations.get("must_mention_factors", []) or [])
+    optional = list(annotations.get("optional_factors", []) or [])
+    if not must_mention and not optional:
+        return {
+            "dialogue_observable_priority": latent_priority,
+            "observed_factors_in_dialogue": [],
+            "missing_must_mention_factors": [],
+            "observability_score": 1.0,
+            "passed": True,
+        }
+    text = _normalize_dialogue_text(dialogue.get("conversation", ""))
+
+    observed_factors = []
+    missing_factors = []
+    observed_names: set[str] = set()
+
+    for factor in must_mention + optional:
+        if _matches_factor(text, factor):
+            observed_factors.append({
+                "name": factor.get("name"),
+                "value": factor.get("value"),
+            })
+            observed_names.add(str(factor.get("name", "")))
+        elif factor in must_mention:
+            missing_factors.append(str(factor.get("name", "")))
+
+    matched_required = len(must_mention) - len(missing_factors)
+    optional_matches = max(0, len(observed_factors) - matched_required)
+    denominator = max(len(must_mention) + max(len(optional), 1) * 0.5, 1.0)
+    observability_score = min(
+        1.0,
+        (matched_required + optional_matches * 0.5) / denominator,
+    )
+
+    dialogue_observable_priority = None
+    if gold_demand:
+        masked = _mask_gold_demand_for_unobserved_factors(gold_demand, observed_names)
+        derived = derive_priority_labels(masked, latent_priority=latent_priority)
+        dialogue_observable_priority = int(
+            derived.get("extraction_observable_priority", latent_priority or 4)
+        )
+    elif latent_priority is not None and not missing_factors:
+        dialogue_observable_priority = int(latent_priority)
+
+    passed = not missing_factors
+    if latent_priority is not None and dialogue_observable_priority is not None:
+        passed = passed and int(dialogue_observable_priority) == int(latent_priority)
+
+    return {
+        "dialogue_observable_priority": dialogue_observable_priority,
+        "observed_factors_in_dialogue": observed_factors,
+        "missing_must_mention_factors": missing_factors,
+        "observability_score": round(float(observability_score), 4),
+        "passed": passed,
+    }
+
+
+def _expand_event_style_specs(
+    demand_events: List[Dict],
+    styles: Optional[List[str]] = None,
+) -> List[tuple[Dict, str]]:
+    expanded: List[tuple[Dict, str]] = []
+    requested_styles = [_normalize_dialogue_style(style) for style in (styles or [])]
+    for event in demand_events:
+        event_style = _normalize_dialogue_style(str(event.get("dialogue_style", "direct")))
+        style_list = requested_styles or [event_style]
+        for style in style_list:
+            expanded.append((event, style))
+    return expanded
+
+
 def _infer_quantity_units(material: str) -> str:
     unit_map = {
         "aed": "unit",
@@ -711,70 +874,68 @@ def _infer_material_type(supply_type: str, priority: int, unique_id: str = "") -
             return rng.choice(["food", "daily_supply", "otc_drug"])
 
 
+def _normalize_manifest_event(record: Dict) -> Dict:
+    normalized = dict(record)
+    origin = dict(record.get("origin", {}) or {})
+    destination = dict(record.get("destination", {}) or {})
+    cargo = dict(record.get("cargo", {}) or {})
+    if origin:
+        normalized.setdefault("supply_fid", origin.get("fid", ""))
+        normalized.setdefault("supply_lon", (origin.get("coords") or [0.0, 0.0])[0])
+        normalized.setdefault("supply_lat", (origin.get("coords") or [0.0, 0.0])[1])
+        normalized.setdefault("supply_type", origin.get("supply_type", ""))
+        normalized.setdefault("supply_station_name", origin.get("station_name", origin.get("fid", "")))
+    if destination:
+        normalized.setdefault("demand_node_id", destination.get("node_id", destination.get("fid", "")))
+        normalized.setdefault("demand_fid", destination.get("fid", ""))
+        normalized.setdefault("demand_lon", (destination.get("coords") or [0.0, 0.0])[0])
+        normalized.setdefault("demand_lat", (destination.get("coords") or [0.0, 0.0])[1])
+        normalized.setdefault("destination_type", destination.get("type", "residential_area"))
+    if cargo:
+        normalized.setdefault("material_type", cargo.get("type", "medicine"))
+        normalized.setdefault("quantity_kg", record.get("weight_kg", cargo.get("weight_kg", 1.0)))
+    normalized.setdefault("demand_tier", record.get("demand_tier", cargo.get("demand_tier")))
+    if "event_id" not in normalized and "unique_id" in normalized:
+        normalized["event_id"] = normalized["unique_id"]
+    if "unique_id" not in normalized and "event_id" in normalized:
+        normalized["unique_id"] = normalized["event_id"]
+    if "priority" not in normalized and "latent_priority" in normalized:
+        normalized["priority"] = normalized["latent_priority"]
+    if "time_slot" not in normalized and "time_hour" in normalized:
+        normalized["time_slot"] = int(round(float(normalized["time_hour"]) * 12))
+    return normalized
+
+
 def load_demand_events(
-    csv_path: str,
+    manifest_path: str,
     n_events: Optional[int] = None,
     time_slots: Optional[List[int]] = None,
 ) -> List[Dict]:
-    """读取需求事件 CSV（支持旧 demand_events_5min.csv 和新 daily_demand_events.csv）。
+    """读取 rich event manifest 并归一化为 dialogue generation 使用的视图。
 
     Parameters
     ----------
-    csv_path : str
-        CSV 路径。
+    manifest_path : str
+        Rich event manifest JSONL/JSON 路径。
     n_events : int, optional
         若指定，随机采样不超过该数量的事件。
     time_slots : list[int], optional
         若指定，仅加载这些 time_slot 的事件。
     """
-    try:
-        import pandas as pd
-    except ImportError:
-        raise ImportError("需要 pandas: pip install pandas")
-
-    df = pd.read_csv(csv_path, encoding="utf-8-sig")
-
-    if "supply_type" in df.columns:
-        df["supply_type"] = df["supply_type"].map(_normalize_supply_type)
-
-    # Auto-detect new CSV format: has "time" (float hours) instead of "time_slot" (int)
-    if "time" in df.columns and "time_slot" not in df.columns:
-        df["time_slot"] = (df["time"] * 12).round().astype(int)
-
-    # Rename new CSV columns to match expected schema
-    rename_map = {}
-    if "unique_id" in df.columns and "event_id" not in df.columns:
-        rename_map["unique_id"] = "event_id"
-    if "demand_fid" in df.columns and "demand_node_id" not in df.columns:
-        rename_map["demand_fid"] = "demand_node_id"
-    if "material_weight" in df.columns and "quantity_kg" not in df.columns:
-        rename_map["material_weight"] = "quantity_kg"
-    if rename_map:
-        df = df.rename(columns=rename_map)
-
-    # Infer material_type from supply_type if not present
-    if "material_type" not in df.columns:
-        if "supply_type" in df.columns:
-            df["material_type"] = df.apply(
-                lambda row: _infer_material_type(
-                    str(row.get("supply_type", "")),
-                    int(row.get("priority", 3)),
-                    str(row.get("event_id", "")),
-                ),
-                axis=1,
-            )
-        else:
-            df["material_type"] = "medicine"
-
+    events = [_normalize_manifest_event(record) for record in load_event_records(manifest_path)]
     if time_slots is not None:
-        df = df[df["time_slot"].isin(time_slots)]
-
-    if n_events is not None and len(df) > n_events:
-        df = df.sample(n=n_events, random_state=42).sort_values(
-            ["time_slot", "event_id"]
+        allowed = {int(slot) for slot in time_slots}
+        events = [
+            event for event in events
+            if int(event.get("time_slot", -1)) in allowed
+        ]
+    if n_events is not None and len(events) > n_events:
+        rng = random.Random(42)
+        events = sorted(
+            rng.sample(events, k=n_events),
+            key=lambda item: (int(item.get("time_slot", 0)), str(item.get("event_id", ""))),
         )
-
-    return df.to_dict(orient="records")
+    return events
 
 
 # ============================================================================
@@ -820,6 +981,7 @@ def _event_to_dialogue(
     base_date: str,
     dialogue_idx: int,
     conversation: Optional[str] = None,
+    style: str = "direct",
 ) -> Dict:
     """将单个 demand_event 行转换为 Module 2 所需的 dialogue JSON。
 
@@ -836,26 +998,36 @@ def _event_to_dialogue(
     conversation : str, optional
         若提供则使用此文本；否则自动生成。
     """
-    time_slot = int(event["time_slot"])
+    normalized_event = _normalize_manifest_event(event)
+    time_slot = int(normalized_event["time_slot"])
     base_dt = datetime.strptime(base_date, "%Y-%m-%d")
     ts = base_dt + timedelta(minutes=time_slot * 5)
     timestamp = ts.strftime("%Y-%m-%dT%H:%M:%S")
     ts_hhmm = ts.strftime("%H:%M")
+    style = _normalize_dialogue_style(style)
 
-    dest_lon = float(event["demand_lon"])
-    dest_lat = float(event["demand_lat"])
-    original_material = str(event.get("material_type", "medicine"))
-    qty_kg = float(event.get("quantity_kg", 1.0))
-    priority = int(event.get("priority", 3))
-    demand_node_id = str(event.get("demand_node_id", f"D{dialogue_idx}"))
-    dest_fid = event.get("demand_node_index", event.get("demand_node_id", f"D{dialogue_idx}"))
+    dest_lon = float(normalized_event["demand_lon"])
+    dest_lat = float(normalized_event["demand_lat"])
+    original_material = str(normalized_event.get("material_type", "medicine"))
+    qty_kg = float(normalized_event.get("quantity_kg", normalized_event.get("weight_kg", 1.0)))
+    priority = int(normalized_event.get("latent_priority", normalized_event.get("priority", 3)))
+    demand_node_id = str(normalized_event.get("demand_node_id", f"D{dialogue_idx}"))
+    dest_fid = normalized_event.get(
+        "demand_node_index",
+        normalized_event.get("demand_fid", normalized_event.get("demand_node_id", f"D{dialogue_idx}")),
+    )
 
     tier = _map_priority_to_tier(priority)
-    deadline_minutes = int(event.get("delivery_deadline_minutes", PRIORITY_DEADLINE.get(priority, 60)))
+    deadline_minutes = int(
+        normalized_event.get(
+            "deadline_minutes",
+            normalized_event.get("delivery_deadline_minutes", PRIORITY_DEADLINE.get(priority, 60)),
+        )
+    )
 
     # Use supply point from CSV if available, otherwise find nearest station
-    if event.get("supply_lon") is not None and event.get("supply_lat") is not None:
-        station = _supply_to_station(event)
+    if normalized_event.get("supply_lon") is not None and normalized_event.get("supply_lat") is not None:
+        station = _supply_to_station(normalized_event)
     elif stations:
         station = _find_nearest_station(dest_lon, dest_lat, stations)
     else:
@@ -867,7 +1039,7 @@ def _event_to_dialogue(
         }
 
     profile = _build_dialogue_profile(
-        event=event,
+        event=normalized_event,
         material=original_material,
         tier=tier,
         station_name=station["name"],
@@ -886,18 +1058,56 @@ def _event_to_dialogue(
             tier,
             ts_hhmm,
             profile=profile,
+            event=normalized_event,
+            style=style,
         )
 
     rng = random.Random(_stable_seed("demographics", dest_lon, dest_lat))
     elderly_ratio = round(rng.uniform(0.15, 0.60), 2)
     population = rng.randint(500, 8000)
+    gold_structured_demand = normalized_event.get("gold_structured_demand")
+    if not gold_structured_demand:
+        normalized_event.setdefault("event_id", str(normalized_event.get("unique_id", "")))
+        normalized_event.setdefault("origin", {
+            "fid": station["station_id"],
+            "coords": [station["lon"], station["lat"]],
+            "type": "supply_station",
+            "station_name": station["name"],
+            "supply_type": _normalize_supply_type(str(normalized_event.get("supply_type", ""))),
+        })
+        normalized_event.setdefault("destination", {
+            "fid": str(dest_fid),
+            "node_id": demand_node_id,
+            "coords": [dest_lon, dest_lat],
+            "type": str(normalized_event.get("destination_type", "residential_area")),
+        })
+        normalized_event.setdefault("cargo", {
+            "type": original_material,
+            "weight_kg": qty_kg,
+            "demand_tier": tier,
+            "temperature_sensitive": original_material in {"vaccine", "blood_product", "thrombolytic"},
+        })
+        normalized_event.setdefault("requester_role", profile["requester_role"])
+        normalized_event.setdefault("special_handling", [])
+        normalized_event.setdefault("population_vulnerability", {
+            "elderly_ratio": elderly_ratio,
+            "population": population,
+            "elderly_involved": elderly_ratio >= 0.45,
+            "children_involved": False,
+            "vulnerable_community": elderly_ratio >= 0.50,
+        })
+        normalized_event.setdefault("receiver_ready", False)
+        normalized_event.setdefault("operational_readiness", "Standard handoff readiness")
+        normalized_event.setdefault("latent_priority", priority)
+        normalized_event.setdefault("priority", priority)
+        gold_structured_demand = build_gold_structured_demand(normalized_event)
 
-    return {
+    dialogue = {
         "dialogue_id": f"D{dialogue_idx:04d}",
         "timestamp": timestamp,
         "conversation": conversation,
         "metadata": {
-            "event_id": str(event.get("event_id", "")),
+            "event_id": str(normalized_event.get("event_id", "")),
             "time_slot": time_slot,
             "origin_fid": station["station_id"],
             "destination_fid": dest_fid,
@@ -919,11 +1129,31 @@ def _event_to_dialogue(
             "handling_notes": profile["handling_note"],
             "receiver_notes": profile["receiver_note"],
             "dialogue_profile_version": DIALOGUE_PROFILE_VERSION,
-            "demand_type": str(event.get("demand_type", "")),
+            "demand_type": str(normalized_event.get("demand_type", "")),
             "supply_station_name": station["name"],
-            "supply_type": _normalize_supply_type(str(event.get("supply_type", ""))),
+            "supply_type": _normalize_supply_type(str(normalized_event.get("supply_type", ""))),
+        },
+        "annotations": {
+            "dialogue_style": style,
+            "latent_priority": priority,
+            "priority_factors": dict(normalized_event.get("priority_factors", {})),
+            "must_mention_factors": _event_must_mention_factors(normalized_event),
+            "optional_factors": _event_optional_factors(normalized_event),
+            "gold_structured_demand": gold_structured_demand,
+            "dialogue_styles": list(normalized_event.get("dialogue_styles", [])),
         },
     }
+    dialogue["audit"] = audit_dialogue(dialogue)
+    labels = derive_priority_labels(
+        gold_structured_demand,
+        latent_priority=priority,
+        dialogue_observable_priority=dialogue["audit"].get("dialogue_observable_priority"),
+    )
+    dialogue["annotations"]["gold_structured_demand"]["labels"] = {
+        **gold_structured_demand.get("labels", {}),
+        **labels,
+    }
+    return dialogue
 
 
 def _generate_rule_conversation(
@@ -935,6 +1165,8 @@ def _generate_rule_conversation(
     tier: Optional[str] = None,
     ts_hhmm: str = "09:00",
     profile: Optional[Dict[str, str]] = None,
+    event: Optional[Dict] = None,
+    style: str = "direct",
 ) -> str:
     """Generate a realistic multi-turn English dispatch dialogue."""
     if tier is None:
@@ -964,50 +1196,79 @@ def _generate_rule_conversation(
     )
     deadline = int(profile.get("deadline_minutes", deadline))
     kg = round(qty_kg, 1)
+    style = _normalize_dialogue_style(style)
+    event = event or {}
+    must_mention = " ".join(
+        str(factor.get("description", "")).strip()
+        for factor in _event_must_mention_factors(event)
+        if str(factor.get("description", "")).strip()
+    )
+    optional_factors = _event_optional_factors(event)
+    optional_snippets = []
+    for factor in optional_factors[:2]:
+        description = str(factor.get("description", "")).strip()
+        if description:
+            optional_snippets.append(description)
+    optional_text = " ".join(optional_snippets)
 
-    if tier == "life_support":
-        return (
-            f"[{ts_hhmm}] {profile['requester_title']} ({dest_id}): {profile['opening']} "
-            f"We need {qty_phrase} of {mat_en} ({kg} kg) from {station['name']} now. "
-            f"{profile['scenario_summary']} {profile['time_context']} "
-            f"Target delivery window: {deadline} min. {profile['beneficiary_hint']}\n"
-            f"[{ts_hhmm}] {profile['dispatcher_title']}: Copy. {profile['handling_note']} "
-            f"{station['name']} is loading immediately and routing direct to {dest_id}. "
-            f"ETA {deadline} min. {profile['receiver_note']}\n"
-            f"[{ts_hhmm}] {profile['requester_title']}: Understood. {profile['followup']}"
+    if style == "technical":
+        requester_line = (
+            f"[{ts_hhmm}] {profile['requester_title']} ({dest_id}): Clinical dispatch request. "
+            f"Please route {qty_phrase} of {mat_en} ({kg} kg) from {station['name']}. "
+            f"{must_mention} {profile['time_context']} {optional_text}"
         )
-    if tier == "critical":
-        return (
-            f"[{ts_hhmm}] {profile['requester_title']} ({dest_id}): {profile['opening']} "
-            f"Please dispatch {qty_phrase} of {mat_en} ({kg} kg) from {station['name']}. "
-            f"{profile['scenario_summary']} {profile['time_context']} "
-            f"We need arrival within {deadline} min. {profile['beneficiary_hint']}\n"
-            f"[{ts_hhmm}] {profile['dispatcher_title']}: Confirmed. {profile['handling_note']} "
-            f"The payload is being prepared at {station['name']}; planned ETA is {deadline} min. "
-            f"{profile['receiver_note']}\n"
-            f"[{ts_hhmm}] {profile['requester_title']}: Thank you. {profile['followup']}"
+        dispatcher_line = (
+            f"[{ts_hhmm}] {profile['dispatcher_title']}: Request acknowledged. "
+            f"{profile['handling_note']} Departure from {station['name']} is being prioritized. "
+            f"Planned ETA is {deadline} min. {profile['receiver_note']}"
         )
-    if tier == "regular":
-        return (
+        ack_line = (
+            f"[{ts_hhmm}] {profile['requester_title']}: Confirmed. "
+            f"{profile['beneficiary_hint']} {profile['followup']}"
+        )
+    elif style == "conversational":
+        requester_line = (
+            f"[{ts_hhmm}] {profile['requester_title']} ({dest_id}): Hi, we need {qty_phrase} of "
+            f"{mat_en} ({kg} kg) from {station['name']}. {must_mention} {optional_text}"
+        )
+        dispatcher_line = (
+            f"[{ts_hhmm}] {profile['dispatcher_title']}: Got it. {profile['handling_note']} "
+            f"We're sending it from {station['name']} now and aiming for about {deadline} min. "
+            f"{profile['receiver_note']}"
+        )
+        ack_line = (
+            f"[{ts_hhmm}] {profile['requester_title']}: Thanks. "
+            f"{profile['beneficiary_hint']} {profile['followup']}"
+        )
+    elif style == "dispatch_brief":
+        requester_line = (
+            f"[{ts_hhmm}] {profile['requester_title']} ({dest_id}): Dispatch brief. "
+            f"{qty_phrase} of {mat_en} ({kg} kg) from {station['name']}. {must_mention}"
+        )
+        dispatcher_line = (
+            f"[{ts_hhmm}] {profile['dispatcher_title']}: Copy. "
+            f"ETA {deadline} min. {profile['handling_note']} {profile['receiver_note']}"
+        )
+        ack_line = (
+            f"[{ts_hhmm}] {profile['requester_title']}: Roger. "
+            f"{profile['beneficiary_hint']}"
+        )
+    else:
+        requester_line = (
             f"[{ts_hhmm}] {profile['requester_title']} ({dest_id}): {profile['opening']} "
             f"We need {qty_phrase} of {mat_en} ({kg} kg) from {station['name']}. "
-            f"{profile['scenario_summary']} {profile['time_context']} "
-            f"A delivery window of about {deadline} min works for us. {profile['beneficiary_hint']}\n"
-            f"[{ts_hhmm}] {profile['dispatcher_title']}: Received. {profile['handling_note']} "
-            f"{station['name']} will dispatch on the next outbound flight. ETA {deadline} min. "
-            f"{profile['receiver_note']}\n"
-            f"[{ts_hhmm}] {profile['requester_title']}: Sounds good. {profile['followup']}"
+            f"{must_mention} {profile['time_context']} {optional_text}"
         )
-    return (
-        f"[{ts_hhmm}] {profile['requester_title']} ({profile['request_channel']} • {dest_id}): "
-        f"{profile['opening']} Please send {qty_phrase} of {mat_en} ({kg} kg) from {station['name']}. "
-        f"{profile['scenario_summary']} {profile['time_context']} "
-        f"Same-day delivery within {deadline} min is fine. {profile['beneficiary_hint']}\n"
-        f"[{ts_hhmm}] {profile['dispatcher_title']}: Order confirmed. {profile['handling_note']} "
-        f"{station['name']} has queued the parcel for drone dispatch. ETA about {deadline} min. "
-        f"{profile['receiver_note']}\n"
-        f"[{ts_hhmm}] {profile['requester_title']}: Perfect. {profile['followup']}"
-    )
+        dispatcher_line = (
+            f"[{ts_hhmm}] {profile['dispatcher_title']}: Confirmed. {profile['handling_note']} "
+            f"{station['name']} is preparing the payload now. ETA {deadline} min. {profile['receiver_note']}"
+        )
+        ack_line = (
+            f"[{ts_hhmm}] {profile['requester_title']}: Understood. "
+            f"{profile['beneficiary_hint']} {profile['followup']}"
+        )
+
+    return "\n".join([requester_line.strip(), dispatcher_line.strip(), ack_line.strip()])
 
 
 def _infer_poi(material: str, priority: int, tier: Optional[str] = None) -> List[str]:
@@ -1044,14 +1305,15 @@ def generate_dialogues_offline(
     demand_events: List[Dict],
     stations: List[Dict],
     base_date: str = "2024-03-15",
+    styles: Optional[List[str]] = None,
 ) -> List[Dict]:
     """将 demand_events 批量转换为对话格式（不调用 LLM）。"""
     dialogues = []
     tier_counts: Dict[str, int] = {}
-    for idx, event in enumerate(demand_events):
-        dlg = _event_to_dialogue(event, stations, base_date, idx + 1)
+    for idx, (event, style) in enumerate(_expand_event_style_specs(demand_events, styles), start=1):
+        dlg = _event_to_dialogue(event, stations, base_date, idx, style=style)
         dialogues.append(dlg)
-        tier = _map_priority_to_tier(int(event.get("priority", 4)))
+        tier = _map_priority_to_tier(int(event.get("latent_priority", event.get("priority", 4))))
         tier_counts[tier] = tier_counts.get(tier, 0) + 1
     print(
         f"[Module 1] Offline generation complete: {len(dialogues)} dialogues, "
@@ -1068,6 +1330,7 @@ def generate_dialogues_online(
     base_date: str = "2024-03-15",
     temperature: float = 0.7,
     batch_size: int = 5,
+    styles: Optional[List[str]] = None,
 ) -> List[Dict]:
     """调用 LLM 批量生成自然语言对话，替换规则模板文本。
 
@@ -1079,7 +1342,15 @@ def generate_dialogues_online(
         dialogue_generation_prompt,
     )
 
-    dialogues = generate_dialogues_offline(demand_events, stations, base_date)
+    event_specs = _expand_event_style_specs(demand_events, styles)
+    dialogues = [
+        _event_to_dialogue(event, stations, base_date, idx + 1, style=style)
+        for idx, (event, style) in enumerate(event_specs)
+    ]
+    spec_by_id = {
+        dialogue["dialogue_id"]: (event, style)
+        for dialogue, (event, style) in zip(dialogues, event_specs)
+    }
 
     total = len(dialogues)
     total_batches = math.ceil(total / batch_size) if total else 0
@@ -1094,14 +1365,16 @@ def generate_dialogues_online(
         batch_started_at = time.perf_counter()
         batch_index = start // batch_size + 1
         batch = dialogues[start: start + batch_size]
-        batch_events = demand_events[start: start + batch_size]
         batch_context = []
-        for dlg, event in zip(batch, batch_events):
+        for dlg in batch:
+            event, style = spec_by_id[dlg["dialogue_id"]]
             meta = dlg["metadata"]
-            seed_tier = _map_priority_to_tier(int(event.get("priority", 4)))
+            annotations = dlg.get("annotations", {})
+            seed_tier = _map_priority_to_tier(int(event.get("latent_priority", event.get("priority", 4))))
             batch_context.append({
                 "dialogue_id": dlg["dialogue_id"],
                 "timestamp": dlg["timestamp"],
+                "dialogue_style": style,
                 "demand_tier": seed_tier,
                 "demand_tier_label": DEMAND_TIERS.get(seed_tier, ""),
                 "scenario_summary": meta.get("scenario_summary", ""),
@@ -1119,6 +1392,8 @@ def generate_dialogues_online(
                 "beneficiary_hint": meta.get("beneficiary_hint", ""),
                 "handling_notes": meta.get("handling_notes", ""),
                 "receiver_notes": meta.get("receiver_notes", ""),
+                "must_mention_factors": annotations.get("must_mention_factors", []),
+                "optional_factors": annotations.get("optional_factors", []),
             })
 
         prompt = dialogue_generation_prompt(batch_context)
@@ -1139,6 +1414,18 @@ def generate_dialogues_online(
         for dlg in batch:
             if dlg["dialogue_id"] in llm_texts:
                 dlg["conversation"] = llm_texts[dlg["dialogue_id"]]
+            dlg["audit"] = audit_dialogue(dlg)
+            if not dlg["audit"].get("passed", True):
+                event, style = spec_by_id[dlg["dialogue_id"]]
+                regenerated = _event_to_dialogue(
+                    event,
+                    stations,
+                    base_date,
+                    int(dlg["dialogue_id"][1:]),
+                    style=style,
+                )
+                dlg["conversation"] = regenerated["conversation"]
+                dlg["audit"] = regenerated["audit"]
 
         completed = min(start + len(batch), total)
         print(
@@ -1184,7 +1471,7 @@ def load_dialogues_from_file(path: str) -> List[Dict]:
 # ============================================================================
 
 def generate_dialogues(
-    csv_path: str,
+    events_path: str,
     xlsx_path: Optional[str] = None,
     offline: bool = True,
     client: Optional["OpenAI"] = None,
@@ -1194,14 +1481,14 @@ def generate_dialogues(
     time_slots: Optional[List[int]] = None,
     temperature: float = 0.7,
     batch_size: int = 5,
+    styles: Optional[List[str]] = None,
 ) -> List[Dict]:
     """Module 1 统一入口：加载数据并生成对话。
 
     Parameters
     ----------
-    csv_path : str
-        需求事件 CSV 路径（支持旧 demand_events_5min.csv 和新
-        daily_demand_events.csv 格式）。
+    events_path : str
+        需求事件路径，使用 rich event manifest JSONL/JSON。
     xlsx_path : str, optional
         drone_station_locations.csv（站点数据）路径。当 CSV 内含供给点信息时可省略。
     offline : bool
@@ -1227,23 +1514,23 @@ def generate_dialogues(
             stations = load_stations(xlsx_path)
             print(f"[Module 1] Loaded {len(stations)} stations")
         except Exception as e:
-            print(f"[Module 1] Station load failed ({e}); using supply data from the CSV")
+            print(f"[Module 1] Station load failed ({e}); using supply data from the event manifest")
 
-    events = load_demand_events(csv_path, n_events=n_events, time_slots=time_slots)
+    events = load_demand_events(events_path, n_events=n_events, time_slots=time_slots)
     if not events:
-        raise ValueError(f"No demand events could be loaded from {csv_path}")
+        raise ValueError(f"No demand events could be loaded from {events_path}")
     print(
         f"[Module 1] Loaded {len(events)} demand events "
         f"(time_slots={time_slots}, n_events={n_events})"
     )
 
     if offline:
-        dialogues = generate_dialogues_offline(events, stations, base_date)
+        dialogues = generate_dialogues_offline(events, stations, base_date, styles=styles)
     else:
         if client is None:
             raise ValueError("online mode requires an OpenAI client")
         dialogues = generate_dialogues_online(
-            events, stations, client, model, base_date, temperature, batch_size
+            events, stations, client, model, base_date, temperature, batch_size, styles=styles
         )
     return dialogues
 
@@ -1276,9 +1563,9 @@ def main():
         help="Environment file path; defaults to the project .env when present",
     )
     parser.add_argument(
-        "--csv", type=str,
-        default=str(DEMAND_EVENTS_PATH),
-        help=f"需求事件 CSV 路径（默认 {DEMAND_EVENTS_FILENAME}）",
+        "--events", type=str,
+        default=str(PRIMARY_EVENT_DATA_PATH),
+        help="Rich event manifest JSONL path",
     )
     parser.add_argument(
         "--stations", type=str,
@@ -1300,6 +1587,13 @@ def main():
     parser.add_argument("--model", type=str, default=env_text("LLM4FAIRROUTING_MODEL", "gpt-4o-mini"))
     parser.add_argument("--temperature", type=float, default=0.7)
     parser.add_argument("--batch-size", type=int, default=5)
+    parser.add_argument(
+        "--styles",
+        type=str,
+        nargs="+",
+        default=None,
+        help="Optional dialogue styles to generate, e.g. direct technical conversational dispatch_brief",
+    )
     args = parser.parse_args()
 
     client = None
@@ -1307,7 +1601,7 @@ def main():
         client = create_openai_client(args.api_base, args.api_key)
 
     dialogues = generate_dialogues(
-        csv_path=args.csv,
+        events_path=args.events,
         xlsx_path=args.stations,
         offline=args.offline,
         client=client,
@@ -1317,6 +1611,7 @@ def main():
         time_slots=args.time_slots,
         temperature=args.temperature,
         batch_size=args.batch_size,
+        styles=args.styles,
     )
 
     save_dialogues(dialogues, args.output)

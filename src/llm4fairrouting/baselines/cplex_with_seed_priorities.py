@@ -8,12 +8,16 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from llm4fairrouting.data.event_data import (
+    event_record_to_solver_demand,
+    ground_truth_priority_from_record,
+    load_event_records,
+)
 from llm4fairrouting.data.seed_paths import (
     BUILDING_DATA_PATH,
-    DEMAND_EVENTS_PATH,
+    DEMAND_EVENTS_MANIFEST_PATH,
     STATION_DATA_PATH,
 )
-from llm4fairrouting.llm.dialogue_generation import load_demand_events
 from llm4fairrouting.workflow.solver_adapter import (
     run_multiobjective_pareto_scan,
     serialize_workflow_results,
@@ -49,13 +53,21 @@ def _normalize_priority(priority: object) -> int:
 
 def build_seed_priority_inputs(
     *,
-    csv_path: str,
+    events_path: str,
     base_date: str,
     window_minutes: int,
     n_events: Optional[int] = None,
     time_slots: Optional[List[int]] = None,
 ) -> Tuple[List[Dict], Dict[str, Dict]]:
-    events = load_demand_events(csv_path, n_events=n_events, time_slots=time_slots)
+    events = load_event_records(events_path)
+    if time_slots is not None:
+        allowed = {int(slot) for slot in time_slots}
+        events = [event for event in events if int(event.get("time_slot", -1)) in allowed]
+    if n_events is not None and len(events) > n_events:
+        events = sorted(
+            events[:n_events],
+            key=lambda item: (int(item.get("time_slot", 0)), str(item.get("event_id", ""))),
+        )
     windows_map: Dict[str, List[Dict]] = {}
     priority_map: Dict[str, List[Tuple[str, int]]] = {}
 
@@ -65,26 +77,9 @@ def build_seed_priority_inputs(
         )
         label = _window_label_for_timestamp(timestamp, window_minutes)
         demand_id = str(event.get("event_id", event.get("unique_id", ""))).strip() or f"REQ_{event['time_slot']}"
-        priority = _normalize_priority(event.get("priority", 4))
-        demand = {
-            "demand_id": demand_id,
-            "request_timestamp": timestamp.isoformat(timespec="seconds"),
-            "origin": {
-                "fid": str(event.get("supply_fid", "")),
-                "coords": [float(event["supply_lon"]), float(event["supply_lat"])],
-                "type": "supply_station",
-            },
-            "destination": {
-                "fid": str(event.get("demand_node_id", event.get("demand_fid", ""))),
-                "coords": [float(event["demand_lon"]), float(event["demand_lat"])],
-                "type": "residential_area",
-            },
-            "cargo": {
-                "type": str(event.get("material_type", "medicine")),
-                "weight_kg": float(event.get("quantity_kg", event.get("material_weight", 2.0))),
-            },
-            "priority_evaluation_signals": {},
-        }
+        priority = _normalize_priority(ground_truth_priority_from_record(event))
+        demand = event_record_to_solver_demand(event, base_date=base_date)
+        demand["demand_id"] = demand_id
 
         windows_map.setdefault(label, []).append(demand)
         priority_map.setdefault(label, []).append((demand_id, priority))
@@ -102,7 +97,7 @@ def build_seed_priority_inputs(
                 "demand_id": demand_id,
                 "priority": priority,
                 "window_rank": rank,
-                "reasoning": "Seed priority from daily_demand_events.csv",
+                "reasoning": "Seed priority from event manifest",
             })
         windows.append({"time_window": label, "demands": demands})
         weight_configs[label] = {
@@ -116,9 +111,13 @@ def build_seed_priority_inputs(
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Direct baseline that solves the shared seed demand events with CSV priorities.",
+        description="Direct baseline that solves the shared seed event manifest priorities.",
     )
-    parser.add_argument("--csv", default=str(DEMAND_EVENTS_PATH), help="Path to daily_demand_events.csv")
+    parser.add_argument(
+        "--events",
+        default=str(DEMAND_EVENTS_MANIFEST_PATH),
+        help="Path to the rich event manifest JSONL",
+    )
     parser.add_argument("--output-dir", default="results", help="Output root directory")
     parser.add_argument("--stations", default=str(STATION_DATA_PATH), help="Path to station metadata")
     parser.add_argument("--building-data", default=str(BUILDING_DATA_PATH), help="Path to building data")
@@ -138,7 +137,7 @@ def main() -> None:
     args = parser.parse_args()
 
     windows, weight_configs = build_seed_priority_inputs(
-        csv_path=args.csv,
+        events_path=args.events,
         base_date=args.base_date,
         window_minutes=args.window,
         n_events=args.n_events,

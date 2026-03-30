@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from openai import OpenAI
 
 from llm4fairrouting.config.runtime_env import env_text, prepare_env_file
+from llm4fairrouting.data.priority_labels import attach_priority_labels
 from llm4fairrouting.llm.client_utils import (
     call_llm,
     create_openai_client,
@@ -167,6 +168,16 @@ def _enrich_demands_with_metadata(demands: List[Dict], dialogues: List[Dict]) ->
         dest["coords"] = meta.get("dest_coords", [0.0, 0.0])
 
         demand["request_timestamp"] = dialogue.get("timestamp")
+        demand["source_event_id"] = meta.get("event_id", demand.get("source_event_id"))
+        annotations = dialogue.get("annotations", {})
+        audit = dialogue.get("audit", {})
+        labels = demand.setdefault("labels", {})
+        if annotations.get("latent_priority") is not None:
+            labels["latent_priority"] = int(annotations["latent_priority"])
+        if audit.get("dialogue_observable_priority") is not None:
+            labels["dialogue_observable_priority"] = int(audit["dialogue_observable_priority"])
+        if annotations.get("gold_structured_demand"):
+            demand["gold_extraction"] = annotations["gold_structured_demand"]
 
     return demands
 
@@ -388,6 +399,7 @@ def _build_heuristic_demand(dialogue: Dict, demand_id: str) -> Dict:
     return {
         "demand_id": demand_id,
         "source_dialogue_id": dialogue.get("dialogue_id"),
+        "source_event_id": metadata.get("event_id"),
         "request_timestamp": dialogue.get("timestamp"),
         "origin": {
             "station_name": metadata.get("supply_station_name", ""),
@@ -453,6 +465,9 @@ def _merge_demand_records(heuristic: Dict, extracted: Dict) -> Dict:
         "source_dialogue_id": _prefer_value(
             extracted.get("source_dialogue_id"), heuristic["source_dialogue_id"]
         ),
+        "source_event_id": _prefer_value(
+            extracted.get("source_event_id"), heuristic.get("source_event_id")
+        ),
         "request_timestamp": _prefer_value(
             extracted.get("request_timestamp"), heuristic["request_timestamp"]
         ),
@@ -504,7 +519,15 @@ def _normalize_extracted_window(result: Dict, dialogues: List[Dict]) -> Dict:
             extracted = extracted_demands[index - 1]
             extracted.setdefault("source_dialogue_id", dialogue.get("dialogue_id"))
         normalized_demands.append(_merge_demand_records(heuristic, extracted or {}))
-    result["demands"] = _enrich_demands_with_metadata(normalized_demands, dialogues)
+    enriched_demands = _enrich_demands_with_metadata(normalized_demands, dialogues)
+    for demand in enriched_demands:
+        labels = demand.get("labels", {})
+        attach_priority_labels(
+            demand,
+            latent_priority=labels.get("latent_priority"),
+            dialogue_observable_priority=labels.get("dialogue_observable_priority"),
+        )
+    result["demands"] = enriched_demands
     return result
 
 
@@ -631,6 +654,12 @@ def extract_demands_offline(dialogues: List[Dict], window_minutes: int = 5) -> L
                         f"Elderly ratio near destination: {elderly_ratio:.0%}",
                     ]
                 )
+            )
+            labels = demand.get("labels", {})
+            attach_priority_labels(
+                demand,
+                latent_priority=labels.get("latent_priority"),
+                dialogue_observable_priority=labels.get("dialogue_observable_priority"),
             )
 
         results.append(normalized)

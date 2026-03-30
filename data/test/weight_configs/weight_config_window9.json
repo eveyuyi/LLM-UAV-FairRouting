@@ -1,0 +1,39 @@
+{
+  "global_weights": {
+    "w_distance": 1.0,
+    "w_time": 1.0,
+    "w_risk": 1.0
+  },
+  "demand_configs": [
+    {
+      "demand_id": "REQ003",
+      "demand_tier": "regular",
+      "priority": 2,
+      "window_rank": 1,
+      "reasoning": "tier=regular, handoff_ready | Temperature-sensitive food delivery with flexible same-day request."
+    },
+    {
+      "demand_id": "REQ001",
+      "demand_tier": "regular",
+      "priority": 4,
+      "window_rank": 2,
+      "reasoning": "tier=regular, handoff_ready | Routine daily supplies delivery with expedited request."
+    },
+    {
+      "demand_id": "REQ004",
+      "demand_tier": "regular",
+      "priority": 4,
+      "window_rank": 3,
+      "reasoning": "tier=regular, handoff_ready | Routine daily supplies delivery with expedited request."
+    },
+    {
+      "demand_id": "REQ002",
+      "demand_tier": "consumer",
+      "priority": 4,
+      "window_rank": 4,
+      "reasoning": "tier=consumer, handoff_ready | Temperature-sensitive food delivery with same-day request."
+    }
+  ],
+  "supplementary_constraints": [],
+  "time_window": "2024-03-15T00:45-00:50"
+}

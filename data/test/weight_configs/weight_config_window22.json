@@ -1,0 +1,74 @@
+{
+  "global_weights": {
+    "w_distance": 1.0,
+    "w_time": 1.0,
+    "w_risk": 1.0
+  },
+  "demand_configs": [
+    {
+      "demand_id": "REQ004",
+      "demand_tier": "life_support",
+      "priority": 1,
+      "window_rank": 1,
+      "reasoning": "tier=life_support, deadline<=15m, hard_deadline, cargo=aed | Life-threatening emergency, must arrive within 15 minutes"
+    },
+    {
+      "demand_id": "REQ005",
+      "demand_tier": "regular",
+      "priority": 3,
+      "window_rank": 2,
+      "reasoning": "tier=regular, deadline<=60m, handoff_ready | Timely delivery needed within the next hour for medication"
+    },
+    {
+      "demand_id": "REQ001",
+      "demand_tier": "regular",
+      "priority": 3,
+      "window_rank": 3,
+      "reasoning": "tier=regular, handoff_ready | Routine supply request with a 120-minute delivery window"
+    },
+    {
+      "demand_id": "REQ002",
+      "demand_tier": "regular",
+      "priority": 3,
+      "window_rank": 4,
+      "reasoning": "tier=regular, handoff_ready | Routine supply request with a 120-minute delivery window"
+    },
+    {
+      "demand_id": "REQ003",
+      "demand_tier": "regular",
+      "priority": 3,
+      "window_rank": 5,
+      "reasoning": "tier=regular, handoff_ready | Routine supply request with a 120-minute delivery window"
+    },
+    {
+      "demand_id": "REQ006",
+      "demand_tier": "regular",
+      "priority": 3,
+      "window_rank": 6,
+      "reasoning": "tier=regular, handoff_ready | Flexible same-day delivery for OTC medication"
+    },
+    {
+      "demand_id": "REQ007",
+      "demand_tier": "regular",
+      "priority": 3,
+      "window_rank": 7,
+      "reasoning": "tier=regular, handoff_ready | Flexible same-day delivery for daily supplies"
+    },
+    {
+      "demand_id": "REQ008",
+      "demand_tier": "regular",
+      "priority": 3,
+      "window_rank": 8,
+      "reasoning": "tier=regular, handoff_ready | Flexible same-day delivery for OTC medication"
+    },
+    {
+      "demand_id": "REQ009",
+      "demand_tier": "regular",
+      "priority": 3,
+      "window_rank": 9,
+      "reasoning": "tier=regular, handoff_ready | Flexible same-day delivery for food"
+    }
+  ],
+  "supplementary_constraints": [],
+  "time_window": "2024-03-15T01:50-01:55"
+}
