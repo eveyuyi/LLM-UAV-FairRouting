@@ -1,0 +1,17 @@
+name: verl310_grpo_stable
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pip>=24
+  - setuptools>=68
+  - wheel
+  # Install CUDA-enabled torch from conda first, then lock the python stack by pip.
+  - pytorch=2.9.1
+  - torchvision=0.24.1
+  - torchaudio=2.9.1
+  - pytorch-cuda=12.8
+  - pip:
+      - -r env/verl-grpo-requirements-lock.txt

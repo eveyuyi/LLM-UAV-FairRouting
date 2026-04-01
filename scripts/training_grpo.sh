@@ -28,6 +28,7 @@ PYTHONNOUSERSITE=1 python -m verl.trainer.main_ppo \
   data.filter_overlong_prompts=True \
   data.truncation=error \
   actor_rollout_ref.model.path=data/checkpoints/llm3_sft_merged_hf/global_step_1 \
+  +actor_rollout_ref.model.override_config.attn_implementation=sdpa \
   actor_rollout_ref.actor.optim.lr=1e-6 \
   actor_rollout_ref.actor.ppo_mini_batch_size=4 \
   actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=1 \
