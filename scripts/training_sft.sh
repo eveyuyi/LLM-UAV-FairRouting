@@ -1,12 +1,15 @@
 # 先做一轮dry-run，看样本数
 
-python scripts/export_llm3_to_verl_sft.py \
-    --input-dir data/train/llm3_smoke/seed_102 \
-    --input-dir data/train/llm3_smoke/seed_103 \
-    --train-out data/train/verl/llm3_sft_train.parquet \
-    --val-out data/train/verl/llm3_sft_val.parquet \
-    --val-ratio 0.1 \
-    --dry-run
+# python scripts/export_llm3_to_verl_sft.py \
+#     --input-dir data/train/llm3_smoke/seed_102 \
+#     --input-dir data/train/llm3_smoke/seed_103 \
+#     --train-out data/train/verl/llm3_sft_train.parquet \
+#     --val-out data/train/verl/llm3_sft_val.parquet \
+#     --val-ratio 0.1 \
+#     --dry-run
+# 然后正式转数据格式
+
+# 然后训练
 
 PYTHONNOUSERSITE=1 python -m torch.distributed.run --standalone --nnodes=1 --nproc_per_node=4 \
   -m verl.trainer.sft_trainer \
