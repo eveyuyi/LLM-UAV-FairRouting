@@ -21,14 +21,17 @@ dist/
 # Generated outputs
 /data/drone/
 /data/cache/
+/data/checkpoints/
 /data/compare_runs/
 /data/extract_eval_plan_runs/
+/data/hydra_outputs/
 /data/independent_window_experiments/
 /data/result/
 /data/result_without_priority/
 /data/static_independent_runs/
 /data/test_one_window_nsga3h/
 /data/train/
+/outputs/
 /results/
 /scripts/build_training_data.sh
 /scripts/occupy_GPU.sh
