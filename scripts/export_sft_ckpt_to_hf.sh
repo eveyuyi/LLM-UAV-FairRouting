@@ -26,6 +26,51 @@ fi
 
 mkdir -p "${TARGET_DIR}"
 
+LORA_META_PATH="${LOCAL_DIR}/lora_train_meta.json"
+LORA_META_BAK_PATH=""
+
+cleanup() {
+  if [[ -n "${LORA_META_BAK_PATH}" && -f "${LORA_META_BAK_PATH}" ]]; then
+    mv -f "${LORA_META_BAK_PATH}" "${LORA_META_PATH}"
+  fi
+}
+trap cleanup EXIT
+
+if [[ -f "${LORA_META_PATH}" ]]; then
+  # Work around a verl model_merger bug in some versions:
+  # task_type is loaded as string and later treated as Enum (.value), causing
+  # AttributeError: 'str' object has no attribute 'value'.
+  # We temporarily null task_type during merge, then restore metadata.
+  export LORA_META_PATH
+  NEED_SANITIZE="$(PYTHONNOUSERSITE=1 python - <<'PY'
+import json
+import os
+
+path = os.environ["LORA_META_PATH"]
+with open(path, encoding="utf-8") as f:
+    meta = json.load(f)
+print("1" if isinstance(meta.get("task_type"), str) else "0")
+PY
+)"
+  if [[ "${NEED_SANITIZE}" == "1" ]]; then
+    LORA_META_BAK_PATH="${LORA_META_PATH}.bak_for_model_merger"
+    cp "${LORA_META_PATH}" "${LORA_META_BAK_PATH}"
+    PYTHONNOUSERSITE=1 python - <<'PY'
+import json
+import os
+
+path = os.environ["LORA_META_PATH"]
+with open(path, encoding="utf-8") as f:
+    meta = json.load(f)
+meta["task_type"] = None
+with open(path, "w", encoding="utf-8") as f:
+    json.dump(meta, f, ensure_ascii=False, indent=4)
+    f.write("\n")
+print("Patched lora_train_meta.json task_type -> null (temporary).")
+PY
+  fi
+fi
+
 echo "[1/3] Merging FSDP checkpoint to HuggingFace format"
 echo "      local_dir = ${LOCAL_DIR}"
 echo "      target_dir = ${TARGET_DIR}"
