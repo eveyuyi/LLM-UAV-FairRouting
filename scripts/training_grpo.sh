@@ -17,6 +17,12 @@ if [ "${N_GPUS}" -lt 1 ]; then
   exit 1
 fi
 
+# 默认将 checkpoint 写到 /data（根盘已满时可避免保存失败）
+CKPT_DIR=${CKPT_DIR:-/data/checkpoints/llm3-grpo/qwen25-7b-llm3-grpo-smoke}
+mkdir -p "${CKPT_DIR}"
+HYDRA_OUT_ROOT=${HYDRA_OUT_ROOT:-/data/hydra_outputs}
+mkdir -p "${HYDRA_OUT_ROOT}"
+
 # 训练脚本
 PYTHONNOUSERSITE=1 python -m verl.trainer.main_ppo \
   algorithm.adv_estimator=grpo \
@@ -53,6 +59,9 @@ PYTHONNOUSERSITE=1 python -m verl.trainer.main_ppo \
   trainer.logger='["console"]' \
   trainer.project_name=llm3-grpo \
   trainer.experiment_name=qwen25-7b-llm3-grpo-smoke \
+  trainer.default_local_dir=${CKPT_DIR} \
+  hydra.run.dir=${HYDRA_OUT_ROOT}/\${now:%Y-%m-%d}/\${now:%H-%M-%S} \
+  hydra.sweep.dir=${HYDRA_OUT_ROOT}/multirun/\${now:%Y-%m-%d}/\${now:%H-%M-%S} \
   trainer.n_gpus_per_node=${N_GPUS} \
   trainer.nnodes=1 \
   trainer.save_freq=20 \

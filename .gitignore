@@ -35,6 +35,7 @@ dist/
 /results/
 /scripts/build_training_data.sh
 /scripts/occupy_GPU.sh
+/checkpoints/
 
 # Test and local verification artifacts
 /.test_artifacts/
