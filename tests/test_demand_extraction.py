@@ -1,4 +1,7 @@
-from llm4fairrouting.llm.demand_extraction import extract_demands_offline
+import time
+
+import llm4fairrouting.llm.demand_extraction as demand_extraction_module
+from llm4fairrouting.llm.demand_extraction import extract_all_demands, extract_demands_offline
 from llm4fairrouting.llm.dialogue_generation import _event_to_dialogue
 
 
@@ -70,3 +73,36 @@ def test_extract_demands_offline_infers_consumer_request_from_app_style_dialogue
     assert demand["destination"]["type"] == "residential_area"
     assert demand["priority_evaluation_signals"]["requester_role"] == "consumer"
     assert demand["labels"]["extraction_observable_priority"] == 4
+
+
+def test_extract_all_demands_parallel_preserves_window_order(monkeypatch):
+    dialogues = [
+        {"dialogue_id": "D1", "timestamp": "2024-03-15T00:00:00", "conversation": "a", "metadata": {}},
+        {"dialogue_id": "D2", "timestamp": "2024-03-15T00:30:00", "conversation": "b", "metadata": {}},
+        {"dialogue_id": "D3", "timestamp": "2024-03-15T01:00:00", "conversation": "c", "metadata": {}},
+    ]
+
+    monkeypatch.setattr(
+        demand_extraction_module,
+        "group_by_time_window",
+        lambda _dialogues, _window: {
+            "2024-03-15T00:00-00:30": [dialogues[0]],
+            "2024-03-15T00:30-01:00": [dialogues[1]],
+            "2024-03-15T01:00-01:30": [dialogues[2]],
+        },
+    )
+
+    def fake_extract(group, label, client, model, temperature=0.0):
+        if label.endswith("00:30-01:00"):
+            time.sleep(0.03)
+        return {"time_window": label, "demands": [{"source_dialogue_id": group[0]["dialogue_id"]}]}
+
+    monkeypatch.setattr(demand_extraction_module, "extract_demands_for_window", fake_extract)
+
+    results = extract_all_demands(dialogues, client=object(), model="fake", window_minutes=30, max_concurrency=3)
+
+    assert [row["time_window"] for row in results] == [
+        "2024-03-15T00:00-00:30",
+        "2024-03-15T00:30-01:00",
+        "2024-03-15T01:00-01:30",
+    ]

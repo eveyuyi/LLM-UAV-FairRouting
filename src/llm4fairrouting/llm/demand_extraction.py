@@ -4,6 +4,7 @@ Module 2: Context Extraction — 按时间窗口聚合对话，调用 LLM 提取
 
 import json
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import defaultdict
 from pathlib import Path
 
@@ -568,6 +569,7 @@ def extract_all_demands(
     model: str,
     window_minutes: int = 5,
     temperature: float = 0.0,
+    max_concurrency: int = 1,
 ) -> List[Dict]:
     """对所有对话按时间窗口分组，逐窗口提取需求。
 
@@ -581,12 +583,24 @@ def extract_all_demands(
     windows = group_by_time_window(dialogues, window_minutes)
     print(f"[Module 2] Grouped dialogues into {len(windows)} time windows")
 
-    results = []
-    for label, group in windows.items():
-        result = extract_demands_for_window(group, label, client, model, temperature)
-        results.append(result)
+    window_items = list(windows.items())
+    max_concurrency = max(1, int(max_concurrency or 1))
+    if max_concurrency <= 1:
+        return [
+            extract_demands_for_window(group, label, client, model, temperature)
+            for label, group in window_items
+        ]
 
-    return results
+    results_by_index: dict[int, Dict] = {}
+    with ThreadPoolExecutor(max_workers=max_concurrency) as pool:
+        futures = {
+            pool.submit(extract_demands_for_window, group, label, client, model, temperature): index
+            for index, (label, group) in enumerate(window_items)
+        }
+        for future in as_completed(futures):
+            results_by_index[futures[future]] = future.result()
+
+    return [results_by_index[index] for index in sorted(results_by_index)]
 
 
 # ============================================================================
@@ -692,6 +706,7 @@ def main():
     parser.add_argument("--api-base", type=str, default=env_text("OPENAI_BASE_URL"))
     parser.add_argument("--api-key", type=str, default=env_text("OPENAI_API_KEY"))
     parser.add_argument("--model", type=str, default=env_text("LLM4FAIRROUTING_MODEL", "gpt-4o-mini"))
+    parser.add_argument("--max-concurrency", type=int, default=1)
     args = parser.parse_args()
 
     with open(args.input, "r", encoding="utf-8") as f:
@@ -703,7 +718,13 @@ def main():
         results = extract_demands_offline(dialogues, args.window)
     else:
         client = create_openai_client(args.api_base, args.api_key)
-        results = extract_all_demands(dialogues, client, args.model, args.window)
+        results = extract_all_demands(
+            dialogues,
+            client,
+            args.model,
+            args.window,
+            max_concurrency=args.max_concurrency,
+        )
 
     out_path = args.output or str(PROJECT_ROOT / "data" / "drone" / "extracted_demands.json")
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)

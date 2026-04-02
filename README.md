@@ -174,15 +174,38 @@ llm4fairrouting-demand-events --manifest-output data/seed/daily_demand_events_ma
 - `llm3_sft_clean.jsonl`
 - `llm3_sft_pipeline.jsonl`
 - `llm3_grpo_hard.jsonl`
+- `quality_report.json`
+- `release_manifest.json`
 - `dataset_manifest.json`
 
-`dataset_manifest.json` stores the schema version, generation time, sample counts, and relative artifact paths.
+`dataset_manifest.json` stores the schema version, generation time, sample counts, relative artifact paths, and the active quality-gate thresholds.
+
+`quality_report.json` records shard-level quality metrics such as:
+
+- overall dialogue audit pass rate
+- pass rate stratified by priority
+- missing must-mention factors
+- requester-role recovery quality in pipeline outputs
+- hard-case coverage for `surface_contradiction` and `near_tie`
+
+`release_manifest.json` turns those metrics into a release decision:
+
+- `accepted`: shard is ready for `llm2_sft`, `llm3_sft_pipeline`, and `llm3_grpo_hard`
+- `needs_regen`: shard still keeps `llm3_sft_clean`, but pipeline / hard slices should not be mixed into the main release yet
+- `debug_only`: structural failure; do not train on it
 
 `llm3_grpo_hard.jsonl` now mixes several kinds of hard cases:
 
 - factor-isolated counterfactuals such as tighter deadlines, upgraded requester roles, added cold-chain handling, changed receiver readiness, and stronger vulnerability signals
 - surface-vs-structure contradiction windows, where low-need requests can use urgent wording while higher-need requests remain calm and clinical
 - near-tie ranking windows, where multiple requests have similar observable priority and require finer ordering
+
+Online generation can also be parallelized:
+
+- `--dialogue-concurrency` controls how many LLM1 dialogue batches are sent concurrently
+- `--extraction-concurrency` controls how many LLM2 extraction windows are sent concurrently
+- `llm4fairrouting-data-quality <dataset_dir>` recomputes `quality_report.json` and `release_manifest.json`
+- `llm4fairrouting-release-manifest <root_dir>` aggregates per-shard release manifests into one batch-level release plan
 
 #### Module 1
 
