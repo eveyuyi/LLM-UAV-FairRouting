@@ -62,3 +62,7 @@ def main() -> None:
     output_path = Path(args.output) if args.output else Path(args.root_dir) / "aggregate_release_manifest.json"
     output_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"Wrote aggregate release manifest to {output_path}")
+
+
+if __name__ == "__main__":
+    main()

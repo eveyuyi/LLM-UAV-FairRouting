@@ -33,7 +33,6 @@ dist/
 /data/train/
 /outputs/
 /results/
-/scripts/build_training_data.sh
 /scripts/occupy_GPU.sh
 /checkpoints/
 

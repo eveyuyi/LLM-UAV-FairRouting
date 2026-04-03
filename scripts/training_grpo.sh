@@ -55,6 +55,10 @@ GRPO_MAX_PROMPT_LENGTH="${GRPO_MAX_PROMPT_LENGTH:-2048}"
 GRPO_MAX_RESPONSE_LENGTH="${GRPO_MAX_RESPONSE_LENGTH:-512}"
 # 按每步 token 上界粗调 vLLM 批 token（prompt+response 量级）；过长可再加大或提高 rollout.gpu_memory_utilization
 GRPO_MAX_NUM_BATCHED_TOKENS="${GRPO_MAX_NUM_BATCHED_TOKENS:-8192}"
+# vLLM 默认会按模型 config 的超长上下文建 KV cache；对 RL 任务应显式设 rollout.max_model_len，
+# 否则像 Qwen3 的 262144 会直接把 KV cache 撑爆（4 卡更容易）。
+GRPO_ROLLOUT_MAX_MODEL_LEN="${GRPO_ROLLOUT_MAX_MODEL_LEN:-4096}"
+GRPO_ROLLOUT_GPU_MEM_UTIL="${GRPO_ROLLOUT_GPU_MEM_UTIL:-0.5}"
 # CONDA_ENV 留空则用当前环境的 python
 
 if [[ -n "${CONDA_ENV}" ]]; then
@@ -101,7 +105,7 @@ if [[ ! -f "${GRPO_TRAIN_FILE}" || ! -f "${GRPO_VAL_FILE}" ]]; then
   "${exp[@]}"
 fi
 
-echo "GPUs=${NPROC_PER_NODE} train_batch=${GRPO_TRAIN_BATCH_SIZE} rollout_n=${GRPO_ROLLOUT_N} ppo_mini_batch=${GRPO_PPO_MINI_BATCH_SIZE} resume=${GRPO_RESUME_MODE} model_dtype=${GRPO_MODEL_DTYPE} dataloader_workers=${GRPO_DATALOADER_WORKERS} conda=${CONDA_ENV:-<none>} train=${GRPO_TRAIN_FILE} model=${MODEL_PATH}"
+echo "GPUs=${NPROC_PER_NODE} train_batch=${GRPO_TRAIN_BATCH_SIZE} rollout_n=${GRPO_ROLLOUT_N} ppo_mini_batch=${GRPO_PPO_MINI_BATCH_SIZE} resume=${GRPO_RESUME_MODE} model_dtype=${GRPO_MODEL_DTYPE} dataloader_workers=${GRPO_DATALOADER_WORKERS} max_model_len=${GRPO_ROLLOUT_MAX_MODEL_LEN} rollout_gpu_mem=${GRPO_ROLLOUT_GPU_MEM_UTIL} conda=${CONDA_ENV:-<none>} train=${GRPO_TRAIN_FILE} model=${MODEL_PATH}"
 
 "${_py[@]}" -m verl.trainer.main_ppo \
   algorithm.adv_estimator=grpo \
@@ -131,10 +135,11 @@ echo "GPUs=${NPROC_PER_NODE} train_batch=${GRPO_TRAIN_BATCH_SIZE} rollout_n=${GR
   actor_rollout_ref.model.lora_adapter_path=null \
   actor_rollout_ref.rollout.name=vllm \
   actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
-  actor_rollout_ref.rollout.gpu_memory_utilization=0.3 \
+  actor_rollout_ref.rollout.gpu_memory_utilization="${GRPO_ROLLOUT_GPU_MEM_UTIL}" \
   actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=1 \
   actor_rollout_ref.rollout.n="${GRPO_ROLLOUT_N}" \
   actor_rollout_ref.rollout.max_num_batched_tokens="${GRPO_MAX_NUM_BATCHED_TOKENS}" \
+  actor_rollout_ref.rollout.max_model_len="${GRPO_ROLLOUT_MAX_MODEL_LEN}" \
   actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=1 \
   algorithm.use_kl_in_reward=False \
   trainer.critic_warmup=0 \
