@@ -88,8 +88,23 @@ if [[ ! -f "${TARGET_DIR}/tokenizer.json" ]]; then
   echo "Missing tokenizer.json in ${TARGET_DIR}" >&2
   exit 1
 fi
-if [[ ! -f "${TARGET_DIR}/model.safetensors" && ! -f "${TARGET_DIR}/pytorch_model.bin" ]]; then
-  echo "Missing model weights (.safetensors/.bin) in ${TARGET_DIR}" >&2
+# Large checkpoints are often sharded (model-00001-of-00002.safetensors, etc.).
+WEIGHT_OK=0
+if [[ -f "${TARGET_DIR}/model.safetensors" || -f "${TARGET_DIR}/pytorch_model.bin" ]]; then
+  WEIGHT_OK=1
+fi
+if [[ "${WEIGHT_OK}" -eq 0 ]]; then
+  shopt -s nullglob
+  for f in "${TARGET_DIR}"/model-*.safetensors "${TARGET_DIR}"/pytorch_model-*.bin; do
+    if [[ -f "${f}" ]]; then
+      WEIGHT_OK=1
+      break
+    fi
+  done
+  shopt -u nullglob
+fi
+if [[ "${WEIGHT_OK}" -eq 0 ]]; then
+  echo "Missing model weights (.safetensors/.bin or sharded *-of-*.safetensors) in ${TARGET_DIR}" >&2
   exit 1
 fi
 
@@ -97,13 +112,30 @@ echo "[3/3] Loading merged model/tokenizer"
 export TARGET_DIR
 PYTHONNOUSERSITE=1 python - <<'PY'
 import os
+
+import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 target = os.environ["TARGET_DIR"]
-tok = AutoTokenizer.from_pretrained(target, trust_remote_code=True)
-model = AutoModelForCausalLM.from_pretrained(target, trust_remote_code=True)
+tok_kw = dict(trust_remote_code=True)
+# Mistral-Small 3.1 tokenizer regex fix (transformers warning).
+try:
+    tok = AutoTokenizer.from_pretrained(target, fix_mistral_regex=True, **tok_kw)
+except TypeError:
+    tok = AutoTokenizer.from_pretrained(target, **tok_kw)
 print("Tokenizer vocab size:", len(tok))
-print("Model class:", model.__class__.__name__)
+
+if torch.cuda.is_available():
+    load_kw = dict(trust_remote_code=True, device_map="auto")
+    try:
+        model = AutoModelForCausalLM.from_pretrained(target, dtype=torch.bfloat16, **load_kw)
+    except TypeError:
+        model = AutoModelForCausalLM.from_pretrained(
+            target, torch_dtype=torch.bfloat16, **load_kw
+        )
+    print("Model class:", model.__class__.__name__)
+else:
+    print("Skipping full model load (no CUDA); merged weight shards are present.")
 print("Warm-start path ready:", target)
 PY
 

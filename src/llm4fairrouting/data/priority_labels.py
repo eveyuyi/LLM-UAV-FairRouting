@@ -103,11 +103,20 @@ def get_demand_tier(demand: Dict) -> str:
     return _URGENCY_TIER_MAP.get(urgency, "regular")
 
 
+def _as_dict(value: object) -> Dict:
+    return value if isinstance(value, dict) else {}
+
+
 def _extract_vulnerability(demand: Dict) -> Dict:
-    signals = demand.get("priority_evaluation_signals", {})
-    vuln = signals.get("population_vulnerability", {}) or {}
+    signals = _as_dict(demand.get("priority_evaluation_signals", {}))
+    vuln = _as_dict(signals.get("population_vulnerability", {}))
+    elderly_ratio_raw = vuln.get("elderly_ratio", 0.0) or 0.0
+    try:
+        elderly_ratio = float(elderly_ratio_raw)
+    except (TypeError, ValueError):
+        elderly_ratio = 0.0
     return {
-        "elderly_ratio": float(vuln.get("elderly_ratio", 0.0) or 0.0),
+        "elderly_ratio": elderly_ratio,
         "elderly_involved": bool(vuln.get("elderly_involved", False)),
         "vulnerable_community": bool(vuln.get("vulnerable_community", False)),
         "children_involved": bool(vuln.get("children_involved", False)),
