@@ -17,6 +17,7 @@ dependencies = [
   "matplotlib",
   "openpyxl",
   "pymoo",
+  "scikit-learn",
 ]
 
 [project.optional-dependencies]

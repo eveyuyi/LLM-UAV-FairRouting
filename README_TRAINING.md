@@ -89,8 +89,12 @@ bash scripts/export_sft_ckpt_to_hf.sh \
 
 ```bash
 CONDA_ENV=verl \
-MODEL_PATH=/path/to/pre_hf_model \
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+MODEL_PATH=/mnt/shared-storage-gpfs2/gpfs2-shared-public/huggingface/zskj-hub/model--Qwen-Qwen3-4B-Instruct-2507 \
 SERVED_MODEL_NAME=qwen3-pre \
+TENSOR_PARALLEL_SIZE=4 \
+GPU_MEMORY_UTILIZATION=0.95 \
+MAX_MODEL_LEN=16384 \
 PORT=8000 \
 bash scripts/serve_vllm_model.sh
 ```
@@ -99,21 +103,32 @@ bash scripts/serve_vllm_model.sh
 
 ```bash
 CONDA_ENV=verl \
+CUDA_VISIBLE_DEVICES=4,5,6,7 \
 MODEL_PATH=data/checkpoints/llm3_grpo_merged_hf/global_step_8 \
 SERVED_MODEL_NAME=qwen3-post \
+TENSOR_PARALLEL_SIZE=4 \
+GPU_MEMORY_UTILIZATION=0.95 \
+MAX_MODEL_LEN=16384 \
 PORT=8001 \
 bash scripts/serve_vllm_model.sh
 ```
 
-## 7. 训练前后效果对比（支持 NSGA）
+## 7. 训练前后效果分层评测（推荐）
 
-仓库提供 `scripts/eval_pre_post_nsga.sh`，会串起来执行：
-1) pre 模型跑一遍 workflow  
-2) post 模型跑一遍 workflow  
-3) 生成 `priority_alignment`（排序能力）  
-4) 生成 `priority_operational_impact`（是否更偏向高需要）
+现在默认使用两个分层脚本：
+1) `scripts/eval_pre_post_priority_alignment.sh`（快，跳过 solver，只看排序能力）  
+2) `scripts/eval_pre_post_operational_sampled.sh`（慢，分层抽样后看运营效果）
 
-### 7.1 一键运行
+### 7.1 排序能力评测（rank-only）
+
+脚本：`scripts/eval_pre_post_priority_alignment.sh`
+
+特点：
+- pre/post 都执行 `--skip-solver`
+- 只产出 `priority_alignment` 与 pre/post 的 delta
+- 适合大规模窗口快速筛模型
+
+示例：
 
 ```bash
 CONDA_ENV=verl \
@@ -122,22 +137,66 @@ PRE_API_BASE=http://127.0.0.1:8000/v1 \
 PRE_MODEL=qwen3-pre \
 POST_API_BASE=http://127.0.0.1:8001/v1 \
 POST_MODEL=qwen3-post \
-SOLVER_BACKEND=nsga3 \
+OUTPUT_ROOT=data/eval_runs/pre_post_rank_only \
 TIME_SLOTS_STR="0 1 2 3 4 5 6 7 8 9" \
-bash scripts/eval_pre_post_nsga.sh
+bash scripts/eval_pre_post_priority_alignment.sh
 ```
 
-默认输出目录：
-- `data/eval_runs/pre_post_nsga/pre/...`
-- `data/eval_runs/pre_post_nsga/post/...`
-- `data/eval_runs/pre_post_nsga/evals/`
+产物（默认在 `data/eval_runs/pre_post_rank_only/evals/`）：
+- `pre_alignment.json`
+- `post_alignment.json`
+- `post_vs_pre_alignment_delta.json`
+- `eval_manifest.json`
 
-关键结果文件：
+### 7.2 小样本运营效果评测（stratified sampled）
+
+脚本：`scripts/eval_pre_post_operational_sampled.sh`
+
+特点：
+- 在小样本 `time_slot` 上跑 solver（默认 `nsga3_heuristic`）
+- 默认自动做分层抽样（低/中/高需求窗口）
+- 同时产出排序能力与 `priority_operational_impact`
+
+示例（自动抽样）：
+
+```bash
+CONDA_ENV=verl \
+OPENAI_API_KEY=xxx \
+PRE_API_BASE=http://127.0.0.1:8000/v1 \
+PRE_MODEL=qwen3-pre \
+POST_API_BASE=http://127.0.0.1:8001/v1 \
+POST_MODEL=qwen3-post \
+OUTPUT_ROOT=data/eval_runs/pre_post_operational_sampled \
+SAMPLE_TOTAL_SLOTS=9 \
+SAMPLE_SEED=42 \
+SOLVER_BACKEND=nsga3_heuristic \
+NSGA3_POP_SIZE=4 \
+NSGA3_N_GENERATIONS=2 \
+bash scripts/eval_pre_post_operational_sampled.sh
+```
+
+示例（手动指定窗口）：
+
+```bash
+CONDA_ENV=verl \
+OPENAI_API_KEY=xxx \
+PRE_API_BASE=http://127.0.0.1:8000/v1 \
+PRE_MODEL=qwen3-pre \
+POST_API_BASE=http://127.0.0.1:8001/v1 \
+POST_MODEL=qwen3-post \
+TIME_SLOTS_STR="1 3 7" \
+SOLVER_BACKEND=nsga3_heuristic \
+bash scripts/eval_pre_post_operational_sampled.sh
+```
+
+产物（默认在 `data/eval_runs/pre_post_operational_sampled/evals/`）：
 - `pre_alignment.json`
 - `post_alignment.json`
 - `post_vs_pre_operational_impact.json`
+- `slot_sampling.json`（自动抽样时）
+- `eval_manifest.json`
 
-### 7.2 核心指标解读
+### 7.3 核心指标解读
 
 - 排序能力：看 `accuracy`、`macro_f1`、`spearman`、`kendall_tau`、`top_k_hit_rate`
 - 高需求倾斜：看 `post_vs_pre_operational_impact.json` 里的：

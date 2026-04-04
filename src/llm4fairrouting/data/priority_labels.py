@@ -124,7 +124,9 @@ def _extract_vulnerability(demand: Dict) -> Dict:
 
 
 def _collect_text_evidence(demand: Dict) -> str:
-    signals = demand.get("priority_evaluation_signals", {})
+    signals = _as_dict(demand.get("priority_evaluation_signals", {}))
+    destination = _as_dict(demand.get("destination", {}))
+    cargo = _as_dict(demand.get("cargo", {}))
     evidence_parts = [
         signals.get("patient_condition", ""),
         signals.get("time_sensitivity", ""),
@@ -134,11 +136,11 @@ def _collect_text_evidence(demand: Dict) -> str:
         signals.get("requester_role", ""),
         signals.get("operational_readiness", ""),
         demand.get("operational_readiness", ""),
-        " ".join(str(item) for item in signals.get("special_handling", [])),
-        " ".join(str(item) for item in demand.get("special_handling", [])),
-        " ".join(str(item) for item in demand.get("context_signals", [])),
-        demand.get("destination", {}).get("type", ""),
-        demand.get("cargo", {}).get("type", ""),
+        " ".join(str(item) for item in (signals.get("special_handling") or [])),
+        " ".join(str(item) for item in (demand.get("special_handling") or [])),
+        " ".join(str(item) for item in (demand.get("context_signals") or [])),
+        destination.get("type", ""),
+        cargo.get("type", ""),
     ]
     return " ".join(str(part or "") for part in evidence_parts).lower()
 

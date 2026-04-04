@@ -3,6 +3,7 @@ Module 2: Context Extraction — 按时间窗口聚合对话，调用 LLM 提取
 """
 
 import json
+import os
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import defaultdict
@@ -552,15 +553,67 @@ def extract_demands_for_window(
         DRONE_SYSTEM_PROMPT,
         context_extraction_prompt,
     )
-    prompt = context_extraction_prompt(dialogues, time_window)
-    print(f"  [Module 2] Window {time_window}: extracting {len(dialogues)} dialogues with the LLM")
+    def _extract_once(window_dialogues: List[Dict], label: str) -> Dict:
+        prompt = context_extraction_prompt(window_dialogues, label)
+        print(f"  [Module 2] Window {label}: extracting {len(window_dialogues)} dialogues with the LLM")
+        parse_retries = max(1, int(os.getenv("LLM4FAIRROUTING_JSON_PARSE_RETRIES", "3") or 3))
+        last_parse_error: Exception | None = None
+        for attempt in range(1, parse_retries + 1):
+            raw = call_llm(client, model, DRONE_SYSTEM_PROMPT, prompt, temperature)
+            try:
+                result = _normalize_extracted_window(parse_json_response(raw), window_dialogues)
+                n_demands = len(result.get("demands", []))
+                print(f"  [Module 2] Extracted {n_demands} normalized demands")
+                return result
+            except json.JSONDecodeError as exc:
+                last_parse_error = exc
+                print(
+                    f"  [Module 2] Window {label}: invalid JSON attempt {attempt}/{parse_retries}: {exc}"
+                )
+        raise RuntimeError(
+            f"json_parse_failed: window={label}, dialogues={len(window_dialogues)}; last_error={last_parse_error}"
+        )
 
-    raw = call_llm(client, model, DRONE_SYSTEM_PROMPT, prompt, temperature)
-    result = _normalize_extracted_window(parse_json_response(raw), dialogues)
+    def _is_context_length_error(exc: Exception) -> bool:
+        text = str(exc).lower()
+        return "maximum context length" in text or "context length" in text
 
-    n_demands = len(result.get("demands", []))
-    print(f"  [Module 2] Extracted {n_demands} normalized demands")
-    return result
+    def _is_json_parse_error(exc: Exception) -> bool:
+        return "json_parse_failed" in str(exc).lower()
+
+    def _extract_with_split(window_dialogues: List[Dict], label: str) -> List[Dict]:
+        try:
+            return list(_extract_once(window_dialogues, label).get("demands", []))
+        except RuntimeError as exc:
+            should_split = _is_context_length_error(exc) or _is_json_parse_error(exc)
+            if len(window_dialogues) <= 1 or not should_split:
+                raise
+            mid = len(window_dialogues) // 2
+            reason = "context too long" if _is_context_length_error(exc) else "invalid JSON responses"
+            print(
+                f"  [Module 2] Window {label}: {reason}, splitting "
+                f"{len(window_dialogues)} -> {mid}+{len(window_dialogues)-mid}"
+            )
+            left = _extract_with_split(window_dialogues[:mid], f"{label}#a")
+            right = _extract_with_split(window_dialogues[mid:], f"{label}#b")
+            return left + right
+
+    # Optional hard cap before request; useful for small-context models.
+    # Set LLM4FAIRROUTING_MAX_DIALOGUES_PER_EXTRACTION_WINDOW=4 (for example).
+    max_dialogues = int(os.getenv("LLM4FAIRROUTING_MAX_DIALOGUES_PER_EXTRACTION_WINDOW", "0") or 0)
+    if max_dialogues > 0 and len(dialogues) > max_dialogues:
+        print(
+            f"  [Module 2] Window {time_window}: pre-splitting "
+            f"{len(dialogues)} dialogues by cap={max_dialogues}"
+        )
+        all_demands: List[Dict] = []
+        for idx in range(0, len(dialogues), max_dialogues):
+            chunk = dialogues[idx: idx + max_dialogues]
+            all_demands.extend(_extract_with_split(chunk, f"{time_window}#chunk{idx//max_dialogues+1}"))
+        return {"time_window": time_window, "demands": all_demands}
+
+    all_demands = _extract_with_split(dialogues, time_window)
+    return {"time_window": time_window, "demands": all_demands}
 
 
 def extract_all_demands(
