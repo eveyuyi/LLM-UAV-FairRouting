@@ -1,6 +1,6 @@
 import heapq
 
-from llm4fairrouting.llm.priority_inference import adjust_weights_offline
+from llm4fairrouting.llm.priority_inference import adjust_weights_offline, _normalize_weight_config
 from llm4fairrouting.routing.domain import DemandEvent, priority_service_score
 
 
@@ -128,3 +128,17 @@ def test_adjust_weights_offline_ranks_short_deadline_critical_case_ahead_of_regu
     configs = result["demand_configs"]
     assert configs[0]["demand_id"] == "REQ101"
     assert configs[0]["priority"] <= configs[1]["priority"]
+
+
+def test_normalize_weight_config_accepts_priority_labels_schema():
+    result = _normalize_weight_config(
+        {
+            "priority_labels": [
+                {"demand_id": "DEM_001", "priority": 1, "window_rank": 1, "reasoning": "highest need"},
+                {"demand_id": "DEM_002", "priority": 3, "window_rank": 2, "reasoning": "lower need"},
+            ]
+        }
+    )
+
+    assert [item["demand_id"] for item in result["demand_configs"]] == ["DEM_001", "DEM_002"]
+    assert [item["priority"] for item in result["demand_configs"]] == [1, 3]

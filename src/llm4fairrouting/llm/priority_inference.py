@@ -88,9 +88,24 @@ def _normalize_priority(priority: object, default: int = 4) -> int:
     return normalize_priority(priority, default=default)
 
 
+def _extract_llm_priority_rows(result: Dict) -> List[Dict]:
+    """Accept both inference-time and training-time output schemas.
+
+    Inference prompts historically asked for `demand_configs`, while the VERL SFT/GRPO
+    datasets use the lighter `priority_labels` schema. Supporting both keeps serving and
+    training formats aligned and prevents trained models from being treated as if they
+    returned an empty ranking.
+    """
+    for key in ("demand_configs", "priority_labels", "ranked_demands", "demands", "labels"):
+        value = result.get(key)
+        if isinstance(value, list):
+            return value
+    return []
+
+
 def _normalize_weight_config(result: Dict) -> Dict:
     demand_configs = []
-    for rank, config in enumerate(result.get("demand_configs", []), start=1):
+    for rank, config in enumerate(_extract_llm_priority_rows(result), start=1):
         demand_config = {
             "demand_id": str(config.get("demand_id", "")).strip(),
             "priority": _normalize_priority(config.get("priority"), default=4),
