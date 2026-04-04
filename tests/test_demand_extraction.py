@@ -30,6 +30,7 @@ def test_extract_demands_offline_infers_life_support_from_dialogue_text():
     result = extract_demands_offline([dialogue], window_minutes=5)
     demand = result[0]["demands"][0]
 
+    assert demand["demand_id"] == "DEM_LIFE_001"
     assert demand["demand_tier"] == "life_support"
     assert demand["source_event_id"] == "DEM_LIFE_001"
     assert demand["time_constraint"]["deadline_minutes"] <= 15
@@ -68,6 +69,7 @@ def test_extract_demands_offline_infers_consumer_request_from_app_style_dialogue
     result = extract_demands_offline([dialogue], window_minutes=5)
     demand = result[0]["demands"][0]
 
+    assert demand["demand_id"] == "D0002"
     assert demand["demand_tier"] == "consumer"
     assert demand["source_event_id"] is None
     assert demand["destination"]["type"] == "residential_area"
@@ -106,3 +108,53 @@ def test_extract_all_demands_parallel_preserves_window_order(monkeypatch):
         "2024-03-15T00:30-01:00",
         "2024-03-15T01:00-01:30",
     ]
+
+
+def test_normalize_extracted_window_uses_canonical_ids_over_llm_ids():
+    dialogues = [
+        {
+            "dialogue_id": "D0101",
+            "timestamp": "2024-03-15T00:00:00",
+            "conversation": "Please send the AED within 15 minutes.",
+            "metadata": {
+                "event_id": "DEM_000_00",
+                "origin_fid": "MED_01",
+                "destination_fid": "DEM_A",
+                "origin_coords": [113.80, 22.70],
+                "dest_coords": [113.90, 22.80],
+                "material_type": "aed",
+                "quantity_kg": 2.0,
+                "delivery_deadline_minutes": 15,
+                "supply_station_name": "Medical Hub",
+            },
+        },
+        {
+            "dialogue_id": "D0102",
+            "timestamp": "2024-03-15T00:05:00",
+            "conversation": "Please send the AED within 15 minutes.",
+            "metadata": {
+                "event_id": "DEM_000_01",
+                "origin_fid": "MED_01",
+                "destination_fid": "DEM_B",
+                "origin_coords": [113.80, 22.70],
+                "dest_coords": [113.91, 22.81],
+                "material_type": "aed",
+                "quantity_kg": 2.0,
+                "delivery_deadline_minutes": 15,
+                "supply_station_name": "Medical Hub",
+            },
+        },
+    ]
+
+    payload = {
+        "time_window": "2024-03-15T00:00-00:10",
+        "demands": [
+            {"demand_id": "REQ001", "source_dialogue_id": "D0101"},
+            {"demand_id": "REQ001", "source_dialogue_id": "D0102"},
+        ],
+    }
+
+    normalized = demand_extraction_module._normalize_extracted_window(payload, dialogues)
+    demand_ids = [item["demand_id"] for item in normalized["demands"]]
+
+    assert demand_ids == ["DEM_000_00", "DEM_000_01"]

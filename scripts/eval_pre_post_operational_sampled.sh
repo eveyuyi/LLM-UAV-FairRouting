@@ -28,7 +28,7 @@ TIME_SLOTS_STR="${TIME_SLOTS_STR:-}"
 SAMPLE_TOTAL_SLOTS="${SAMPLE_TOTAL_SLOTS:-9}"
 SAMPLE_SEED="${SAMPLE_SEED:-42}"
 
-SOLVER_BACKEND="${SOLVER_BACKEND:-nsga3_heuristic}" # nsga3 | nsga3_heuristic | cplex
+SOLVER_BACKEND="${SOLVER_BACKEND:-cplex}" # cplex | nsga3 | nsga3_heuristic
 WINDOW_MINUTES="${WINDOW_MINUTES:-5}"
 TIME_LIMIT="${TIME_LIMIT:-180}"
 MAX_SOLVER_STATIONS="${MAX_SOLVER_STATIONS:-1}"
@@ -57,6 +57,11 @@ if [[ ! -f "${GROUND_TRUTH}" ]]; then
   echo "Example to generate default seed manifest:" >&2
   echo "  llm4fairrouting-demand-events --manifest-output data/seed/daily_demand_events_manifest.jsonl" >&2
   exit 1
+fi
+
+if [[ "${SOLVER_BACKEND}" == "nsga3" || "${SOLVER_BACKEND}" == "nsga3_heuristic" ]]; then
+  echo "[warn] SOLVER_BACKEND=${SOLVER_BACKEND} adds an outer search loop." >&2
+  echo "[warn] For pre/post model comparison, CPLEX is usually the cleaner and more stable choice." >&2
 fi
 
 if [[ -n "${CONDA_ENV}" ]]; then

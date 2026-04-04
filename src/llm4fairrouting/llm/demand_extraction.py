@@ -376,6 +376,25 @@ def _build_context_signals(
     return signals
 
 
+def _canonical_demand_id(dialogue: Dict, fallback_index: int) -> str:
+    """Return a stable system demand id for a dialogue-derived demand.
+
+    `demand_id` is an internal identifier used to align Module 2/3 outputs, so it should
+    come from stable metadata rather than from the LLM response. This keeps ids unique even
+    when a large extraction window is pre-split into multiple chunks.
+    """
+    metadata = dialogue.get("metadata", {}) or {}
+    event_id = str(metadata.get("event_id", "")).strip()
+    if event_id:
+        return event_id
+
+    dialogue_id = str(dialogue.get("dialogue_id", "")).strip()
+    if dialogue_id:
+        return dialogue_id
+
+    return f"REQ{fallback_index:03d}"
+
+
 def _build_heuristic_demand(dialogue: Dict, demand_id: str) -> Dict:
     metadata = dialogue.get("metadata", {})
     conversation = str(dialogue.get("conversation", ""))
@@ -463,7 +482,8 @@ def _prefer_value(primary, fallback):
 
 def _merge_demand_records(heuristic: Dict, extracted: Dict) -> Dict:
     merged = {
-        "demand_id": _prefer_value(extracted.get("demand_id"), heuristic["demand_id"]),
+        # Keep a canonical system id instead of trusting the model-generated id field.
+        "demand_id": heuristic["demand_id"],
         "source_dialogue_id": _prefer_value(
             extracted.get("source_dialogue_id"), heuristic["source_dialogue_id"]
         ),
@@ -515,7 +535,10 @@ def _normalize_extracted_window(result: Dict, dialogues: List[Dict]) -> Dict:
     }
     normalized_demands: List[Dict] = []
     for index, dialogue in enumerate(dialogues, start=1):
-        heuristic = _build_heuristic_demand(dialogue, demand_id=f"REQ{index:03d}")
+        heuristic = _build_heuristic_demand(
+            dialogue,
+            demand_id=_canonical_demand_id(dialogue, fallback_index=index),
+        )
         extracted = by_dialogue_id.get(str(dialogue.get("dialogue_id")))
         if extracted is None and index - 1 < len(extracted_demands):
             extracted = extracted_demands[index - 1]
