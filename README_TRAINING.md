@@ -113,9 +113,9 @@ PORT=8001 \
 bash scripts/serve_vllm_model.sh
 ```
 
-## 7. 训练前后效果分层评测（推荐）
+## 7. 训练前后效果分层评测
 
-现在默认使用两个分层脚本：
+两个分层脚本：
 1) `scripts/eval_pre_post_priority_alignment.sh`（快，跳过 solver，只看排序能力）  
 2) `scripts/eval_pre_post_operational_sampled.sh`（慢，分层抽样后看运营效果）
 

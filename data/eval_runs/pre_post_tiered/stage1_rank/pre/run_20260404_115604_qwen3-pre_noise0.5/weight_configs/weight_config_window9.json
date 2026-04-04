@@ -1,0 +1,39 @@
+{
+  "global_weights": {
+    "w_distance": 1.0,
+    "w_time": 1.0,
+    "w_risk": 1.0
+  },
+  "demand_configs": [
+    {
+      "demand_id": "REQ001",
+      "demand_tier": "regular",
+      "priority": 2,
+      "window_rank": 1,
+      "reasoning": "tier=regular, handoff_ready | Hard deadline requested, expedited delivery, and standard handoff readiness; similar to first demand"
+    },
+    {
+      "demand_id": "REQ001",
+      "demand_tier": "regular",
+      "priority": 2,
+      "window_rank": 2,
+      "reasoning": "tier=regular, handoff_ready | Hard deadline requested, expedited delivery, and standard handoff readiness; similar to first demand"
+    },
+    {
+      "demand_id": "REQ002",
+      "demand_tier": "consumer",
+      "priority": 4,
+      "window_rank": 3,
+      "reasoning": "tier=consumer, handoff_ready | No strict deadline, routine food delivery with thermal bag handling; flexible and low urgency"
+    },
+    {
+      "demand_id": "REQ002",
+      "demand_tier": "consumer",
+      "priority": 4,
+      "window_rank": 4,
+      "reasoning": "tier=consumer, handoff_ready | No strict deadline, routine food delivery with thermal bag handling; flexible and low urgency"
+    }
+  ],
+  "supplementary_constraints": [],
+  "time_window": "2024-03-15T00:45-00:50"
+}

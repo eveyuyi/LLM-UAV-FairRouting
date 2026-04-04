@@ -1,0 +1,107 @@
+[
+  {
+    "drone_id": "U11",
+    "station_id": 0,
+    "station_name": "L1",
+    "current_node_index": 15,
+    "current_node_id": "L1",
+    "final_status": "idle",
+    "remaining_range_m": 200000.0,
+    "remaining_payload_kg": 60.0,
+    "current_load_kg": 0.0,
+    "pending_task_count": 0,
+    "path_node_indices": [
+      15,
+      0,
+      4,
+      4,
+      3,
+      1,
+      14,
+      6,
+      13,
+      10,
+      9,
+      15
+    ],
+    "path_node_ids": [
+      "L1",
+      "S_MED_531",
+      "S_MED_68",
+      "S_MED_68",
+      "S_MED_341",
+      "S_COM_54",
+      "D_DEM_22114",
+      "D_DEM_40900",
+      "D_DEM_27265",
+      "D_DEM_19454",
+      "D_DEM_19702",
+      "L1"
+    ],
+    "path_str": "L1 -> S_MED_531 -> S_MED_68 -> S_MED_68 -> S_MED_341 -> S_COM_54 -> D_DEM_22114 -> D_DEM_40900 -> D_DEM_27265 -> D_DEM_19454 -> D_DEM_19702 -> L1",
+    "n_nodes_visited": 12,
+    "n_legs_completed": 11
+  },
+  {
+    "drone_id": "U12",
+    "station_id": 0,
+    "station_name": "L1",
+    "current_node_index": 15,
+    "current_node_id": "L1",
+    "final_status": "idle",
+    "remaining_range_m": 200000.0,
+    "remaining_payload_kg": 60.0,
+    "current_load_kg": 0.0,
+    "pending_task_count": 0,
+    "path_node_indices": [
+      15,
+      1,
+      2,
+      5,
+      7,
+      8,
+      12,
+      15
+    ],
+    "path_node_ids": [
+      "L1",
+      "S_COM_54",
+      "S_COM_12",
+      "S_COM_22",
+      "D_DEM_26569",
+      "D_DEM_294",
+      "D_DEM_37367",
+      "L1"
+    ],
+    "path_str": "L1 -> S_COM_54 -> S_COM_12 -> S_COM_22 -> D_DEM_26569 -> D_DEM_294 -> D_DEM_37367 -> L1",
+    "n_nodes_visited": 8,
+    "n_legs_completed": 7
+  },
+  {
+    "drone_id": "U13",
+    "station_id": 0,
+    "station_name": "L1",
+    "current_node_index": 15,
+    "current_node_id": "L1",
+    "final_status": "idle",
+    "remaining_range_m": 200000.0,
+    "remaining_payload_kg": 60.0,
+    "current_load_kg": 0.0,
+    "pending_task_count": 0,
+    "path_node_indices": [
+      15,
+      5,
+      11,
+      15
+    ],
+    "path_node_ids": [
+      "L1",
+      "S_COM_22",
+      "D_DEM_4918",
+      "L1"
+    ],
+    "path_str": "L1 -> S_COM_22 -> D_DEM_4918 -> L1",
+    "n_nodes_visited": 4,
+    "n_legs_completed": 3
+  }
+]

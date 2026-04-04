@@ -4,21 +4,22 @@ cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # ---------- 只改这里 ----------
 CONDA_ENV=verl
-SFT_TRAIN_FILE=data/train/verl/quality_pilot_sft_train.parquet
-SFT_VAL_FILE=data/train/verl/quality_pilot_sft_val.parquet
+# 使用 quality_pilot_v2（scorer 对齐 latent + 新对话）；parquet 名独立，避免误用旧导出
+SFT_TRAIN_FILE=data/train/verl/quality_pilot_v2_sft_train.parquet
+SFT_VAL_FILE=data/train/verl/quality_pilot_v2_sft_val.parquet
 MODEL_PATH=/mnt/shared-storage-gpfs2/gpfs2-shared-public/huggingface/zskj-hub/model--Qwen-Qwen3-4B-Instruct-2507
 # /mnt/shared-storage-gpfs2/gpfs2-shared-public/huggingface/zskj-hub/models-Qwen-Qwen3-1.7B
 # "/mnt/shared-storage-gpfs2/gpfs2-shared-public/huggingface/zskj-hub/model--Qwen-Qwen3-4B-Instruct-2507"
 # "/mnt/shared-storage-gpfs2/gpfs2-shared-public/huggingface/zskj-hub/models--Qwen--Qwen3.5-9B"
 AUTO_EXPORT_SFT=1
-SFT_EXPORT_INPUT_GLOB=data/train/quality_pilot/seed_*
+SFT_EXPORT_INPUT_GLOB=data/train/quality_pilot_v2/seed_*
 SFT_EXPORT_VAL_RATIO=0.1
 SFT_EXPORT_SEED=42
-# 训练输出：checkpoint 与 Hydra 日志（相对仓库根目录）
-CKPT_DIR=data/checkpoints/llm3_sft
+# 训练输出：checkpoint 与 Hydra 日志（相对仓库根目录）；与旧 pilot 分开
+CKPT_DIR=data/checkpoints/llm3_sft_v2
 HYDRA_ROOT=data/hydra_outputs
 TRAINER_PROJECT_NAME=llm3-sft
-TRAINER_EXPERIMENT_NAME=qwen-sft
+TRAINER_EXPERIMENT_NAME=qwen-sft-v2
 # verl 默认 data.train_batch_size=256；小验证集 + drop_last 时，8 卡下每卡 32 会大于每卡 val 条数，验证集 0 step。
 # 8 卡：全局 64 => 每卡 8；val≈58 时每卡约 ceil(58/8)=8，刚好 1 个 val batch。想更多 train step 可试 32（每卡 4，val 每卡 2 step）。
 SFT_GLOBAL_BATCH_SIZE="${SFT_GLOBAL_BATCH_SIZE:-64}"

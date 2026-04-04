@@ -26,6 +26,15 @@ if [[ -z "${API_KEY}" ]]; then
   exit 1
 fi
 
+if [[ ! -f "${GROUND_TRUTH}" ]]; then
+  echo "Missing ground-truth file: ${GROUND_TRUTH}" >&2
+  echo "Priority alignment evaluation requires ground-truth priorities." >&2
+  echo "Please set GROUND_TRUTH=/path/to/events_manifest.jsonl, then rerun." >&2
+  echo "Example to generate default seed manifest:" >&2
+  echo "  llm4fairrouting-demand-events --manifest-output data/seed/daily_demand_events_manifest.jsonl" >&2
+  exit 1
+fi
+
 read -r -a TIME_SLOTS <<< "${TIME_SLOTS_STR}"
 if [[ "${#TIME_SLOTS[@]}" -eq 0 ]]; then
   echo "TIME_SLOTS_STR is empty." >&2

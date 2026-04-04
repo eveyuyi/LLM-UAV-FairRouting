@@ -1,0 +1,39 @@
+{
+  "global_weights": {
+    "w_distance": 1.0,
+    "w_time": 1.0,
+    "w_risk": 1.0
+  },
+  "demand_configs": [
+    {
+      "demand_id": "REQ001",
+      "demand_tier": "consumer",
+      "priority": 4,
+      "window_rank": 1,
+      "reasoning": "tier=consumer, hard_deadline, handoff_ready | Daily supplies with 120-minute hard deadline and ready receiver, no urgency beyond standard consumer delivery"
+    },
+    {
+      "demand_id": "REQ001",
+      "demand_tier": "consumer",
+      "priority": 4,
+      "window_rank": 2,
+      "reasoning": "tier=consumer, hard_deadline, handoff_ready | Daily supplies with 120-minute hard deadline and ready receiver, no urgency beyond standard consumer delivery"
+    },
+    {
+      "demand_id": "REQ002",
+      "demand_tier": "consumer",
+      "priority": 4,
+      "window_rank": 3,
+      "reasoning": "tier=consumer, handoff_ready | Daily supplies for elderly family member with timely delivery importance; still within consumer tier and no life-threatening context"
+    },
+    {
+      "demand_id": "REQ002",
+      "demand_tier": "consumer",
+      "priority": 4,
+      "window_rank": 4,
+      "reasoning": "tier=consumer, handoff_ready | Daily supplies for elderly family member with timely delivery importance; still within consumer tier and no life-threatening context"
+    }
+  ],
+  "supplementary_constraints": [],
+  "time_window": "2024-03-15T00:40-00:45"
+}

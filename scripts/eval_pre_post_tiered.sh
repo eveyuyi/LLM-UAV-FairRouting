@@ -282,6 +282,15 @@ print(f"Stage1 alignment delta saved to {delta_path}")
 PY
 
 # ---------------- Stage 2 ----------------
+if [[ ! -f "${GROUND_TRUTH}" ]]; then
+  echo "[stage2] Missing ground-truth file: ${GROUND_TRUTH}" >&2
+  echo "[stage2] Stage1 ranking evaluation is completed, but operational impact requires ground-truth priorities." >&2
+  echo "[stage2] Please set GROUND_TRUTH=/path/to/events_manifest.jsonl, then rerun this script." >&2
+  echo "[stage2] Example to generate default seed manifest:" >&2
+  echo "  llm4fairrouting-demand-events --manifest-output data/seed/daily_demand_events_manifest.jsonl" >&2
+  exit 1
+fi
+
 sample_stage2_slots_if_needed
 read -r -a STAGE2_SLOTS_ARRAY <<< "${STAGE2_TIME_SLOTS_STR}"
 if [[ "${#STAGE2_SLOTS_ARRAY[@]}" -eq 0 ]]; then

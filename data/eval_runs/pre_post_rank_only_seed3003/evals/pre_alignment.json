@@ -1,0 +1,20 @@
+{
+  "n_aligned_demands": 0,
+  "labels": [],
+  "urgent_threshold": 2,
+  "per_item": [],
+  "accuracy": null,
+  "macro_f1": null,
+  "weighted_f1": null,
+  "confusion_matrix": [],
+  "per_priority_metrics": {},
+  "spearman": null,
+  "kendall_tau": null,
+  "priority_1_metrics": {},
+  "urgent_metrics": {},
+  "top_k_hit_rate": {
+    "k": 0,
+    "hit_rate": null,
+    "hits": 0
+  }
+}

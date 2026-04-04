@@ -26,21 +26,22 @@ cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # ---------- 只改这里 ----------
 CONDA_ENV=verl
-GRPO_TRAIN_FILE=data/train/verl/quality_pilot_grpo_train.parquet
-GRPO_VAL_FILE=data/train/verl/quality_pilot_grpo_val.parquet
+GRPO_TRAIN_FILE=data/train/verl/quality_pilot_v2_grpo_train.parquet
+GRPO_VAL_FILE=data/train/verl/quality_pilot_v2_grpo_val.parquet
 # GRPO 的 actor_rollout_ref.model.path 必须是 HuggingFace 目录（含 config.json 等）
-MODEL_PATH=data/checkpoints/llm3_sft_merged_hf/global_step_8
+# SFT 完成后把 global_step_* 改成你 CKPT 里实际目录名
+MODEL_PATH=data/checkpoints/llm3_sft_merged_hf_v2/global_step_8
 # 若上面目录尚不存在，从 VERL FSDP SFT 检查点自动 merge（调用 scripts/export_sft_ckpt_to_hf.sh）
-SFT_CKPT_DIR=data/checkpoints/llm3_sft/global_step_8
+SFT_CKPT_DIR=data/checkpoints/llm3_sft_v2/global_step_8
 AUTO_MERGE_SFT_HF=1
 AUTO_EXPORT_GRPO=1
-GRPO_EXPORT_INPUT_GLOB=data/train/quality_pilot/seed_*
+GRPO_EXPORT_INPUT_GLOB=data/train/quality_pilot_v2/seed_*
 GRPO_EXPORT_VAL_RATIO=0.1
 GRPO_EXPORT_SEED=42
-CKPT_DIR=data/checkpoints/llm3_grpo
+CKPT_DIR=data/checkpoints/llm3_grpo_v2
 HYDRA_ROOT=data/hydra_outputs
 TRAINER_PROJECT_NAME=llm3-grpo
-TRAINER_EXPERIMENT_NAME=qwen-grpo
+TRAINER_EXPERIMENT_NAME=qwen-grpo-v2
 # 与 quality_pilot 规模（数百条）相比默认 1024 过大；4B+vLLM 也不宜一次过大。
 # 8 卡、rollout.n=2 时：real_batch = train_batch * 2，须被 8 整除 → train_batch 取 4/8/12…
 GRPO_TRAIN_BATCH_SIZE="${GRPO_TRAIN_BATCH_SIZE:-8}"

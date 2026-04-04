@@ -45,6 +45,15 @@ if [[ -z "${API_KEY}" ]]; then
   exit 1
 fi
 
+if [[ ! -f "${GROUND_TRUTH}" ]]; then
+  echo "Missing ground-truth file: ${GROUND_TRUTH}" >&2
+  echo "Operational impact evaluation requires event priorities from ground-truth manifest." >&2
+  echo "Please set GROUND_TRUTH=/path/to/events_manifest.jsonl, then rerun." >&2
+  echo "Example to generate default seed manifest:" >&2
+  echo "  llm4fairrouting-demand-events --manifest-output data/seed/daily_demand_events_manifest.jsonl" >&2
+  exit 1
+fi
+
 if [[ -n "${CONDA_ENV}" ]]; then
   _py=(conda run --no-capture-output -n "${CONDA_ENV}" env PYTHONNOUSERSITE=1 python)
 else
