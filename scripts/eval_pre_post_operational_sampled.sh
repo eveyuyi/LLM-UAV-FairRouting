@@ -17,6 +17,11 @@ GROUND_TRUTH="${GROUND_TRUTH:-data/seed/daily_demand_events_manifest.jsonl}"
 STATIONS="${STATIONS:-data/seed/drone_station_locations.csv}"
 BUILDING_DATA="${BUILDING_DATA:-data/seed/building_information.csv}"
 OUTPUT_ROOT="${OUTPUT_ROOT:-data/eval_runs/pre_post_operational_sampled}"
+FIXED_EXTRACTED_DEMANDS="${FIXED_EXTRACTED_DEMANDS:-}"
+OPERATIONAL_MODE="${OPERATIONAL_MODE:-auto}" # auto | llm3_only | end_to_end
+TRUTH_SOURCE="${TRUTH_SOURCE:-auto}"
+WINDOW_INDICES_STR="${WINDOW_INDICES_STR:-}"
+TIME_WINDOWS_STR="${TIME_WINDOWS_STR:-}"
 
 # If TIME_SLOTS_STR is set, use it directly; otherwise sample stratified slots.
 TIME_SLOTS_STR="${TIME_SLOTS_STR:-}"
@@ -79,28 +84,267 @@ latest_run_dir() {
   echo "${latest}"
 }
 
+if [[ -z "${FIXED_EXTRACTED_DEMANDS}" ]]; then
+  _candidate_fixed="$(dirname "${DIALOGUES}")/llm3_sft_pipeline.jsonl"
+  if [[ -f "${_candidate_fixed}" ]]; then
+    FIXED_EXTRACTED_DEMANDS="${_candidate_fixed}"
+  fi
+fi
+
+if [[ "${OPERATIONAL_MODE}" == "auto" ]]; then
+  if [[ -n "${FIXED_EXTRACTED_DEMANDS}" ]]; then
+    OPERATIONAL_MODE="llm3_only"
+  else
+    OPERATIONAL_MODE="end_to_end"
+  fi
+fi
+
+ALIGNMENT_DEMANDS_PATH=""
+TRUTH_DEMANDS_PATH=""
+RUN_WORKFLOW_EXTRA_ARGS=()
+TIME_SLOT_ARGS=()
+TRUTH_ARGS=()
+
 mkdir -p "${OUTPUT_ROOT}/evals"
 
-if [[ -z "${TIME_SLOTS_STR}" ]]; then
-  echo "[sample] build stratified time-slot sample from dialogues" >&2
-  TIME_SLOTS_STR="$(
-    DIALOGUES="${DIALOGUES}" \
+select_fixed_windows() {
+  if [[ -z "${FIXED_EXTRACTED_DEMANDS}" ]]; then
+    echo "OPERATIONAL_MODE=llm3_only requires FIXED_EXTRACTED_DEMANDS or a sibling llm3_sft_pipeline.jsonl file." >&2
+    exit 1
+  fi
+
+  local fixed_dir="${OUTPUT_ROOT}/fixed_inputs"
+  mkdir -p "${fixed_dir}"
+  local selected_demands="${fixed_dir}/selected_demands.json"
+  local selection_manifest="${fixed_dir}/selection_manifest.json"
+
+  FIXED_EXTRACTED_DEMANDS="${FIXED_EXTRACTED_DEMANDS}" \
+  SELECTED_DEMANDS="${selected_demands}" \
+  SELECTION_MANIFEST="${selection_manifest}" \
+  TIME_SLOTS_STR="${TIME_SLOTS_STR}" \
+  TIME_WINDOWS_STR="${TIME_WINDOWS_STR}" \
+  WINDOW_INDICES_STR="${WINDOW_INDICES_STR}" \
+  PYTHONPATH=src "${_py[@]}" - <<'PY'
+import json
+import os
+import re
+from pathlib import Path
+
+WINDOW_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T(\d{2}):(\d{2})-\d{2}:\d{2}$")
+
+
+def load_windows(path: Path):
+    if path.suffix.lower() == ".jsonl":
+        return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, list):
+        raise ValueError(f"Expected a JSON/JSONL list of windows: {path}")
+    return payload
+
+
+def window_start_slot(window):
+    label = str(window.get("time_window", "")).split("::", 1)[0].strip()
+    match = WINDOW_RE.match(label)
+    if match:
+        hour = int(match.group(1))
+        minute = int(match.group(2))
+        return (hour * 60 + minute) // 5
+    for demand in window.get("demands", []) or []:
+        ts = str(demand.get("request_timestamp", "")).strip()
+        if not ts:
+            continue
+        try:
+            hour = int(ts[11:13])
+            minute = int(ts[14:16])
+        except (TypeError, ValueError, IndexError):
+            continue
+        return (hour * 60 + minute) // 5
+    return None
+
+
+source = Path(os.environ["FIXED_EXTRACTED_DEMANDS"])
+selected_path = Path(os.environ["SELECTED_DEMANDS"])
+manifest_path = Path(os.environ["SELECTION_MANIFEST"])
+windows = load_windows(source)
+
+time_windows = [item for item in os.environ.get("TIME_WINDOWS_STR", "").split() if item]
+window_indices = [int(item) for item in os.environ.get("WINDOW_INDICES_STR", "").split() if item]
+time_slots = [int(item) for item in os.environ.get("TIME_SLOTS_STR", "").split() if item]
+
+selection_mode = "all_windows"
+selected = list(windows)
+if time_windows:
+    allowed = set(time_windows)
+    selected = [window for window in windows if str(window.get("time_window", "")) in allowed]
+    selection_mode = "time_windows"
+elif window_indices:
+    selected = [
+        windows[index]
+        for index in window_indices
+        if 0 <= index < len(windows)
+    ]
+    selection_mode = "window_indices"
+elif time_slots:
+    allowed = set(time_slots)
+    selected = [window for window in windows if window_start_slot(window) in allowed]
+    selection_mode = "time_slots"
+
+selected_path.write_text(json.dumps(selected, ensure_ascii=False, indent=2), encoding="utf-8")
+manifest = {
+    "source_path": str(source),
+    "selection_mode": selection_mode,
+    "requested_time_slots": time_slots,
+    "requested_time_windows": time_windows,
+    "requested_window_indices": window_indices,
+    "n_windows_source": len(windows),
+    "n_windows_selected": len(selected),
+    "selected_time_windows": [str(window.get("time_window", "")) for window in selected],
+}
+manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+PY
+
+  ALIGNMENT_DEMANDS_PATH="${selected_demands}"
+  TRUTH_DEMANDS_PATH="${selected_demands}"
+  RUN_WORKFLOW_EXTRA_ARGS=(--extracted-demands "${selected_demands}")
+}
+
+if [[ "${OPERATIONAL_MODE}" == "llm3_only" && -z "${TIME_WINDOWS_STR}" && -z "${WINDOW_INDICES_STR}" && -z "${TIME_SLOTS_STR}" ]]; then
+  echo "[sample] build stratified fixed-window sample from ${FIXED_EXTRACTED_DEMANDS}" >&2
+  TIME_WINDOWS_STR="$(
+    FIXED_EXTRACTED_DEMANDS="${FIXED_EXTRACTED_DEMANDS}" \
     SAMPLE_TOTAL_SLOTS="${SAMPLE_TOTAL_SLOTS}" \
     SAMPLE_SEED="${SAMPLE_SEED}" \
+    URGENT_THRESHOLD="${URGENT_THRESHOLD}" \
     OUTPUT_ROOT="${OUTPUT_ROOT}" \
     PYTHONPATH=src "${_py[@]}" - <<'PY'
 import json
 import os
 import random
-from collections import Counter
+from pathlib import Path
+
+
+def load_windows(path: Path):
+    if path.suffix.lower() == ".jsonl":
+        return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, list):
+        raise ValueError(f"Expected a JSON/JSONL list of windows: {path}")
+    return payload
+
+
+def demand_priority(demand):
+    labels = demand.get("labels", {}) or {}
+    value = labels.get("extraction_observable_priority", demand.get("extraction_observable_priority", 4))
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 4
+
+
+def is_vulnerable(demand):
+    vuln = ((demand.get("priority_evaluation_signals") or {}).get("population_vulnerability") or {})
+    return any(bool(vuln.get(key, False)) for key in ("children_involved", "elderly_involved", "vulnerable_community"))
+
+
+source = Path(os.environ["FIXED_EXTRACTED_DEMANDS"])
+sample_total = max(1, int(os.environ.get("SAMPLE_TOTAL_SLOTS", "9")))
+seed = int(os.environ.get("SAMPLE_SEED", "42"))
+urgent_threshold = int(os.environ.get("URGENT_THRESHOLD", "2"))
+output_root = Path(os.environ["OUTPUT_ROOT"])
+rng = random.Random(seed)
+windows = load_windows(source)
+
+summaries = []
+for index, window in enumerate(windows):
+    demands = list(window.get("demands", []) or [])
+    priorities = [demand_priority(demand) for demand in demands]
+    labels = []
+    if priorities and min(priorities) == 1:
+        labels.append("priority_1")
+    if priorities and min(priorities) <= urgent_threshold:
+        labels.append("urgent")
+    if any(is_vulnerable(demand) for demand in demands):
+        labels.append("vulnerable")
+    if len(priorities) >= 2:
+        ordered = sorted(priorities)
+        if ordered[1] - ordered[0] <= 1:
+            labels.append("near_tie")
+    if len(demands) >= 5:
+        labels.append("dense")
+    if not labels:
+        labels.append("routine")
+    summaries.append({
+        "index": index,
+        "time_window": str(window.get("time_window", "")),
+        "n_demands": len(demands),
+        "labels": labels,
+        "min_priority": min(priorities) if priorities else None,
+    })
+
+if sample_total >= len(summaries):
+    selected = summaries
+    mode = "all_windows"
+else:
+    selected = []
+    selected_idx = set()
+    for label in ("priority_1", "urgent", "vulnerable", "near_tie", "dense", "routine"):
+        candidates = [item for item in summaries if label in item["labels"] and item["index"] not in selected_idx]
+        if not candidates or len(selected) >= sample_total:
+            continue
+        rng.shuffle(candidates)
+        candidates.sort(key=lambda item: (-len(item["labels"]), -item["n_demands"], item["time_window"]))
+        choice = candidates[0]
+        selected.append(choice)
+        selected_idx.add(choice["index"])
+
+    if len(selected) < sample_total:
+        remaining = [item for item in summaries if item["index"] not in selected_idx]
+        rng.shuffle(remaining)
+        remaining.sort(key=lambda item: (-len(item["labels"]), -item["n_demands"], item["time_window"]))
+        selected.extend(remaining[: sample_total - len(selected)])
+    selected.sort(key=lambda item: item["index"])
+    mode = "fixed_window_stratified_sample"
+
+selected_labels = [item["time_window"] for item in selected]
+sampling_payload = {
+    "mode": mode,
+    "sample_total_slots": sample_total,
+    "seed": seed,
+    "fixed_extracted_demands": str(source),
+    "selected_time_windows": selected_labels,
+    "window_summaries": summaries,
+}
+sampling_path = output_root / "evals" / "slot_sampling.json"
+sampling_path.parent.mkdir(parents=True, exist_ok=True)
+sampling_path.write_text(json.dumps(sampling_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+print(" ".join(selected_labels))
+PY
+  )"
+elif [[ "${OPERATIONAL_MODE}" == "end_to_end" && -z "${TIME_SLOTS_STR}" ]]; then
+  echo "[sample] build stratified time-slot sample from dialogues + ground truth" >&2
+  TIME_SLOTS_STR="$(
+    DIALOGUES="${DIALOGUES}" \
+    GROUND_TRUTH="${GROUND_TRUTH}" \
+    SAMPLE_TOTAL_SLOTS="${SAMPLE_TOTAL_SLOTS}" \
+    SAMPLE_SEED="${SAMPLE_SEED}" \
+    URGENT_THRESHOLD="${URGENT_THRESHOLD}" \
+    OUTPUT_ROOT="${OUTPUT_ROOT}" \
+    PYTHONPATH=src "${_py[@]}" - <<'PY'
+import json
+import os
+import random
+from collections import Counter, defaultdict
 from pathlib import Path
 
 dialogues = Path(os.environ["DIALOGUES"])
+ground_truth = Path(os.environ["GROUND_TRUTH"])
 sample_total = max(1, int(os.environ.get("SAMPLE_TOTAL_SLOTS", "9")))
 seed = int(os.environ.get("SAMPLE_SEED", "42"))
+urgent_threshold = int(os.environ.get("URGENT_THRESHOLD", "2"))
 output_root = Path(os.environ["OUTPUT_ROOT"])
+rng = random.Random(seed)
 
-counts = Counter()
+dialogue_counts = Counter()
 with dialogues.open("r", encoding="utf-8") as f:
     for line in f:
         line = line.strip()
@@ -108,77 +352,113 @@ with dialogues.open("r", encoding="utf-8") as f:
             continue
         obj = json.loads(line)
         slot = (obj.get("metadata") or {}).get("time_slot")
-        if slot is None:
+        if slot is not None:
+            dialogue_counts[int(slot)] += 1
+
+priority_by_slot = defaultdict(list)
+with ground_truth.open("r", encoding="utf-8") as f:
+    for line in f:
+        line = line.strip()
+        if not line:
             continue
-        counts[int(slot)] += 1
+        obj = json.loads(line)
+        slot = obj.get("time_slot")
+        priority = obj.get("latent_priority")
+        if slot is None or priority is None:
+            continue
+        priority_by_slot[int(slot)].append(int(priority))
 
-slots_sorted = sorted(counts.items(), key=lambda kv: (kv[1], kv[0]))
-all_slots = [s for s, _ in slots_sorted]
-
-if not all_slots:
+slots = sorted(set(dialogue_counts) | set(priority_by_slot))
+if not slots:
     print("")
     raise SystemExit(0)
 
-if sample_total >= len(all_slots):
-    selected = sorted(all_slots)
+slot_meta = []
+for slot in slots:
+    priorities = sorted(priority_by_slot.get(slot, []))
+    labels = []
+    if priorities and priorities[0] == 1:
+        labels.append("priority_1")
+    if priorities and priorities[0] <= urgent_threshold:
+        labels.append("urgent")
+    if len(set(priorities)) >= 2:
+        labels.append("mixed")
+    if dialogue_counts.get(slot, 0) >= 5:
+        labels.append("dense")
+    if not labels:
+        labels.append("routine")
+    slot_meta.append({
+        "slot": slot,
+        "dialogue_count": dialogue_counts.get(slot, 0),
+        "min_priority": priorities[0] if priorities else None,
+        "labels": labels,
+    })
+
+if sample_total >= len(slot_meta):
+    selected = slot_meta
     mode = "all_slots"
 else:
-    rng = random.Random(seed)
-    n = len(slots_sorted)
-    low = slots_sorted[: max(1, n // 3)]
-    mid = slots_sorted[max(1, n // 3): max(2, 2 * n // 3)]
-    high = slots_sorted[max(2, 2 * n // 3):]
-    buckets = [low, mid, high]
-
-    # Allocate quotas as evenly as possible across buckets.
-    base = sample_total // 3
-    rem = sample_total % 3
-    quotas = [base, base, base]
-    for i in range(rem):
-        quotas[i] += 1
-
-    selected_set = set()
-    for bucket, q in zip(buckets, quotas):
-        pool = [slot for slot, _ in bucket if slot not in selected_set]
-        if not pool or q <= 0:
+    selected = []
+    selected_slots = set()
+    for label in ("priority_1", "urgent", "mixed", "dense", "routine"):
+        candidates = [item for item in slot_meta if label in item["labels"] and item["slot"] not in selected_slots]
+        if not candidates or len(selected) >= sample_total:
             continue
-        q = min(q, len(pool))
-        picks = rng.sample(pool, q)
-        selected_set.update(picks)
+        rng.shuffle(candidates)
+        candidates.sort(key=lambda item: (-len(item["labels"]), -item["dialogue_count"], item["slot"]))
+        choice = candidates[0]
+        selected.append(choice)
+        selected_slots.add(choice["slot"])
 
-    # Fill from remaining slots if any bucket was short.
-    if len(selected_set) < sample_total:
-        remaining = [slot for slot in all_slots if slot not in selected_set]
-        need = min(sample_total - len(selected_set), len(remaining))
-        if need > 0:
-            selected_set.update(rng.sample(remaining, need))
+    if len(selected) < sample_total:
+        remaining = [item for item in slot_meta if item["slot"] not in selected_slots]
+        rng.shuffle(remaining)
+        remaining.sort(key=lambda item: (-len(item["labels"]), -item["dialogue_count"], item["slot"]))
+        selected.extend(remaining[: sample_total - len(selected)])
+    selected.sort(key=lambda item: item["slot"])
+    mode = "stratified_priority_slot_sample"
 
-    selected = sorted(selected_set)
-    mode = "stratified_sample"
-
+selected_slots = [item["slot"] for item in selected]
 sampling_payload = {
     "mode": mode,
     "sample_total_slots": sample_total,
     "seed": seed,
-    "selected_time_slots": selected,
-    "slot_counts": {str(slot): int(cnt) for slot, cnt in slots_sorted},
+    "selected_time_slots": selected_slots,
+    "slot_meta": slot_meta,
 }
 sampling_path = output_root / "evals" / "slot_sampling.json"
 sampling_path.parent.mkdir(parents=True, exist_ok=True)
-with sampling_path.open("w", encoding="utf-8") as f:
-    json.dump(sampling_payload, f, ensure_ascii=False, indent=2)
-
-print(" ".join(str(s) for s in selected))
+sampling_path.write_text(json.dumps(sampling_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+print(" ".join(str(slot) for slot in selected_slots))
 PY
   )"
 fi
 
-read -r -a TIME_SLOTS <<< "${TIME_SLOTS_STR}"
-if [[ "${#TIME_SLOTS[@]}" -eq 0 ]]; then
-  echo "TIME_SLOTS_STR is empty (explicit or sampled)." >&2
-  exit 1
+if [[ "${OPERATIONAL_MODE}" == "llm3_only" ]]; then
+  select_fixed_windows
+  if [[ "${TRUTH_SOURCE}" == "auto" ]]; then
+    TRUTH_SOURCE="fixed_demands"
+  fi
+else
+  read -r -a TIME_SLOTS <<< "${TIME_SLOTS_STR}"
+  if [[ "${#TIME_SLOTS[@]}" -eq 0 ]]; then
+    echo "TIME_SLOTS_STR is empty (explicit or sampled)." >&2
+    exit 1
+  fi
+  echo "[sample] use time slots: ${TIME_SLOTS_STR}" >&2
+  TIME_SLOT_ARGS=(--time-slots "${TIME_SLOTS[@]}")
+  if [[ "${TRUTH_SOURCE}" == "auto" ]]; then
+    TRUTH_SOURCE="run_extracted"
+  fi
 fi
-echo "[sample] use time slots: ${TIME_SLOTS_STR}" >&2
+
+if [[ "${TRUTH_SOURCE}" == "fixed_demands" ]]; then
+  if [[ -z "${TRUTH_DEMANDS_PATH}" ]]; then
+    echo "TRUTH_SOURCE=fixed_demands requires a resolved TRUTH_DEMANDS_PATH." >&2
+    exit 1
+  fi
+  TRUTH_ARGS=(--truth-demands "${TRUTH_DEMANDS_PATH}")
+fi
 
 run_workflow_once() {
   local tag="$1"
@@ -208,7 +488,8 @@ run_workflow_once() {
     --nsga3-pop-size "${NSGA3_POP_SIZE}" \
     --nsga3-n-generations "${NSGA3_N_GENERATIONS}" \
     --nsga3-seed "${NSGA3_SEED}" \
-    --time-slots "${TIME_SLOTS[@]}" \
+    "${RUN_WORKFLOW_EXTRA_ARGS[@]}" \
+    "${TIME_SLOT_ARGS[@]}" \
     1>&2
 
   local run_dir
@@ -230,19 +511,23 @@ POST_RUN_DIR="${RUN_DIR_RESULT}"
 echo "[eval] priority alignment (pre)"
 PYTHONPATH=src "${_py[@]}" evals/eval_priority_alignment.py \
   --weights "${PRE_RUN_DIR}/weight_configs" \
-  --demands "${PRE_RUN_DIR}/extracted_demands.json" \
+  --demands "${ALIGNMENT_DEMANDS_PATH:-${PRE_RUN_DIR}/extracted_demands.json}" \
   --dialogues "${DIALOGUES}" \
   --ground-truth "${GROUND_TRUTH}" \
   --urgent-threshold "${URGENT_THRESHOLD}" \
+  --truth-source "${TRUTH_SOURCE}" \
+  "${TRUTH_ARGS[@]}" \
   --output "${OUTPUT_ROOT}/evals/pre_alignment.json"
 
 echo "[eval] priority alignment (post)"
 PYTHONPATH=src "${_py[@]}" evals/eval_priority_alignment.py \
   --weights "${POST_RUN_DIR}/weight_configs" \
-  --demands "${POST_RUN_DIR}/extracted_demands.json" \
+  --demands "${ALIGNMENT_DEMANDS_PATH:-${POST_RUN_DIR}/extracted_demands.json}" \
   --dialogues "${DIALOGUES}" \
   --ground-truth "${GROUND_TRUTH}" \
   --urgent-threshold "${URGENT_THRESHOLD}" \
+  --truth-source "${TRUTH_SOURCE}" \
+  "${TRUTH_ARGS[@]}" \
   --output "${OUTPUT_ROOT}/evals/post_alignment.json"
 
 echo "[eval] operational impact (post vs pre)"
@@ -258,6 +543,10 @@ PYTHONPATH=src "${_py[@]}" evals/eval_priority_operational_impact.py \
 cat > "${OUTPUT_ROOT}/evals/eval_manifest.json" <<EOF
 {
   "mode": "operational_impact_sampled",
+  "operational_mode": "${OPERATIONAL_MODE}",
+  "truth_source": "${TRUTH_SOURCE}",
+  "fixed_extracted_demands": "${FIXED_EXTRACTED_DEMANDS}",
+  "selected_alignment_demands": "${ALIGNMENT_DEMANDS_PATH}",
   "pre_run_dir": "${PRE_RUN_DIR}",
   "post_run_dir": "${POST_RUN_DIR}",
   "pre_alignment": "${OUTPUT_ROOT}/evals/pre_alignment.json",

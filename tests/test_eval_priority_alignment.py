@@ -200,3 +200,93 @@ def test_evaluate_priority_alignment_prefers_extraction_observable_priority_when
 
     assert payload["accuracy"] == 1.0
     assert payload["per_item"][0]["true_priority"] == 2
+
+
+def test_evaluate_priority_alignment_can_use_fixed_truth_demands():
+    base = _make_case_dir("priority_alignment_eval_fixed_truth")
+    weights_dir = base / "weights"
+    weights_dir.mkdir(parents=True, exist_ok=True)
+    with open(weights_dir / "w1.json", "w", encoding="utf-8") as handle:
+        json.dump({
+            "time_window": "W1",
+            "demand_configs": [
+                {"demand_id": "REQ001", "priority": 2, "window_rank": 1, "reasoning": "post model"},
+            ],
+        }, handle, ensure_ascii=False, indent=2)
+
+    run_demands_path = base / "run_demands.json"
+    with open(run_demands_path, "w", encoding="utf-8") as handle:
+        json.dump([
+            {
+                "time_window": "W1",
+                "demands": [
+                    {
+                        "demand_id": "REQ001",
+                        "source_dialogue_id": "D1",
+                        "source_event_id": "E1",
+                        "labels": {"extraction_observable_priority": 4},
+                    },
+                ],
+            }
+        ], handle, ensure_ascii=False, indent=2)
+
+    truth_demands_path = base / "truth_demands.json"
+    with open(truth_demands_path, "w", encoding="utf-8") as handle:
+        json.dump([
+            {
+                "time_window": "W1",
+                "demands": [
+                    {
+                        "demand_id": "REQ001",
+                        "source_dialogue_id": "D1",
+                        "source_event_id": "E1",
+                        "labels": {"extraction_observable_priority": 2},
+                    },
+                ],
+            }
+        ], handle, ensure_ascii=False, indent=2)
+
+    dialogues_path = base / "dialogues.jsonl"
+    dialogues_path.write_text(
+        json.dumps({"dialogue_id": "D1", "metadata": {"event_id": "E1"}}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    ground_truth = base / "ground_truth.jsonl"
+    ground_truth.write_text(
+        json.dumps({
+            "event_id": "E1",
+            "time_slot": 0,
+            "origin": {"fid": "SUP1", "coords": [0.0, 0.0], "type": "supply_station", "station_name": "SUP1", "supply_type": "commercial"},
+            "destination": {"fid": "DEM1", "node_id": "DEM1", "coords": [0.0, 0.0], "type": "residential_area"},
+            "cargo": {"type": "food", "type_cn": "food", "temperature_sensitive": False},
+            "weight_kg": 1.0,
+            "deadline_minutes": 120,
+            "demand_tier": "consumer",
+            "requester_role": "consumer",
+            "special_handling": [],
+            "population_vulnerability": {},
+            "receiver_ready": False,
+            "latent_priority": 4,
+            "scenario_context": "Same-day delivery",
+            "dialogue_styles": ["direct"],
+            "priority_factors": {"policy_version": "human_aligned_priority_v1", "scenario_context": "Same-day delivery", "reason_codes": ["tier_consumer"], "source_fields": ["demand_tier"]},
+            "must_mention_factors": [],
+            "optional_factors": [],
+        }, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    payload = evaluate_priority_alignment(
+        weights_path=str(weights_dir),
+        demands_path=str(run_demands_path),
+        dialogues_path=str(dialogues_path),
+        ground_truth_path=str(ground_truth),
+        urgent_threshold=2,
+        truth_source="fixed_demands",
+        truth_demands_path=str(truth_demands_path),
+    )
+
+    assert payload["accuracy"] == 1.0
+    assert payload["truth_source"] == "fixed_demands"
+    assert payload["per_item"][0]["true_priority"] == 2
