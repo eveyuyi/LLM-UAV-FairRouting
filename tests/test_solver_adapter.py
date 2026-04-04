@@ -57,6 +57,14 @@ def test_parse_window_bounds_handles_24_hour_end():
     assert (end_dt - start_dt).total_seconds() == 300
 
 
+def test_parse_window_bounds_ignores_window_suffix_metadata():
+    start_dt, end_dt = _parse_window_bounds("2024-03-15T00:00-01:00::technical")
+
+    assert start_dt.isoformat() == "2024-03-15T00:00:00"
+    assert end_dt.isoformat() == "2024-03-15T01:00:00"
+    assert (end_dt - start_dt).total_seconds() == 3600
+
+
 def test_solve_windows_dynamically_returns_early_when_all_demands_overweight():
     overweight_demands = [
         {
