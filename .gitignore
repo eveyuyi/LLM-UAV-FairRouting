@@ -23,6 +23,7 @@ dist/
 /data/cache/
 /data/checkpoints/
 /data/compare_runs/
+/data/eval_runs/
 /data/extract_eval_plan_runs/
 /data/hydra_outputs/
 /data/independent_window_experiments/
@@ -30,7 +31,10 @@ dist/
 /data/result_without_priority/
 /data/static_independent_runs/
 /data/test_one_window_nsga3h/
-/data/train/
+# Track curated training drops; keep other train outputs local
+/data/train/*
+!/data/train/quality_pilot_v2/
+!/data/train/quality_pilot_v2/**
 /outputs/
 /results/
 /scripts/occupy_GPU.sh

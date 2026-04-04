@@ -1,0 +1,24 @@
+{
+  "schema_version": "priority_release_manifest_v1",
+  "generated_at": "2026-04-04T03:19:33Z",
+  "quality_gate_policy_version": "quality_gate_v1",
+  "release_status": "needs_regen",
+  "recommended_training_files": [
+    "llm3_sft_clean",
+    "llm2_sft",
+    "llm3_sft_pipeline"
+  ],
+  "failed_checks": [
+    "near_tie_ratio"
+  ],
+  "quality_report_file": "quality_report.json",
+  "dataset_manifest_file": "dataset_manifest.json",
+  "counts": {
+    "events_manifest": 182,
+    "dialogues": 364,
+    "llm2_sft": 364,
+    "llm3_sft_clean": 24,
+    "llm3_sft_pipeline": 48,
+    "llm3_grpo_hard": 36
+  }
+}

@@ -1,0 +1,175 @@
+{
+  "schema_version": "priority_quality_report_v1",
+  "generated_at": "2026-04-04T03:25:01Z",
+  "quality_gate_policy_version": "quality_gate_v1",
+  "thresholds": {
+    "min_audit_pass_rate": 0.9,
+    "min_priority_pass_rate_p1": 0.8,
+    "min_priority_pass_rate_p2": 0.8,
+    "max_priority_gap_vs_p4": 0.15,
+    "max_scenario_context_missing_rate": 0.15,
+    "max_requester_role_missing_rate": 0.05,
+    "min_requester_role_match_rate": 0.85,
+    "min_surface_contradiction_ratio": 0.1,
+    "min_near_tie_ratio": 0.1,
+    "min_surface_contradiction_count": 3,
+    "min_near_tie_count": 3
+  },
+  "counts": {
+    "events": 174,
+    "dialogues_raw": 348,
+    "dialogues_accepted": 348,
+    "pipeline_windows": 48,
+    "hard_windows": 41
+  },
+  "metrics": {
+    "dialogue_audit_pass_rate": 1.0,
+    "dialogue_audit_pass_by_priority": {
+      "1": {
+        "passed": 80,
+        "total": 80,
+        "rate": 1.0
+      },
+      "3": {
+        "passed": 28,
+        "total": 28,
+        "rate": 1.0
+      },
+      "4": {
+        "passed": 240,
+        "total": 240,
+        "rate": 1.0
+      }
+    },
+    "dialogue_observability": {
+      "mean": 0.917,
+      "median": 0.9,
+      "min": 0.75,
+      "max": 1.0
+    },
+    "missing_must_mention_counts": {},
+    "missing_must_mention_rates": {},
+    "requester_role_pipeline": {
+      "total": 348,
+      "matched": 336,
+      "missing": 0,
+      "match_rate": 0.9655,
+      "missing_rate": 0.0,
+      "top_drifts": [
+        {
+          "expected": "consumer",
+          "observed": "customer",
+          "count": 10
+        },
+        {
+          "expected": "clinical_pharmacist",
+          "observed": "office_administrator",
+          "count": 1
+        },
+        {
+          "expected": "ward_coordinator",
+          "observed": "icu_nurse",
+          "count": 1
+        }
+      ]
+    },
+    "hard_case_coverage": {
+      "total": 41,
+      "counts": {
+        "counterfactual": 33,
+        "mixed_priority": 1,
+        "surface_contradiction": 4,
+        "near_tie": 3,
+        "other": 0
+      },
+      "ratios": {
+        "counterfactual": 0.8049,
+        "mixed_priority": 0.0244,
+        "surface_contradiction": 0.0976,
+        "near_tie": 0.0732,
+        "other": 0.0
+      }
+    }
+  },
+  "checks": {
+    "audit_pass_rate": {
+      "value": 1.0,
+      "threshold": {
+        "min": 0.9
+      },
+      "passed": true
+    },
+    "priority_1_audit_pass_rate": {
+      "value": 1.0,
+      "threshold": {
+        "min": 0.8
+      },
+      "passed": true
+    },
+    "priority_2_audit_pass_rate": {
+      "value": null,
+      "threshold": {
+        "min": 0.8
+      },
+      "passed": true,
+      "skipped": true,
+      "reason": "No priority-2 dialogues in this shard"
+    },
+    "priority_gap_vs_p4": {
+      "value": 0.0,
+      "threshold": {
+        "max": 0.15
+      },
+      "passed": true
+    },
+    "scenario_context_missing_rate": {
+      "value": 0.0,
+      "threshold": {
+        "max": 0.15
+      },
+      "passed": true
+    },
+    "requester_role_missing_rate": {
+      "value": 0.0,
+      "threshold": {
+        "max": 0.05
+      },
+      "passed": true
+    },
+    "requester_role_match_rate": {
+      "value": 0.9655,
+      "threshold": {
+        "min": 0.85
+      },
+      "passed": true
+    },
+    "surface_contradiction_ratio": {
+      "value": 0.0976,
+      "threshold": {
+        "min": 0.1
+      },
+      "passed": false
+    },
+    "near_tie_ratio": {
+      "value": 0.0732,
+      "threshold": {
+        "min": 0.1
+      },
+      "passed": false
+    },
+    "surface_contradiction_count": {
+      "value": 4.0,
+      "threshold": {
+        "min": 3.0
+      },
+      "passed": true
+    },
+    "near_tie_count": {
+      "value": 3.0,
+      "threshold": {
+        "min": 3.0
+      },
+      "passed": true
+    }
+  }
+}

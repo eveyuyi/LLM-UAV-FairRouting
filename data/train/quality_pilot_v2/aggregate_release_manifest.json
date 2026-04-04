@@ -1,0 +1,57 @@
+{
+  "schema_version": "priority_aggregate_release_manifest_v1",
+  "generated_at": "2026-04-04T04:01:11Z",
+  "root_dir": "/data/code/LLM-UAV-FairRouting/data/train/quality_pilot_v2",
+  "status_counts": {
+    "needs_regen": 8
+  },
+  "shards_by_status": {
+    "needs_regen": [
+      "seed_3001",
+      "seed_3002",
+      "seed_3003",
+      "seed_3004",
+      "seed_3005",
+      "seed_3006",
+      "seed_3007",
+      "seed_3008"
+    ]
+  },
+  "recommended_training_files": {
+    "llm3_sft_clean": [
+      "/data/code/LLM-UAV-FairRouting/data/train/quality_pilot_v2/seed_3001/llm3_sft_clean.jsonl",
+      "/data/code/LLM-UAV-FairRouting/data/train/quality_pilot_v2/seed_3002/llm3_sft_clean.jsonl",
+      "/data/code/LLM-UAV-FairRouting/data/train/quality_pilot_v2/seed_3003/llm3_sft_clean.jsonl",
+      "/data/code/LLM-UAV-FairRouting/data/train/quality_pilot_v2/seed_3004/llm3_sft_clean.jsonl",
+      "/data/code/LLM-UAV-FairRouting/data/train/quality_pilot_v2/seed_3005/llm3_sft_clean.jsonl",
+      "/data/code/LLM-UAV-FairRouting/data/train/quality_pilot_v2/seed_3006/llm3_sft_clean.jsonl",
+      "/data/code/LLM-UAV-FairRouting/data/train/quality_pilot_v2/seed_3007/llm3_sft_clean.jsonl",
+      "/data/code/LLM-UAV-FairRouting/data/train/quality_pilot_v2/seed_3008/llm3_sft_clean.jsonl"
+    ],
+    "llm2_sft": [
+      "/data/code/LLM-UAV-FairRouting/data/train/quality_pilot_v2/seed_3001/llm2_sft.jsonl",
+      "/data/code/LLM-UAV-FairRouting/data/train/quality_pilot_v2/seed_3002/llm2_sft.jsonl",
+      "/data/code/LLM-UAV-FairRouting/data/train/quality_pilot_v2/seed_3003/llm2_sft.jsonl",
+      "/data/code/LLM-UAV-FairRouting/data/train/quality_pilot_v2/seed_3004/llm2_sft.jsonl",
+      "/data/code/LLM-UAV-FairRouting/data/train/quality_pilot_v2/seed_3005/llm2_sft.jsonl",
+      "/data/code/LLM-UAV-FairRouting/data/train/quality_pilot_v2/seed_3006/llm2_sft.jsonl",
+      "/data/code/LLM-UAV-FairRouting/data/train/quality_pilot_v2/seed_3007/llm2_sft.jsonl",
+      "/data/code/LLM-UAV-FairRouting/data/train/quality_pilot_v2/seed_3008/llm2_sft.jsonl"
+    ],
+    "llm3_sft_pipeline": [
+      "/data/code/LLM-UAV-FairRouting/data/train/quality_pilot_v2/seed_3001/llm3_sft_pipeline.jsonl",
+      "/data/code/LLM-UAV-FairRouting/data/train/quality_pilot_v2/seed_3002/llm3_sft_pipeline.jsonl",
+      "/data/code/LLM-UAV-FairRouting/data/train/quality_pilot_v2/seed_3003/llm3_sft_pipeline.jsonl",
+      "/data/code/LLM-UAV-FairRouting/data/train/quality_pilot_v2/seed_3004/llm3_sft_pipeline.jsonl",
+      "/data/code/LLM-UAV-FairRouting/data/train/quality_pilot_v2/seed_3005/llm3_sft_pipeline.jsonl",
+      "/data/code/LLM-UAV-FairRouting/data/train/quality_pilot_v2/seed_3006/llm3_sft_pipeline.jsonl",
+      "/data/code/LLM-UAV-FairRouting/data/train/quality_pilot_v2/seed_3007/llm3_sft_pipeline.jsonl",
+      "/data/code/LLM-UAV-FairRouting/data/train/quality_pilot_v2/seed_3008/llm3_sft_pipeline.jsonl"
+    ]
+  },
+  "aggregate_counts": {
+    "llm3_sft_clean": 192,
+    "llm2_sft": 2848,
+    "llm3_sft_pipeline": 384
+  }
+}
