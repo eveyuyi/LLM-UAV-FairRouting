@@ -91,6 +91,7 @@ TRUTH_DEMANDS_PATH=""
 RUN_WORKFLOW_EXTRA_ARGS=()
 TIME_SLOT_ARGS=()
 TRUTH_ARGS=()
+SELECTION_MANIFEST_PATH=""
 
 prepare_llm3_only_inputs() {
   if [[ -z "${FIXED_EXTRACTED_DEMANDS}" ]]; then
@@ -192,6 +193,7 @@ PY
   ALIGNMENT_DEMANDS_PATH="${selected_demands}"
   TRUTH_DEMANDS_PATH="${selected_demands}"
   RUN_WORKFLOW_EXTRA_ARGS=(--extracted-demands "${selected_demands}")
+  SELECTION_MANIFEST_PATH="${selection_manifest}"
 
   if [[ "${TRUTH_SOURCE}" == "auto" ]]; then
     TRUTH_SOURCE="fixed_demands"
@@ -356,18 +358,28 @@ cat > "${OUTPUT_ROOT}/evals/eval_manifest.json" <<EOF
   "truth_source": "${TRUTH_SOURCE}",
   "fixed_extracted_demands": "${FIXED_EXTRACTED_DEMANDS}",
   "selected_alignment_demands": "${ALIGNMENT_DEMANDS_PATH}",
+  "selection_manifest": "${SELECTION_MANIFEST_PATH}",
+  "slot_sampling": "",
   "pre_run_dir": "${PRE_RUN_DIR}",
   "post_run_dir": "${POST_RUN_DIR}",
   "pre_alignment": "${OUTPUT_ROOT}/evals/pre_alignment.json",
   "post_alignment": "${OUTPUT_ROOT}/evals/post_alignment.json",
   "post_vs_pre_alignment_delta": "${OUTPUT_ROOT}/evals/post_vs_pre_alignment_delta.json",
+  "summary_json": "${OUTPUT_ROOT}/evals/summary.json",
+  "summary_md": "${OUTPUT_ROOT}/evals/summary.md",
   "time_slots": "${TIME_SLOTS_STR}",
   "urgent_threshold": ${URGENT_THRESHOLD}
 }
 EOF
+
+PYTHONPATH=src "${_py[@]}" evals/build_pre_post_eval_summary.py \
+  --manifest "${OUTPUT_ROOT}/evals/eval_manifest.json" \
+  --output-json "${OUTPUT_ROOT}/evals/summary.json" \
+  --output-md "${OUTPUT_ROOT}/evals/summary.md"
 
 echo ""
 echo "Finished rank-only pre/post evaluation."
 echo "  pre_run_dir  : ${PRE_RUN_DIR}"
 echo "  post_run_dir : ${POST_RUN_DIR}"
 echo "  eval outputs : ${OUTPUT_ROOT}/evals"
+echo "  quick summary: ${OUTPUT_ROOT}/evals/summary.md"

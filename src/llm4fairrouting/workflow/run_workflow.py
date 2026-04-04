@@ -247,7 +247,15 @@ def run_workflow(
     nsga3_seed: int = 42,
     nsga3_save_all_candidate_results: bool = False,
 ):
-    """Run the workflow from a canonical dialogue dataset through ranking and solving."""
+    """Run the workflow from a canonical dialogue dataset through ranking and solving.
+
+    Backward compatibility note:
+    - When ``extracted_demands_path`` is ``None`` (the default), the workflow behaves the
+      same as before and executes Module 2 on the provided dialogues.
+    - When ``extracted_demands_path`` is set, Module 2 is intentionally skipped and the
+      provided precomputed window demands are used as the fixed input to Module 3 and the
+      solver. This is mainly for evaluation/debugging, especially pure-LLM3 comparisons.
+    """
     base_dir = Path(output_dir)
     run_dir = _build_run_dir(base_dir, model, noise_weight)
     run_dir.mkdir(parents=True, exist_ok=True)
