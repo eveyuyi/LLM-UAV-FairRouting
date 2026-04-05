@@ -43,3 +43,8 @@ dist/
 # Test and local verification artifacts
 /.test_artifacts/
 /verification_tmp/
+
+# Local audit and training artifacts
+/=10.1
+/data/audits/
+/tensorboard_log/
