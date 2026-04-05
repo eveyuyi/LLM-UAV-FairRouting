@@ -11,6 +11,7 @@ set -euo pipefail
 
 SFT_CKPT_DIR="${1:-data/checkpoints/llm3_sft/global_step_1}"
 TARGET_DIR="${2:-data/checkpoints/llm3_sft_merged_hf/global_step_1}"
+MERGE_SKIP_MODEL_LOAD_CHECK="${MERGE_SKIP_MODEL_LOAD_CHECK:-0}"
 
 if [[ ! -d "${SFT_CKPT_DIR}" ]]; then
   echo "Checkpoint directory not found: ${SFT_CKPT_DIR}" >&2
@@ -109,6 +110,12 @@ if [[ "${WEIGHT_OK}" -eq 0 ]]; then
 fi
 
 echo "[3/3] Loading merged model/tokenizer"
+if [[ "${MERGE_SKIP_MODEL_LOAD_CHECK}" == "1" ]]; then
+  echo "Skipping full merged-model load check (MERGE_SKIP_MODEL_LOAD_CHECK=1)."
+  echo "Warm-start path ready: ${TARGET_DIR}"
+  exit 0
+fi
+
 export TARGET_DIR
 PYTHONNOUSERSITE=1 python - <<'PY'
 import os

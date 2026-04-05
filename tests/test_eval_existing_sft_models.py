@@ -38,14 +38,9 @@ def test_eval_existing_sft_models_dry_run_checkpoint_root(tmp_path: Path) -> Non
     ]
     subprocess.run(cmd, cwd=REPO_ROOT, check=True)
 
-    manifest = json.loads(
-        (
-            output_root
-            / "sft"
-            / "sft_imported_legacy_legacy_trial"
-            / "trial_manifest.json"
-        ).read_text(encoding="utf-8")
-    )
+    manifests = list((output_root / "sft").glob("sft_imported_legacy_legacy_trial_*/trial_manifest.json"))
+    assert len(manifests) == 1
+    manifest = json.loads(manifests[0].read_text(encoding="utf-8"))
     assert manifest["status"] == "planned"
     assert manifest["params"]["source_type"] == "checkpoint_root"
     assert manifest["evaluation"]["enabled"] is True

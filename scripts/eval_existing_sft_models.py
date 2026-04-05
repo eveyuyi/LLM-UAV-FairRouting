@@ -20,6 +20,7 @@ For each supplied model, this script will:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.util
 import json
 import re
@@ -46,6 +47,10 @@ def _safe_name(text: str) -> str:
     lowered = text.strip().lower()
     sanitized = re.sub(r"[^a-z0-9]+", "_", lowered).strip("_")
     return sanitized or "model"
+
+
+def _path_fingerprint(path: Path) -> str:
+    return hashlib.sha1(str(path.resolve()).encode("utf-8")).hexdigest()[:8]
 
 
 def _parse_model_specs(raw_specs: Sequence[str]) -> List[Tuple[str, Path]]:
@@ -127,6 +132,7 @@ def parse_args(module) -> argparse.Namespace:
     parser.add_argument("--startup-poll-interval-s", type=float, default=2.0)
     parser.add_argument("--stations-path", type=Path, default=module.DEFAULT_STATIONS_PATH)
     parser.add_argument("--building-data-path", type=Path, default=module.DEFAULT_BUILDING_DATA_PATH)
+    parser.add_argument("--skip-merge-load-check", action="store_true")
     parser.add_argument("--skip-existing", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     return parser.parse_args()
@@ -173,6 +179,7 @@ def main() -> None:
         "test_seeds": [int(path.name.split("_", 1)[1]) for path in test_dirs],
         "models": [str(path.resolve()) for _, path in model_specs],
         "eval": asdict(eval_settings),
+        "skip_merge_load_check": bool(args.skip_merge_load_check),
         "dry_run": args.dry_run,
     }
     _write_json(output_root / "eval_plan.json", plan)
@@ -182,7 +189,9 @@ def main() -> None:
     for alias, raw_path in model_specs:
         source = _resolve_model_source(module, raw_path)
         source_basename = Path(str(source["resolved_path"])).name
-        trial_name = f"sft_imported_{_safe_name(alias)}_{_safe_name(source_basename)}"
+        trial_name = (
+            f"sft_imported_{_safe_name(alias)}_{_safe_name(source_basename)}_{_path_fingerprint(Path(str(source['resolved_path'])))}"
+        )
         trial_dir = output_root / "sft" / trial_name
         manifest_path = trial_dir / "trial_manifest.json"
 
@@ -199,6 +208,7 @@ def main() -> None:
                 sft_checkpoint_dir=latest_checkpoint,
                 merged_model_dir=trial_dir / "merged_hf" / latest_checkpoint.name,
                 conda_env=args.conda_env,
+                skip_model_load_check=bool(args.skip_merge_load_check),
                 dry_run=args.dry_run,
             )
         else:

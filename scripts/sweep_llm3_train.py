@@ -656,6 +656,7 @@ def ensure_hf_checkpoint(
     sft_checkpoint_dir: Path,
     merged_model_dir: Path,
     conda_env: str,
+    skip_model_load_check: bool = False,
     dry_run: bool,
 ) -> Path:
     if dry_run:
@@ -682,7 +683,12 @@ def ensure_hf_checkpoint(
     rc = run_command(
         command,
         cwd=REPO_ROOT,
-        env=dict(os.environ),
+        env=env_with_overrides(
+            os.environ,
+            {
+                "MERGE_SKIP_MODEL_LOAD_CHECK": 1 if skip_model_load_check else 0,
+            },
+        ),
         log_path=merged_model_dir.parent / "merge_to_hf.log",
         dry_run=dry_run,
     )
