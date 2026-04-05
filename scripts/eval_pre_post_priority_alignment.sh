@@ -332,7 +332,7 @@ run_rank_only_once() {
   mkdir -p "${out_base}"
 
   echo "[${tag}] rank-only workflow (skip solver), model=${model}, api_base=${api_base}" >&2
-  OPENAI_API_KEY="${API_KEY}" OPENAI_BASE_URL="${api_base}" PYTHONPATH=src \
+  OPENAI_API_KEY="${API_KEY}" OPENAI_BASE_URL="${api_base}" LLM4FAIRROUTING_TIME_SLOTS="${TIME_SLOTS_STR}" PYTHONPATH=src \
   "${_py[@]}" -m llm4fairrouting.workflow.run_workflow \
     --output-dir "${out_base}" \
     --dialogues "${DIALOGUES}" \
