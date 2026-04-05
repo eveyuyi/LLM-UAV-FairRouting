@@ -228,6 +228,15 @@ python scripts/sweep_llm3_train.py \
   --test-seeds 4111-4112
 ```
 
+Each completed SFT trial now also:
+
+- merges the latest checkpoint into a temporary HuggingFace model directory
+- runs a `rule-only` cached baseline on the validation seeds
+- serves the trial checkpoint with vLLM
+- runs `rank-only` validation in pure `LLM3` mode by default
+- writes aggregated validation metrics into the trial manifest
+- refreshes `leaderboard.jsonl` and `leaderboard.csv` under the sweep output root
+
 After picking one or more SFT checkpoints, launch a GRPO sweep against that chosen base trial:
 
 ```bash
