@@ -385,13 +385,12 @@ PYTHONPATH=src "${_py[@]}" evals/eval_priority_alignment.py \
   --output "${OUTPUT_ROOT}/evals/post_alignment.json"
 
 echo "[eval] alignment delta (post - pre)"
-PYTHONPATH=src "${_py[@]}" - <<'PY'
+OUTPUT_ROOT="${OUTPUT_ROOT}" PYTHONPATH=src "${_py[@]}" - <<'PY'
 import json
+import os
 from pathlib import Path
 
-output_root = Path("data/eval_runs/pre_post_rank_only")
-if "OUTPUT_ROOT" in __import__("os").environ:
-    output_root = Path(__import__("os").environ["OUTPUT_ROOT"])
+output_root = Path(os.environ["OUTPUT_ROOT"])
 
 pre_path = output_root / "evals" / "pre_alignment.json"
 post_path = output_root / "evals" / "post_alignment.json"
