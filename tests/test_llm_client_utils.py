@@ -50,7 +50,7 @@ def test_call_llm_retries_before_succeeding(monkeypatch):
 
     assert result == '{"status": "ok"}'
     assert client.completions.calls == 3
-    assert sleep_calls == [2.0, 2.0]
+    assert sleep_calls == [3.0, 6.0]
 
 
 def test_call_llm_does_not_retry_non_retryable_context_error(monkeypatch):
@@ -82,7 +82,7 @@ def test_call_llm_does_not_retry_non_retryable_context_error(monkeypatch):
 
 
 class _FakeOpenAI:
-    def __init__(self, *, base_url: str, api_key: str):
+    def __init__(self, *, base_url: str, api_key: str, **_: object):
         self.base_url = base_url
         self.api_key = api_key
 

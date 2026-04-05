@@ -393,7 +393,14 @@ def _call_llm_rank(
     )
 
     prompt = weight_adjustment_prompt(demands, city_context)
-    raw = call_llm(client, model, DRONE_SYSTEM_PROMPT, prompt, temperature)
+    raw = call_llm(
+        client,
+        model,
+        DRONE_SYSTEM_PROMPT,
+        prompt,
+        temperature,
+        max_tokens=env_int("LLM4FAIRROUTING_PRIORITY_MAX_OUTPUT_TOKENS", 700),
+    )
     return _normalize_weight_config(parse_json_response(raw))
 
 

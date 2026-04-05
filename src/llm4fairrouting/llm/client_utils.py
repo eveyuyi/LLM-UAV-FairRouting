@@ -51,6 +51,7 @@ def call_llm(
     user_prompt: str,
     temperature: float = 0.0,
     max_retries: int = 5,
+    max_tokens: int | None = None,
 ) -> str:
     """Call the chat-completions API with a small retry loop."""
     last_err = None
@@ -63,7 +64,7 @@ def call_llm(
                     {"role": "user", "content": user_prompt},
                 ],
                 temperature=temperature,
-                max_tokens=int(os.getenv(MAX_OUTPUT_TOKENS_ENV, "1200")),
+                max_tokens=max_tokens if max_tokens is not None else int(os.getenv(MAX_OUTPUT_TOKENS_ENV, "1200")),
             )
             return resp.choices[0].message.content or ""
         except Exception as exc:
