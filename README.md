@@ -251,13 +251,15 @@ python scripts/sweep_llm3_train.py \
 ```
 
 Each completed GRPO trial now also:
+does not auto-run model serving or validation anymore.
 
-- merges the latest actor checkpoint into a temporary HuggingFace model directory
-- reuses a cached validation baseline from the selected base SFT trial
-- serves the GRPO checkpoint with vLLM
-- runs `rank-only` validation in pure `LLM3` mode by default
-- writes aggregated validation metrics into the trial manifest
-- refreshes `grpo_leaderboard.jsonl` and `grpo_leaderboard.csv` under the sweep output root
+The recommended GRPO workflow is now:
+
+1. train the GRPO trial and keep the checkpoint manifest
+2. merge the chosen `global_step_*` checkpoint into a HuggingFace directory
+3. deploy the merged model on a fixed port with `scripts/serve_vllm_model.sh`
+4. compare it against the base model with `scripts/eval_pre_post_priority_alignment.sh`
+5. aggregate multiple manual eval runs with `scripts/aggregate_rank_only_evals.py`
 
 #### Module 1
 
