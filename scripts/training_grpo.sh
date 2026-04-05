@@ -52,6 +52,7 @@ FAIL_ON_EXISTING_CKPT_DIR="${FAIL_ON_EXISTING_CKPT_DIR:-1}"
 GRPO_TRAIN_BATCH_SIZE="${GRPO_TRAIN_BATCH_SIZE:-16}"
 GRPO_PPO_MINI_BATCH_SIZE="${GRPO_PPO_MINI_BATCH_SIZE:-8}"
 GRPO_ROLLOUT_N="${GRPO_ROLLOUT_N:-2}"
+GRPO_ACTOR_LR="${GRPO_ACTOR_LR:-1e-6}"
 # 默认不自动恢复，避免 CKPT_DIR 里旧实验与当前合并后 HF 权重不兼容。
 GRPO_RESUME_MODE="${GRPO_RESUME_MODE:-disable}"
 GRPO_MODEL_DTYPE="${GRPO_MODEL_DTYPE:-bfloat16}"
@@ -65,6 +66,10 @@ GRPO_MAX_NUM_BATCHED_TOKENS="${GRPO_MAX_NUM_BATCHED_TOKENS:-8192}"
 # 否则像 Qwen3 的 262144 会直接把 KV cache 撑爆（4 卡更容易）。
 GRPO_ROLLOUT_MAX_MODEL_LEN="${GRPO_ROLLOUT_MAX_MODEL_LEN:-4096}"
 GRPO_ROLLOUT_GPU_MEM_UTIL="${GRPO_ROLLOUT_GPU_MEM_UTIL:-0.5}"
+GRPO_KL_LOSS_COEF="${GRPO_KL_LOSS_COEF:-0.001}"
+GRPO_TOTAL_EPOCHS="${GRPO_TOTAL_EPOCHS:-1}"
+GRPO_SAVE_FREQ="${GRPO_SAVE_FREQ:-20}"
+GRPO_TEST_FREQ="${GRPO_TEST_FREQ:-10}"
 # CONDA_ENV 留空则用当前环境的 python
 
 if [[ -n "${CONDA_ENV}" ]]; then
@@ -129,7 +134,7 @@ if [[ "${FORCE_REEXPORT_GRPO}" == 1 || ! -f "${GRPO_TRAIN_FILE}" || ! -f "${GRPO
   echo "reserved test dirs (${#TEST_INPUT_DIRS[@]}): ${TEST_INPUT_DIRS[*]}"
 fi
 
-echo "GPUs=${NPROC_PER_NODE} train_batch=${GRPO_TRAIN_BATCH_SIZE} rollout_n=${GRPO_ROLLOUT_N} ppo_mini_batch=${GRPO_PPO_MINI_BATCH_SIZE} resume=${GRPO_RESUME_MODE} model_dtype=${GRPO_MODEL_DTYPE} dataloader_workers=${GRPO_DATALOADER_WORKERS} max_model_len=${GRPO_ROLLOUT_MAX_MODEL_LEN} rollout_gpu_mem=${GRPO_ROLLOUT_GPU_MEM_UTIL} conda=${CONDA_ENV:-<none>} train=${GRPO_TRAIN_FILE} val=${GRPO_VAL_FILE} model=${MODEL_PATH} ckpt=${CKPT_DIR} force_reexport=${FORCE_REEXPORT_GRPO}"
+echo "GPUs=${NPROC_PER_NODE} train_batch=${GRPO_TRAIN_BATCH_SIZE} rollout_n=${GRPO_ROLLOUT_N} ppo_mini_batch=${GRPO_PPO_MINI_BATCH_SIZE} actor_lr=${GRPO_ACTOR_LR} kl=${GRPO_KL_LOSS_COEF} epochs=${GRPO_TOTAL_EPOCHS} resume=${GRPO_RESUME_MODE} model_dtype=${GRPO_MODEL_DTYPE} dataloader_workers=${GRPO_DATALOADER_WORKERS} max_model_len=${GRPO_ROLLOUT_MAX_MODEL_LEN} rollout_gpu_mem=${GRPO_ROLLOUT_GPU_MEM_UTIL} conda=${CONDA_ENV:-<none>} train=${GRPO_TRAIN_FILE} val=${GRPO_VAL_FILE} model=${MODEL_PATH} ckpt=${CKPT_DIR} force_reexport=${FORCE_REEXPORT_GRPO}"
 
 "${_py[@]}" -m verl.trainer.main_ppo \
   algorithm.adv_estimator=grpo \
@@ -147,11 +152,11 @@ echo "GPUs=${NPROC_PER_NODE} train_batch=${GRPO_TRAIN_BATCH_SIZE} rollout_n=${GR
   actor_rollout_ref.actor.fsdp_config.use_torch_compile="${GRPO_TORCH_COMPILE}" \
   actor_rollout_ref.ref.fsdp_config.model_dtype="${GRPO_MODEL_DTYPE}" \
   actor_rollout_ref.ref.fsdp_config.use_torch_compile="${GRPO_TORCH_COMPILE}" \
-  actor_rollout_ref.actor.optim.lr=1e-6 \
+  actor_rollout_ref.actor.optim.lr="${GRPO_ACTOR_LR}" \
   actor_rollout_ref.actor.ppo_mini_batch_size="${GRPO_PPO_MINI_BATCH_SIZE}" \
   actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=1 \
   actor_rollout_ref.actor.use_kl_loss=True \
-  actor_rollout_ref.actor.kl_loss_coef=0.001 \
+  actor_rollout_ref.actor.kl_loss_coef="${GRPO_KL_LOSS_COEF}" \
   actor_rollout_ref.actor.kl_loss_type=low_var_kl \
   actor_rollout_ref.actor.entropy_coeff=0.0 \
   actor_rollout_ref.model.use_remove_padding=False \
@@ -178,6 +183,6 @@ echo "GPUs=${NPROC_PER_NODE} train_batch=${GRPO_TRAIN_BATCH_SIZE} rollout_n=${GR
   "hydra.sweep.dir=${HYDRA_ROOT}/multirun/"'${now:%Y-%m-%d}/${now:%H-%M-%S}' \
   trainer.n_gpus_per_node="${NPROC_PER_NODE}" \
   trainer.nnodes=1 \
-  trainer.save_freq=20 \
-  trainer.test_freq=10 \
-  trainer.total_epochs=1
+  trainer.save_freq="${GRPO_SAVE_FREQ}" \
+  trainer.test_freq="${GRPO_TEST_FREQ}" \
+  trainer.total_epochs="${GRPO_TOTAL_EPOCHS}"

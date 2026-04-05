@@ -207,6 +207,40 @@ Online generation can also be parallelized:
 - `llm4fairrouting-data-quality <dataset_dir>` recomputes `quality_report.json` and `release_manifest.json`
 - `llm4fairrouting-release-manifest <root_dir>` aggregates per-shard release manifests into one batch-level release plan
 
+#### Medium-Scale LLM3 Sweep
+
+For medium-scale `LLM3` tuning, keep the split at the seed level instead of randomly splitting windows:
+
+- `train`: several seed shards for SFT / GRPO
+- `val`: a small fixed set of seed shards for model selection
+- `test`: a fixed set of seed shards reserved for final evaluation only
+
+The sweep runner reuses `scripts/training_sft.sh` and `scripts/training_grpo.sh` and writes one `trial_manifest.json` per trial:
+
+```bash
+python scripts/sweep_llm3_train.py \
+  --dataset-root data/train/llm3_medium_5min_v1 \
+  --output-root data/sweeps/llm3_medium_sweep_v1 \
+  --stage sft \
+  --model-path /path/to/Qwen3-4B-Instruct \
+  --train-seeds 4101-4108 \
+  --val-seeds 4109-4110 \
+  --test-seeds 4111-4112
+```
+
+After picking one or more SFT checkpoints, launch a GRPO sweep against that chosen base trial:
+
+```bash
+python scripts/sweep_llm3_train.py \
+  --dataset-root data/train/llm3_medium_5min_v1 \
+  --output-root data/sweeps/llm3_medium_sweep_v1 \
+  --stage grpo \
+  --train-seeds 4101-4108 \
+  --val-seeds 4109-4110 \
+  --test-seeds 4111-4112 \
+  --grpo-base-sft-trial sft_pipeline_lr1em4_bs128
+```
+
 #### Module 1
 
 - Files: `src/llm4fairrouting/data/demand_dialogue_dataset.py`, `src/llm4fairrouting/llm/dialogue_generation.py`
