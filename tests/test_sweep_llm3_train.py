@@ -225,3 +225,86 @@ def test_aggregate_alignment_results_and_refresh_leaderboard(tmp_path: Path) -> 
     ]
     assert rows[0]["trial_name"] == "trial_a"
     assert rows[0]["leaderboard_rank"] == 1
+
+
+def test_refresh_grpo_leaderboard(tmp_path: Path) -> None:
+    module = _load_module()
+
+    output_root = tmp_path / "sweep"
+    trial_a = output_root / "grpo" / "base_a" / "trial_a"
+    trial_b = output_root / "grpo" / "base_a" / "trial_b"
+    trial_a.mkdir(parents=True, exist_ok=True)
+    trial_b.mkdir(parents=True, exist_ok=True)
+
+    def _write_manifest(path: Path, trial_name: str, priority_1_recall: float, top_k_hit_rate: float) -> None:
+        payload = {
+            "stage": "grpo",
+            "status": "completed",
+            "trial_name": trial_name,
+            "base_sft_trial": "base_a",
+            "params": {
+                "actor_lr": "1e-6",
+                "rollout_n": 2,
+                "ppo_mini_batch_size": 8,
+                "kl_loss_coef": "1e-3",
+            },
+            "paths": {
+                "latest_checkpoint": str(path / "checkpoints" / "global_step_20"),
+                "trial_dir": str(path),
+            },
+            "splits": {"val_seeds": [4109, 4110]},
+            "evaluation": {
+                "enabled": True,
+                "priority_mode": "llm-only",
+                "baseline_mode": "base-sft",
+                "baseline": {
+                    "metrics": {
+                        "priority_1_recall": 0.5,
+                        "top_k_hit_rate": 0.5,
+                        "urgent_f1": 0.6,
+                        "macro_f1": 0.6,
+                        "accuracy": 0.6,
+                    }
+                },
+                "post": {
+                    "metrics": {
+                        "n_aligned_demands": 20,
+                        "priority_1_recall": priority_1_recall,
+                        "top_k_hit_rate": top_k_hit_rate,
+                        "urgent_f1": 0.7,
+                        "macro_f1": 0.65,
+                        "accuracy": 0.7,
+                        "weighted_f1": 0.7,
+                        "spearman": 0.8,
+                        "kendall_tau": 0.7,
+                        "priority_1_f1": 0.6,
+                        "urgent_recall": 0.8,
+                    }
+                },
+                "delta_vs_baseline": {
+                    "priority_1_recall": round(priority_1_recall - 0.5, 6),
+                    "top_k_hit_rate": round(top_k_hit_rate - 0.5, 6),
+                    "urgent_f1": 0.1,
+                    "macro_f1": 0.05,
+                    "accuracy": 0.1,
+                    "weighted_f1": 0.1,
+                    "spearman": 0.1,
+                    "kendall_tau": 0.1,
+                    "priority_1_f1": 0.1,
+                    "urgent_recall": 0.1,
+                },
+            },
+        }
+        (path / "trial_manifest.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    _write_manifest(trial_a, "trial_a", priority_1_recall=0.9, top_k_hit_rate=0.8)
+    _write_manifest(trial_b, "trial_b", priority_1_recall=0.6, top_k_hit_rate=0.9)
+
+    module._refresh_grpo_leaderboard(output_root)
+    rows = [
+        json.loads(line)
+        for line in (output_root / "grpo_leaderboard.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert rows[0]["trial_name"] == "trial_a"
+    assert rows[0]["leaderboard_rank"] == 1

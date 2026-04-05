@@ -128,7 +128,7 @@ def parse_args(module) -> argparse.Namespace:
     parser.add_argument("--no-trust-remote-code", action="store_true")
     parser.add_argument("--urgent-threshold", type=int, default=2)
     parser.add_argument("--port-base", type=int, default=19080)
-    parser.add_argument("--startup-timeout-s", type=int, default=180)
+    parser.add_argument("--startup-timeout-s", type=int, default=300)
     parser.add_argument("--startup-poll-interval-s", type=float, default=2.0)
     parser.add_argument("--stations-path", type=Path, default=module.DEFAULT_STATIONS_PATH)
     parser.add_argument("--building-data-path", type=Path, default=module.DEFAULT_BUILDING_DATA_PATH)
@@ -169,6 +169,7 @@ def main() -> None:
         startup_poll_interval_s=args.startup_poll_interval_s,
         stations_path=str(args.stations_path.resolve()),
         building_data_path=str(args.building_data_path.resolve()),
+        skip_merge_load_check=bool(args.skip_merge_load_check),
     )
 
     plan = {

@@ -250,6 +250,15 @@ python scripts/sweep_llm3_train.py \
   --grpo-base-sft-trial sft_pipeline_lr1em4_bs128
 ```
 
+Each completed GRPO trial now also:
+
+- merges the latest actor checkpoint into a temporary HuggingFace model directory
+- reuses a cached validation baseline from the selected base SFT trial
+- serves the GRPO checkpoint with vLLM
+- runs `rank-only` validation in pure `LLM3` mode by default
+- writes aggregated validation metrics into the trial manifest
+- refreshes `grpo_leaderboard.jsonl` and `grpo_leaderboard.csv` under the sweep output root
+
 #### Module 1
 
 - Files: `src/llm4fairrouting/data/demand_dialogue_dataset.py`, `src/llm4fairrouting/llm/dialogue_generation.py`

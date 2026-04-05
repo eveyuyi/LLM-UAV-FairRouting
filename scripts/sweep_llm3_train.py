@@ -101,6 +101,7 @@ class EvalSettings:
     startup_poll_interval_s: float
     stations_path: str
     building_data_path: str
+    skip_merge_load_check: bool
 
 
 def _utc_now() -> str:
@@ -458,16 +459,33 @@ def _find_free_port() -> int:
         return int(handle.getsockname()[1])
 
 
-def _wait_for_http_ready(url: str, timeout_s: int, interval_s: float) -> None:
+def _tail_text(path: Path, lines: int = 40) -> str:
+    if not path.is_file():
+        return ""
+    content = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    if not content:
+        return ""
+    return "\n".join(content[-lines:])
+
+
+def _wait_for_http_ready(url: str, timeout_s: int, interval_s: float, *, process=None, log_path: Optional[Path] = None) -> None:
     deadline = time.time() + timeout_s
     while time.time() < deadline:
+        if process is not None and process.poll() is not None:
+            tail = _tail_text(log_path) if log_path is not None else ""
+            detail = f"\n--- server.log tail ---\n{tail}" if tail else ""
+            raise RuntimeError(
+                f"Model server exited before becoming ready (code={process.returncode}).{detail}"
+            )
         try:
             with urllib.request.urlopen(url, timeout=5) as response:
                 if 200 <= int(response.status) < 500:
                     return
         except (urllib.error.URLError, TimeoutError, ConnectionError, OSError):
             time.sleep(interval_s)
-    raise TimeoutError(f"Timed out waiting for server readiness: {url}")
+    tail = _tail_text(log_path) if log_path is not None else ""
+    detail = f"\n--- server.log tail ---\n{tail}" if tail else ""
+    raise TimeoutError(f"Timed out waiting for server readiness: {url}.{detail}")
 
 
 def _build_trial_record_row(manifest: Dict[str, object]) -> Dict[str, object]:
@@ -535,6 +553,73 @@ def _refresh_sft_leaderboard(output_root: Path) -> None:
 
     jsonl_path = output_root / "leaderboard.jsonl"
     csv_path = output_root / "leaderboard.csv"
+    jsonl_path.parent.mkdir(parents=True, exist_ok=True)
+    with jsonl_path.open("w", encoding="utf-8") as handle:
+        for row in rows:
+            handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+    if rows:
+        fieldnames = list(rows[0].keys())
+        with csv_path.open("w", encoding="utf-8", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(rows)
+
+
+def _refresh_grpo_leaderboard(output_root: Path) -> None:
+    manifests = sorted(output_root.glob("grpo/*/*/trial_manifest.json"))
+    rows: List[Dict[str, object]] = []
+    for manifest_path in manifests:
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+        evaluation = payload.get("evaluation") or {}
+        if payload.get("status") != "completed" or not evaluation.get("enabled"):
+            continue
+        post_metrics = (evaluation.get("post") or {}).get("metrics") or {}
+        baseline_metrics = (evaluation.get("baseline") or {}).get("metrics") or {}
+        delta_metrics = (evaluation.get("delta_vs_baseline") or {})
+        row = {
+            "trial_name": payload.get("trial_name"),
+            "base_sft_trial": payload.get("base_sft_trial"),
+            "actor_lr": (payload.get("params") or {}).get("actor_lr"),
+            "rollout_n": (payload.get("params") or {}).get("rollout_n"),
+            "ppo_mini_batch_size": (payload.get("params") or {}).get("ppo_mini_batch_size"),
+            "kl_loss_coef": (payload.get("params") or {}).get("kl_loss_coef"),
+            "priority_mode": evaluation.get("priority_mode"),
+            "baseline_mode": evaluation.get("baseline_mode"),
+            "n_val_seeds": len((payload.get("splits") or {}).get("val_seeds") or []),
+            "n_aligned_demands": post_metrics.get("n_aligned_demands"),
+            "primary_score": _leaderboard_primary_score(post_metrics),
+            "checkpoint": ((payload.get("paths") or {}).get("latest_checkpoint")),
+            "trial_dir": ((payload.get("paths") or {}).get("trial_dir")),
+        }
+        for key in (
+            "accuracy",
+            "macro_f1",
+            "weighted_f1",
+            "spearman",
+            "kendall_tau",
+            "top_k_hit_rate",
+            "priority_1_recall",
+            "priority_1_f1",
+            "urgent_recall",
+            "urgent_f1",
+        ):
+            row[f"post_{key}"] = post_metrics.get(key)
+            row[f"baseline_{key}"] = baseline_metrics.get(key)
+            row[f"delta_{key}"] = delta_metrics.get(key)
+        rows.append(row)
+
+    rows.sort(
+        key=lambda item: tuple(
+            float(item.get(f"post_{metric}") or 0.0) for metric in LEADERBOARD_SORT_METRICS
+        ),
+        reverse=True,
+    )
+    for rank, row in enumerate(rows, start=1):
+        row["leaderboard_rank"] = rank
+
+    jsonl_path = output_root / "grpo_leaderboard.jsonl"
+    csv_path = output_root / "grpo_leaderboard.csv"
     jsonl_path.parent.mkdir(parents=True, exist_ok=True)
     with jsonl_path.open("w", encoding="utf-8") as handle:
         for row in rows:
@@ -739,6 +824,8 @@ def launch_vllm_server(
             f"http://127.0.0.1:{port}/v1/models",
             timeout_s=settings.startup_timeout_s,
             interval_s=settings.startup_poll_interval_s,
+            process=process,
+            log_path=log_path,
         )
     except Exception:
         process.terminate()
@@ -903,6 +990,7 @@ def evaluate_sft_trial(
         sft_checkpoint_dir=latest_checkpoint,
         merged_model_dir=trial_dir / "merged_hf" / latest_checkpoint.name,
         conda_env=conda_env,
+        skip_model_load_check=eval_settings.skip_merge_load_check,
         dry_run=dry_run,
     )
     return evaluate_served_model(
@@ -913,6 +1001,102 @@ def evaluate_sft_trial(
         eval_settings=eval_settings,
         dry_run=dry_run,
     )
+
+
+def evaluate_grpo_trial(
+    *,
+    trial_dir: Path,
+    latest_checkpoint: Path,
+    base_sft_manifest: Dict[str, object],
+    val_dirs: Sequence[Path],
+    conda_env: str,
+    eval_settings: EvalSettings,
+    dry_run: bool,
+) -> Dict[str, object]:
+    if not eval_settings.enabled:
+        return {"enabled": False}
+
+    evaluation_root = trial_dir / "evaluation"
+    evaluation_root.mkdir(parents=True, exist_ok=True)
+    sweep_root = trial_dir.parents[2]
+
+    grpo_model_dir = ensure_hf_checkpoint(
+        sft_checkpoint_dir=latest_checkpoint,
+        merged_model_dir=trial_dir / "merged_hf" / latest_checkpoint.name,
+        conda_env=conda_env,
+        skip_model_load_check=eval_settings.skip_merge_load_check,
+        dry_run=dry_run,
+    )
+
+    base_sft_checkpoint_value = (base_sft_manifest.get("paths") or {}).get("latest_checkpoint")
+    if not base_sft_checkpoint_value:
+        raise FileNotFoundError("Base SFT manifest missing latest_checkpoint for GRPO evaluation.")
+    base_sft_checkpoint = Path(str(base_sft_checkpoint_value))
+    base_eval_cache_root = sweep_root / "_eval_cache" / "base_sft" / str(base_sft_manifest.get("trial_name"))
+    base_merged_model_dir = ensure_hf_checkpoint(
+        sft_checkpoint_dir=base_sft_checkpoint,
+        merged_model_dir=base_eval_cache_root / "merged_hf" / base_sft_checkpoint.name,
+        conda_env=conda_env,
+        skip_model_load_check=eval_settings.skip_merge_load_check,
+        dry_run=dry_run,
+    )
+
+    base_summary_path = base_eval_cache_root / "summary.json"
+    if base_summary_path.is_file() and not dry_run:
+        base_summary = json.loads(base_summary_path.read_text(encoding="utf-8"))
+        base_metrics = (base_summary.get("metrics") or {})
+        base_by_seed = (base_summary.get("by_seed") or {})
+    else:
+        base_aggregate_raw, base_by_seed_raw = evaluate_fixed_model_on_val_dirs(
+            output_root=base_eval_cache_root / "post_rank_only",
+            merged_model_dir=base_merged_model_dir,
+            val_dirs=val_dirs,
+            conda_env=conda_env,
+            eval_settings=eval_settings,
+            dry_run=dry_run,
+        )
+        base_metrics = _alignment_snapshot(base_aggregate_raw)
+        base_by_seed = {seed: _alignment_snapshot(result) for seed, result in base_by_seed_raw.items()}
+        base_summary = {
+            "metrics": base_metrics,
+            "by_seed": base_by_seed,
+            "merged_model_path": str(base_merged_model_dir),
+            "trial_name": base_sft_manifest.get("trial_name"),
+        }
+        write_json(base_summary_path, base_summary)
+
+    post_aggregate_raw, post_by_seed_raw = evaluate_fixed_model_on_val_dirs(
+        output_root=evaluation_root / "post_rank_only",
+        merged_model_dir=grpo_model_dir,
+        val_dirs=val_dirs,
+        conda_env=conda_env,
+        eval_settings=eval_settings,
+        dry_run=dry_run,
+    )
+    post_metrics = _alignment_snapshot(post_aggregate_raw)
+    post_by_seed = {seed: _alignment_snapshot(result) for seed, result in post_by_seed_raw.items()}
+    delta_metrics = _delta_snapshot(post_metrics, base_metrics)
+
+    summary = {
+        "enabled": True,
+        "priority_mode": eval_settings.priority_mode,
+        "baseline_mode": "base-sft",
+        "merged_model_path": str(grpo_model_dir),
+        "baseline": {
+            "metrics": base_metrics,
+            "by_seed": base_by_seed,
+            "source_trial": base_sft_manifest.get("trial_name"),
+            "merged_model_path": str(base_merged_model_dir),
+        },
+        "post": {
+            "metrics": post_metrics,
+            "by_seed": post_by_seed,
+        },
+        "delta_vs_baseline": delta_metrics,
+        "primary_score": _leaderboard_primary_score(post_metrics),
+    }
+    write_json(evaluation_root / "summary.json", summary)
+    return summary
 
 
 def evaluate_served_model(
@@ -1048,6 +1232,69 @@ def evaluate_served_model(
     return summary
 
 
+def evaluate_fixed_model_on_val_dirs(
+    *,
+    output_root: Path,
+    merged_model_dir: Path,
+    val_dirs: Sequence[Path],
+    conda_env: str,
+    eval_settings: EvalSettings,
+    dry_run: bool,
+) -> Tuple[Dict[str, object], Dict[str, Dict[str, object]]]:
+    by_seed: Dict[str, Dict[str, object]] = {}
+    results: List[Dict[str, object]] = []
+    port = _find_free_port() if not dry_run else eval_settings.port_base
+    served_model_name = f"{eval_settings.served_model_name_prefix}-{output_root.name}"
+    server_process = launch_vllm_server(
+        model_path=merged_model_dir,
+        conda_env=conda_env,
+        settings=eval_settings,
+        served_model_name=served_model_name,
+        port=port,
+        log_path=output_root / "server.log",
+        dry_run=dry_run,
+    )
+    try:
+        api_base = f"http://127.0.0.1:{port}/v1"
+        for seed_dir in val_dirs:
+            seed_name = seed_dir.name
+            dialogues_path = seed_dir / "dialogues.jsonl"
+            ground_truth_path = seed_dir / "events_manifest.jsonl"
+            fixed_demands_path = seed_dir / "llm3_sft_pipeline.jsonl"
+            seed_root = output_root / seed_name
+            run_dir = run_rank_only_workflow(
+                output_dir=seed_root,
+                extracted_demands_path=fixed_demands_path,
+                dialogues_path=dialogues_path,
+                stations_path=Path(eval_settings.stations_path),
+                building_data_path=Path(eval_settings.building_data_path),
+                priority_mode=eval_settings.priority_mode,
+                api_base=api_base,
+                api_key=eval_settings.api_key,
+                model_name=served_model_name,
+                conda_env=conda_env,
+                dry_run=dry_run,
+            )
+            result = evaluate_alignment(
+                run_dir=run_dir,
+                demands_path=fixed_demands_path,
+                dialogues_path=dialogues_path,
+                ground_truth_path=ground_truth_path,
+                truth_demands_path=fixed_demands_path,
+                urgent_threshold=eval_settings.urgent_threshold,
+                conda_env=conda_env,
+                output_path=seed_root / "alignment.json",
+                dry_run=dry_run,
+            )
+            by_seed[seed_name] = result
+            results.append(result)
+    finally:
+        stop_process(server_process)
+
+    aggregate = _aggregate_alignment_results(results, eval_settings.urgent_threshold)
+    return aggregate, by_seed
+
+
 def run_sft_trial(
     *,
     trial: SFTTrial,
@@ -1162,6 +1409,7 @@ def run_grpo_trial(
     test_dirs: Sequence[Path],
     output_root: Path,
     conda_env: str,
+    eval_settings: EvalSettings,
     export_seed: int,
     skip_existing: bool,
     dry_run: bool,
@@ -1225,6 +1473,18 @@ def run_grpo_trial(
     if status == "completed":
         latest_ckpt = str(latest_global_step_dir(ckpt_dir))
 
+    evaluation = {"enabled": False}
+    if status == "completed":
+        evaluation = evaluate_grpo_trial(
+            trial_dir=trial_dir,
+            latest_checkpoint=Path(latest_ckpt),
+            base_sft_manifest=base_sft_manifest,
+            val_dirs=val_dirs,
+            conda_env=conda_env,
+            eval_settings=eval_settings,
+            dry_run=dry_run,
+        )
+
     payload = {
         "stage": "grpo",
         "status": status,
@@ -1247,6 +1507,7 @@ def run_grpo_trial(
             "test_seeds": [int(path.name.split("_", 1)[1]) for path in test_dirs],
         },
         "return_code": rc,
+        "evaluation": evaluation,
     }
     write_json(manifest_path, payload)
     return payload
@@ -1288,10 +1549,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--sft-eval-no-trust-remote-code", action="store_true")
     parser.add_argument("--sft-eval-urgent-threshold", type=int, default=2)
     parser.add_argument("--sft-eval-port-base", type=int, default=18080)
-    parser.add_argument("--sft-eval-startup-timeout-s", type=int, default=180)
+    parser.add_argument("--sft-eval-startup-timeout-s", type=int, default=300)
     parser.add_argument("--sft-eval-startup-poll-interval-s", type=float, default=2.0)
     parser.add_argument("--stations-path", type=Path, default=DEFAULT_STATIONS_PATH)
     parser.add_argument("--building-data-path", type=Path, default=DEFAULT_BUILDING_DATA_PATH)
+    parser.add_argument("--sft-eval-skip-merge-load-check", action="store_true")
     parser.add_argument("--export-seed", type=int, default=42)
     parser.add_argument("--skip-existing", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
@@ -1328,6 +1590,7 @@ def main() -> None:
         startup_poll_interval_s=args.sft_eval_startup_poll_interval_s,
         stations_path=str(args.stations_path.resolve()),
         building_data_path=str(args.building_data_path.resolve()),
+        skip_merge_load_check=bool(args.sft_eval_skip_merge_load_check),
     )
 
     sweep_plan = {
@@ -1404,11 +1667,13 @@ def main() -> None:
                     test_dirs=test_dirs,
                     output_root=output_root,
                     conda_env=args.conda_env,
+                    eval_settings=eval_settings,
                     export_seed=args.export_seed,
                     skip_existing=args.skip_existing,
                     dry_run=args.dry_run,
                 )
                 append_jsonl(trial_records_path, _build_trial_record_row(manifest))
+                _refresh_grpo_leaderboard(output_root)
 
 
 if __name__ == "__main__":
