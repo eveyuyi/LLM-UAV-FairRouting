@@ -19,6 +19,16 @@ TIMEOUT_ENV = "LLM4FAIRROUTING_OPENAI_TIMEOUT_S"
 MAX_OUTPUT_TOKENS_ENV = "LLM4FAIRROUTING_MAX_OUTPUT_TOKENS"
 
 
+def _is_non_retryable_llm_error(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return (
+        "maximum context length" in text
+        or "reduce the length of the input messages" in text
+        or ("max_tokens" in text and "too large" in text)
+        or ("max_completion_tokens" in text and "too large" in text)
+    )
+
+
 def create_openai_client(
     api_base: str | None = None,
     api_key: str | None = None,
@@ -58,6 +68,9 @@ def call_llm(
             return resp.choices[0].message.content or ""
         except Exception as exc:
             last_err = exc
+            if _is_non_retryable_llm_error(exc):
+                print(f"  [LLM] request too large for one shot, skip retries: {exc}")
+                raise RuntimeError(f"LLM call failed without retry: {exc}") from exc
             print(f"  [LLM] attempt {attempt}/{max_retries} failed: {exc}")
             if attempt < max_retries:
                 time.sleep(min(3.0 * attempt, 12.0))

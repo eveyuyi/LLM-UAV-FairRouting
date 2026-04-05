@@ -1,5 +1,6 @@
 import heapq
 
+from llm4fairrouting.llm import priority_inference as priority_inference_module
 from llm4fairrouting.llm.priority_inference import adjust_weights_offline, _normalize_weight_config
 from llm4fairrouting.routing.domain import DemandEvent, priority_service_score
 
@@ -142,3 +143,38 @@ def test_normalize_weight_config_accepts_priority_labels_schema():
 
     assert [item["demand_id"] for item in result["demand_configs"]] == ["DEM_001", "DEM_002"]
     assert [item["priority"] for item in result["demand_configs"]] == [1, 3]
+
+
+def test_chunked_priority_ranking_recursively_splits_oversized_batches(monkeypatch):
+    def fake_call_llm_rank(*, demands, client, model, city_context, temperature):
+        if len(demands) > 2:
+            raise RuntimeError("maximum context length is 16384 tokens")
+        return {
+            "global_weights": {"w_distance": 1.0, "w_time": 1.0, "w_risk": 1.0},
+            "demand_configs": [
+                {
+                    "demand_id": demand["demand_id"],
+                    "priority": 2,
+                    "window_rank": idx,
+                    "reasoning": f"ranked {demand['demand_id']}",
+                }
+                for idx, demand in enumerate(demands, start=1)
+            ],
+            "supplementary_constraints": [],
+        }
+
+    monkeypatch.setattr(priority_inference_module, "_call_llm_rank", fake_call_llm_rank)
+    monkeypatch.setattr(priority_inference_module, "env_int", lambda *_args, **_kwargs: 3)
+
+    result = priority_inference_module._call_llm_rank_with_chunk_fallback(
+        demands=[{"demand_id": f"REQ{i}"} for i in range(5)],
+        client=None,
+        model="demo-model",
+        city_context=None,
+        temperature=0.0,
+    )
+
+    assert len(result["demand_configs"]) == 5
+    assert {item["demand_id"] for item in result["demand_configs"]} == {
+        "REQ0", "REQ1", "REQ2", "REQ3", "REQ4"
+    }

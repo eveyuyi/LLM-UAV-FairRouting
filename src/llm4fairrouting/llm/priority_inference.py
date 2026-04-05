@@ -349,7 +349,12 @@ def _merge_weight_configs(
 
 def _is_context_length_error(exc: Exception) -> bool:
     text = str(exc).lower()
-    return "maximum context length" in text or "reduce the length of the input messages" in text
+    return (
+        "maximum context length" in text
+        or "reduce the length of the input messages" in text
+        or ("max_tokens" in text and "too large" in text)
+        or ("max_completion_tokens" in text and "too large" in text)
+    )
 
 
 def _chunk_demands(demands: List[Dict], chunk_size: int) -> List[List[Dict]]:
@@ -374,6 +379,55 @@ def _call_llm_rank(
     prompt = weight_adjustment_prompt(demands, city_context)
     raw = call_llm(client, model, DRONE_SYSTEM_PROMPT, prompt, temperature)
     return _normalize_weight_config(parse_json_response(raw))
+
+
+def _call_llm_rank_with_chunk_fallback(
+    *,
+    demands: List[Dict],
+    client: "OpenAI",
+    model: str,
+    city_context: Optional[Dict],
+    temperature: float,
+    depth: int = 0,
+) -> Dict:
+    try:
+        return _call_llm_rank(
+            demands=demands,
+            client=client,
+            model=model,
+            city_context=city_context,
+            temperature=temperature,
+        )
+    except RuntimeError as exc:
+        if not _is_context_length_error(exc) or len(demands) <= 1:
+            raise
+
+    configured_chunk_size = env_int("LLM4FAIRROUTING_PRIORITY_RANK_CHUNK_SIZE", 6)
+    chunk_size = min(max(configured_chunk_size, 1), max(len(demands) - 1, 1))
+    if chunk_size >= len(demands):
+        chunk_size = max(1, len(demands) // 2)
+    if chunk_size >= len(demands):
+        chunk_size = len(demands) - 1
+
+    chunks = _chunk_demands(demands, chunk_size)
+    indent = "    " * depth
+    print(
+        f"{indent}  [Module 3a] Prompt too long, fallback to chunked ranking: "
+        f"{len(chunks)} chunks x <= {chunk_size} demands"
+    )
+    chunk_results = []
+    for idx, chunk in enumerate(chunks, start=1):
+        print(f"{indent}    [chunk {idx}/{len(chunks)}] ranking {len(chunk)} demands")
+        chunk_result = _call_llm_rank_with_chunk_fallback(
+            demands=chunk,
+            client=client,
+            model=model,
+            city_context=city_context,
+            temperature=temperature,
+            depth=depth + 1,
+        )
+        chunk_results.append(chunk_result)
+    return _merge_chunked_llm_results(chunk_results)
 
 
 def _merge_chunked_llm_results(chunk_results: List[Dict]) -> Dict:
@@ -424,36 +478,13 @@ def adjust_weights(
 ) -> Dict:
     """Run LLM-based priority inference and reconcile it with deterministic evidence scoring."""
     print(f"  [Module 3a] Ranking {len(demands)} demands with LLM + evidence scorer")
-    llm_result: Dict
-    try:
-        llm_result = _call_llm_rank(
-            demands=demands,
-            client=client,
-            model=model,
-            city_context=city_context,
-            temperature=temperature,
-        )
-    except RuntimeError as exc:
-        if not _is_context_length_error(exc):
-            raise
-        chunk_size = env_int("LLM4FAIRROUTING_PRIORITY_RANK_CHUNK_SIZE", 6)
-        chunks = _chunk_demands(demands, chunk_size)
-        print(
-            f"  [Module 3a] Prompt too long, fallback to chunked ranking: "
-            f"{len(chunks)} chunks x <= {chunk_size} demands"
-        )
-        chunk_results = []
-        for idx, chunk in enumerate(chunks, start=1):
-            print(f"    [chunk {idx}/{len(chunks)}] ranking {len(chunk)} demands")
-            chunk_result = _call_llm_rank(
-                demands=chunk,
-                client=client,
-                model=model,
-                city_context=city_context,
-                temperature=temperature,
-            )
-            chunk_results.append(chunk_result)
-        llm_result = _merge_chunked_llm_results(chunk_results)
+    llm_result = _call_llm_rank_with_chunk_fallback(
+        demands=demands,
+        client=client,
+        model=model,
+        city_context=city_context,
+        temperature=temperature,
+    )
 
     rule_result = _build_rule_weight_config(demands)
     merged = _merge_weight_configs(demands, rule_result, llm_result)

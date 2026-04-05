@@ -3,9 +3,54 @@ set -euo pipefail
 
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+show_help() {
+  cat <<'EOF'
+Usage:
+  bash scripts/eval_pre_post_priority_alignment.sh [DATASET_DIR]
+
+Convenience shortcuts:
+  1. Pass a dataset shard directory as the only positional argument, e.g.
+       bash scripts/eval_pre_post_priority_alignment.sh data/train/llm3_medium_5min_v1/seed_4111
+  2. Or set DATASET_DIR=/path/to/seed_xxxx
+
+When DATASET_DIR is provided, the script will auto-resolve:
+  - DIALOGUES=<DATASET_DIR>/dialogues.jsonl
+  - GROUND_TRUTH=<DATASET_DIR>/events_manifest.jsonl
+  - FIXED_EXTRACTED_DEMANDS=<DATASET_DIR>/llm3_sft_pipeline.jsonl
+    (falls back to llm3_sft_clean.jsonl when pipeline is absent)
+
+For DATASET_DIR-based runs, if TIME_SLOTS_STR is not explicitly set,
+the script evaluates all windows in the shard by default.
+
+By default, AUTO_TIMESTAMP_OUTPUT_ROOT=1, so each run appends a timestamp
+suffix to OUTPUT_ROOT and keeps historical evaluation summaries.
+EOF
+}
+
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+  show_help
+  exit 0
+fi
+
+if [[ "$#" -gt 1 ]]; then
+  echo "Expected at most one positional argument: DATASET_DIR" >&2
+  show_help >&2
+  exit 1
+fi
+
+DIALOGUES_WAS_SET="${DIALOGUES+x}"
+GROUND_TRUTH_WAS_SET="${GROUND_TRUTH+x}"
+OUTPUT_ROOT_WAS_SET="${OUTPUT_ROOT+x}"
+FIXED_EXTRACTED_DEMANDS_WAS_SET="${FIXED_EXTRACTED_DEMANDS+x}"
+TIME_SLOTS_STR_WAS_SET="${TIME_SLOTS_STR+x}"
+DATASET_DIR="${1:-${DATASET_DIR:-}}"
+
 # ---------- Config ----------
 CONDA_ENV="${CONDA_ENV:-}"
 API_KEY="${OPENAI_API_KEY:-}"
+DEFAULT_OUTPUT_ROOT="data/eval_runs/pre_post_rank_only"
+DEFAULT_TIME_SLOTS_STR="0 1 2 3 4 5 6 7 8 9"
+AUTO_TIMESTAMP_OUTPUT_ROOT="${AUTO_TIMESTAMP_OUTPUT_ROOT:-1}"
 
 PRE_API_BASE="${PRE_API_BASE:-http://127.0.0.1:8000/v1}"
 PRE_MODEL="${PRE_MODEL:-qwen3-pre}"
@@ -16,15 +61,57 @@ DIALOGUES="${DIALOGUES:-data/seed/daily_demand_dialogues.jsonl}"
 GROUND_TRUTH="${GROUND_TRUTH:-data/seed/daily_demand_events_manifest.jsonl}"
 STATIONS="${STATIONS:-data/seed/drone_station_locations.csv}"
 BUILDING_DATA="${BUILDING_DATA:-data/seed/building_information.csv}"
-OUTPUT_ROOT="${OUTPUT_ROOT:-data/eval_runs/pre_post_rank_only}"
+OUTPUT_ROOT="${OUTPUT_ROOT:-${DEFAULT_OUTPUT_ROOT}}"
 FIXED_EXTRACTED_DEMANDS="${FIXED_EXTRACTED_DEMANDS:-}"
 RANK_ONLY_MODE="${RANK_ONLY_MODE:-auto}" # auto | llm3_only | end_to_end
 TRUTH_SOURCE="${TRUTH_SOURCE:-auto}"     # auto | run_extracted | fixed_demands | ground_truth_manifest
 WINDOW_INDICES_STR="${WINDOW_INDICES_STR:-}"
 TIME_WINDOWS_STR="${TIME_WINDOWS_STR:-}"
 
-TIME_SLOTS_STR="${TIME_SLOTS_STR:-0 1 2 3 4 5 6 7 8 9}"
+if [[ -n "${TIME_SLOTS_STR_WAS_SET}" ]]; then
+  TIME_SLOTS_STR="${TIME_SLOTS_STR-}"
+else
+  TIME_SLOTS_STR="${DEFAULT_TIME_SLOTS_STR}"
+fi
 URGENT_THRESHOLD="${URGENT_THRESHOLD:-2}"
+
+if [[ -n "${DATASET_DIR}" ]]; then
+  if [[ ! -d "${DATASET_DIR}" ]]; then
+    echo "DATASET_DIR does not exist or is not a directory: ${DATASET_DIR}" >&2
+    exit 1
+  fi
+
+  if [[ -z "${DIALOGUES_WAS_SET}" ]]; then
+    DIALOGUES="${DATASET_DIR}/dialogues.jsonl"
+  fi
+  if [[ -z "${GROUND_TRUTH_WAS_SET}" ]]; then
+    GROUND_TRUTH="${DATASET_DIR}/events_manifest.jsonl"
+  fi
+  if [[ -z "${FIXED_EXTRACTED_DEMANDS_WAS_SET}" ]]; then
+    if [[ -f "${DATASET_DIR}/llm3_sft_pipeline.jsonl" ]]; then
+      FIXED_EXTRACTED_DEMANDS="${DATASET_DIR}/llm3_sft_pipeline.jsonl"
+    elif [[ -f "${DATASET_DIR}/llm3_sft_clean.jsonl" ]]; then
+      FIXED_EXTRACTED_DEMANDS="${DATASET_DIR}/llm3_sft_clean.jsonl"
+    fi
+  fi
+  if [[ -z "${OUTPUT_ROOT_WAS_SET}" ]]; then
+    dataset_parent="$(basename "$(dirname "${DATASET_DIR}")")"
+    dataset_name="$(basename "${DATASET_DIR}")"
+    OUTPUT_ROOT="${DEFAULT_OUTPUT_ROOT}_${dataset_parent}_${dataset_name}"
+  fi
+  if [[ -z "${TIME_SLOTS_STR_WAS_SET}" ]]; then
+    TIME_SLOTS_STR=""
+  fi
+fi
+
+if [[ "${AUTO_TIMESTAMP_OUTPUT_ROOT}" != "0" && "${AUTO_TIMESTAMP_OUTPUT_ROOT}" != "1" ]]; then
+  echo "AUTO_TIMESTAMP_OUTPUT_ROOT must be 0 or 1, got: ${AUTO_TIMESTAMP_OUTPUT_ROOT}" >&2
+  exit 1
+fi
+
+if [[ "${AUTO_TIMESTAMP_OUTPUT_ROOT}" == "1" ]]; then
+  OUTPUT_ROOT="${OUTPUT_ROOT%/}_$(date '+%Y%m%d_%H%M%S')"
+fi
 
 if [[ -z "${API_KEY}" ]]; then
   echo "Missing OPENAI_API_KEY. Please export OPENAI_API_KEY first." >&2
@@ -40,6 +127,16 @@ if [[ ! -f "${GROUND_TRUTH}" ]]; then
   exit 1
 fi
 
+if [[ ! -f "${DIALOGUES}" ]]; then
+  echo "Missing dialogue file: ${DIALOGUES}" >&2
+  exit 1
+fi
+
+if [[ -n "${FIXED_EXTRACTED_DEMANDS}" && ! -f "${FIXED_EXTRACTED_DEMANDS}" ]]; then
+  echo "Missing fixed extracted demands file: ${FIXED_EXTRACTED_DEMANDS}" >&2
+  exit 1
+fi
+
 read -r -a TIME_SLOTS <<< "${TIME_SLOTS_STR}"
 if [[ -n "${TIME_SLOTS_STR}" && "${#TIME_SLOTS[@]}" -eq 0 ]]; then
   echo "TIME_SLOTS_STR is empty." >&2
@@ -51,6 +148,14 @@ if [[ -n "${CONDA_ENV}" ]]; then
 else
   _py=(env PYTHONNOUSERSITE=1 python)
 fi
+
+echo "[config] dataset_dir=${DATASET_DIR:-<default>}" >&2
+echo "[config] dialogues=${DIALOGUES}" >&2
+echo "[config] ground_truth=${GROUND_TRUTH}" >&2
+echo "[config] fixed_extracted_demands=${FIXED_EXTRACTED_DEMANDS:-<none>}" >&2
+echo "[config] output_root=${OUTPUT_ROOT}" >&2
+echo "[config] auto_timestamp_output_root=${AUTO_TIMESTAMP_OUTPUT_ROOT}" >&2
+echo "[config] time_slots=${TIME_SLOTS_STR:-<all>}" >&2
 
 latest_run_dir() {
   local root="$1"
