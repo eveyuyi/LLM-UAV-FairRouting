@@ -3,25 +3,27 @@ set -euo pipefail
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # ---------- 只改这里 ----------
-CONDA_ENV=verl
+CONDA_ENV="${CONDA_ENV:-verl}"
 # llm3_medium_5min_v1 推荐按 seed 划分：8 train / 2 val / 2 test（test 仅保留用于离线评估）
-SFT_TRAIN_FILE=data/train/verl/llm3_medium_5min_v1_sft_train.parquet
-SFT_VAL_FILE=data/train/verl/llm3_medium_5min_v1_sft_val.parquet
-MODEL_PATH=/mnt/shared-storage-gpfs2/gpfs2-shared-public/huggingface/zskj-hub/model--Qwen-Qwen3-4B-Instruct-2507
+SFT_TRAIN_FILE="${SFT_TRAIN_FILE:-data/train/verl/llm3_medium_5min_v1_sft_train.parquet}"
+SFT_VAL_FILE="${SFT_VAL_FILE:-data/train/verl/llm3_medium_5min_v1_sft_val.parquet}"
+MODEL_PATH="${MODEL_PATH:-/mnt/shared-storage-gpfs2/gpfs2-shared-public/huggingface/zskj-hub/model--Qwen-Qwen3-4B-Instruct-2507}"
 # /mnt/shared-storage-gpfs2/gpfs2-shared-public/huggingface/zskj-hub/models-Qwen-Qwen3-1.7B
 # "/mnt/shared-storage-gpfs2/gpfs2-shared-public/huggingface/zskj-hub/model--Qwen-Qwen3-4B-Instruct-2507"
 # "/mnt/shared-storage-gpfs2/gpfs2-shared-public/huggingface/zskj-hub/models--Qwen--Qwen3.5-9B"
-AUTO_EXPORT_SFT=1
-SFT_EXPORT_TRAIN_GLOB=data/train/llm3_medium_5min_v1/seed_410[1-8]
-SFT_EXPORT_VAL_GLOB="data/train/llm3_medium_5min_v1/seed_4109 data/train/llm3_medium_5min_v1/seed_4110"
-SFT_EXPORT_TEST_GLOB="data/train/llm3_medium_5min_v1/seed_4111 data/train/llm3_medium_5min_v1/seed_4112"
-SFT_EXPORT_SEED=42
+AUTO_EXPORT_SFT="${AUTO_EXPORT_SFT:-1}"
+FORCE_REEXPORT_SFT="${FORCE_REEXPORT_SFT:-0}"
+SFT_EXPORT_TRAIN_GLOB="${SFT_EXPORT_TRAIN_GLOB:-data/train/llm3_medium_5min_v1/seed_410[1-8]}"
+SFT_EXPORT_VAL_GLOB="${SFT_EXPORT_VAL_GLOB:-data/train/llm3_medium_5min_v1/seed_4109 data/train/llm3_medium_5min_v1/seed_4110}"
+SFT_EXPORT_TEST_GLOB="${SFT_EXPORT_TEST_GLOB:-data/train/llm3_medium_5min_v1/seed_4111 data/train/llm3_medium_5min_v1/seed_4112}"
+SFT_EXPORT_SEED="${SFT_EXPORT_SEED:-42}"
 # llm3_medium_5min_v1（clean+pipeline）约 10368 条；8 train 约 6912，2 val 约 1728，适当增大全局 batch。
-CKPT_DIR=data/checkpoints/llm3_sft_medium_v1
-HYDRA_ROOT=data/hydra_outputs
-TRAINER_PROJECT_NAME=llm3-sft
-TRAINER_EXPERIMENT_NAME=qwen-sft-llm3-medium-v1
+CKPT_DIR="${CKPT_DIR:-data/checkpoints/llm3_sft_medium_v1}"
+HYDRA_ROOT="${HYDRA_ROOT:-data/hydra_outputs}"
+TRAINER_PROJECT_NAME="${TRAINER_PROJECT_NAME:-llm3-sft}"
+TRAINER_EXPERIMENT_NAME="${TRAINER_EXPERIMENT_NAME:-qwen-sft-llm3-medium-v1}"
 TRAINER_LOGGERS="${TRAINER_LOGGERS:-[\"console\",\"tensorboard\"]}"
+FAIL_ON_EXISTING_CKPT_DIR="${FAIL_ON_EXISTING_CKPT_DIR:-1}"
 # 8 卡下全局 128（每卡 16）对约 6.9k train 样本更合适，单 epoch 约 54 step。
 SFT_GLOBAL_BATCH_SIZE="${SFT_GLOBAL_BATCH_SIZE:-128}"
 # verl FSDP 默认 engine.model_dtype=fp32：8 rank 各自整模 fp32 加载，CPU/GPU 峰值极高，易被 OOM killer SIGKILL(-9)。应用 bf16 加载。
@@ -49,7 +51,13 @@ else
 fi
 (( NPROC_PER_NODE >= 1 )) || { echo "no GPU"; exit 1; }
 
-if [[ ! -f "${SFT_TRAIN_FILE}" || ! -f "${SFT_VAL_FILE}" ]]; then
+if [[ "${SFT_RESUME_MODE}" == "disable" && "${FAIL_ON_EXISTING_CKPT_DIR}" == 1 && -d "${CKPT_DIR}" ]]; then
+  echo "CKPT_DIR already exists with resume disabled: ${CKPT_DIR}" >&2
+  echo "Choose a new CKPT_DIR, or set FAIL_ON_EXISTING_CKPT_DIR=0 / SFT_RESUME_MODE=auto intentionally." >&2
+  exit 1
+fi
+
+if [[ "${FORCE_REEXPORT_SFT}" == 1 || ! -f "${SFT_TRAIN_FILE}" || ! -f "${SFT_VAL_FILE}" ]]; then
   [[ "${AUTO_EXPORT_SFT}" == 1 ]] || { echo "missing parquet"; exit 1; }
   shopt -s nullglob
   TRAIN_INPUT_DIRS=(${SFT_EXPORT_TRAIN_GLOB})
@@ -74,7 +82,7 @@ if [[ ! -f "${SFT_TRAIN_FILE}" || ! -f "${SFT_VAL_FILE}" ]]; then
   echo "reserved test dirs (${#TEST_INPUT_DIRS[@]}): ${TEST_INPUT_DIRS[*]}"
 fi
 
-echo "GPUs=${NPROC_PER_NODE} global_batch=${SFT_GLOBAL_BATCH_SIZE} resume=${SFT_RESUME_MODE} model_dtype=${SFT_MODEL_DTYPE} torch_compile=${SFT_TORCH_COMPILE} dataloader_workers=${SFT_DATALOADER_WORKERS} conda=${CONDA_ENV:-<none>} train=${SFT_TRAIN_FILE} model=${MODEL_PATH}"
+echo "GPUs=${NPROC_PER_NODE} global_batch=${SFT_GLOBAL_BATCH_SIZE} resume=${SFT_RESUME_MODE} model_dtype=${SFT_MODEL_DTYPE} torch_compile=${SFT_TORCH_COMPILE} dataloader_workers=${SFT_DATALOADER_WORKERS} conda=${CONDA_ENV:-<none>} train=${SFT_TRAIN_FILE} val=${SFT_VAL_FILE} model=${MODEL_PATH} ckpt=${CKPT_DIR} force_reexport=${FORCE_REEXPORT_SFT}"
 
 "${_py[@]}" -m torch.distributed.run --standalone --nnodes=1 --nproc_per_node="${NPROC_PER_NODE}" \
   -m verl.trainer.sft_trainer \
