@@ -8,8 +8,8 @@
 # 模型路径：actor_rollout_ref.model.path 只接受 HF 格式。若 MODEL_PATH 下尚无 config.json 且
 # AUTO_MERGE_SFT_HF=1，会调用 scripts/export_sft_ckpt_to_hf.sh，把 SFT_CKPT_DIR merge 到 MODEL_PATH。
 #
-# 数据：若 GRPO_TRAIN_FILE / GRPO_VAL_FILE 不存在且 AUTO_EXPORT_GRPO=1，会从 GRPO_EXPORT_INPUT_GLOB
-# 下各目录读取 llm3_grpo_hard.jsonl，调用 scripts/export_llm3_to_verl_grpo.py 生成 parquet。
+# 数据：若 GRPO_TRAIN_FILE / GRPO_VAL_FILE 不存在且 AUTO_EXPORT_GRPO=1，会按
+# GRPO_EXPORT_TRAIN_GLOB 与 GRPO_EXPORT_VAL_GLOB 分开导出 parquet；GRPO_EXPORT_TEST_GLOB 仅预留评估集。
 #
 # 可选环境变量（示例）：
 #   GRPO_TRAIN_BATCH_SIZE / GRPO_PPO_MINI_BATCH_SIZE — 须满足 train_batch >= mini_batch；
@@ -26,26 +26,29 @@ cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # ---------- 只改这里 ----------
 CONDA_ENV=verl
-GRPO_TRAIN_FILE=data/train/verl/quality_pilot_v2_grpo_train.parquet
-GRPO_VAL_FILE=data/train/verl/quality_pilot_v2_grpo_val.parquet
+GRPO_TRAIN_FILE=data/train/verl/llm3_medium_5min_v1_grpo_train.parquet
+GRPO_VAL_FILE=data/train/verl/llm3_medium_5min_v1_grpo_val.parquet
 # GRPO 的 actor_rollout_ref.model.path 必须是 HuggingFace 目录（含 config.json 等）
-# SFT 完成后把 global_step_* 改成你 CKPT 里实际目录名
-MODEL_PATH=data/checkpoints/llm3_sft_merged_hf_v2/global_step_8
+# SFT 约 54 step；若你实际训练步数不同，只改 SFT_GLOBAL_STEP 即可。
+SFT_GLOBAL_STEP="${SFT_GLOBAL_STEP:-54}"
+MODEL_PATH=data/checkpoints/llm3_sft_merged_hf_medium_v1/global_step_${SFT_GLOBAL_STEP}
 # 若上面目录尚不存在，从 VERL FSDP SFT 检查点自动 merge（调用 scripts/export_sft_ckpt_to_hf.sh）
-SFT_CKPT_DIR=data/checkpoints/llm3_sft_v2/global_step_8
+SFT_CKPT_DIR=data/checkpoints/llm3_sft_medium_v1/global_step_${SFT_GLOBAL_STEP}
 AUTO_MERGE_SFT_HF=1
 AUTO_EXPORT_GRPO=1
-GRPO_EXPORT_INPUT_GLOB=data/train/quality_pilot_v2/seed_*
-GRPO_EXPORT_VAL_RATIO=0.1
+GRPO_EXPORT_TRAIN_GLOB=data/train/llm3_medium_5min_v1/seed_410[1-8]
+GRPO_EXPORT_VAL_GLOB="data/train/llm3_medium_5min_v1/seed_4109 data/train/llm3_medium_5min_v1/seed_4110"
+GRPO_EXPORT_TEST_GLOB="data/train/llm3_medium_5min_v1/seed_4111 data/train/llm3_medium_5min_v1/seed_4112"
 GRPO_EXPORT_SEED=42
-CKPT_DIR=data/checkpoints/llm3_grpo_v2
+CKPT_DIR=data/checkpoints/llm3_grpo_medium_v1
 HYDRA_ROOT=data/hydra_outputs
 TRAINER_PROJECT_NAME=llm3-grpo
-TRAINER_EXPERIMENT_NAME=qwen-grpo-v2
-# 与 quality_pilot 规模（数百条）相比默认 1024 过大；4B+vLLM 也不宜一次过大。
-# 8 卡、rollout.n=2 时：real_batch = train_batch * 2，须被 8 整除 → train_batch 取 4/8/12…
-GRPO_TRAIN_BATCH_SIZE="${GRPO_TRAIN_BATCH_SIZE:-8}"
-GRPO_PPO_MINI_BATCH_SIZE="${GRPO_PPO_MINI_BATCH_SIZE:-4}"
+TRAINER_EXPERIMENT_NAME=qwen-grpo-llm3-medium-v1
+TRAINER_LOGGERS="${TRAINER_LOGGERS:-[\"console\",\"tensorboard\"]}"
+# llm3_medium_5min_v1 的 8-train seed 约 300+ 条 GRPO 样本；8 卡下取 train_batch=16，单 epoch 约 19 step。
+# rollout.n=2 时 real_batch=32，可被 8 整除；ppo mini 取 8，保证 train_batch >= mini_batch。
+GRPO_TRAIN_BATCH_SIZE="${GRPO_TRAIN_BATCH_SIZE:-16}"
+GRPO_PPO_MINI_BATCH_SIZE="${GRPO_PPO_MINI_BATCH_SIZE:-8}"
 GRPO_ROLLOUT_N="${GRPO_ROLLOUT_N:-2}"
 # 默认不自动恢复，避免 CKPT_DIR 里旧实验与当前合并后 HF 权重不兼容。
 GRPO_RESUME_MODE="${GRPO_RESUME_MODE:-disable}"
@@ -96,14 +99,26 @@ fi
 if [[ ! -f "${GRPO_TRAIN_FILE}" || ! -f "${GRPO_VAL_FILE}" ]]; then
   [[ "${AUTO_EXPORT_GRPO}" == 1 ]] || { echo "missing parquet"; exit 1; }
   shopt -s nullglob
-  INPUT_DIRS=(${GRPO_EXPORT_INPUT_GLOB})
+  TRAIN_INPUT_DIRS=(${GRPO_EXPORT_TRAIN_GLOB})
+  VAL_INPUT_DIRS=(${GRPO_EXPORT_VAL_GLOB})
+  TEST_INPUT_DIRS=(${GRPO_EXPORT_TEST_GLOB})
   shopt -u nullglob
-  ((${#INPUT_DIRS[@]})) || { echo "no dirs: ${GRPO_EXPORT_INPUT_GLOB}"; exit 1; }
+  ((${#TRAIN_INPUT_DIRS[@]})) || { echo "no train dirs: ${GRPO_EXPORT_TRAIN_GLOB}"; exit 1; }
+  ((${#VAL_INPUT_DIRS[@]})) || { echo "no val dirs: ${GRPO_EXPORT_VAL_GLOB}"; exit 1; }
+  ((${#TEST_INPUT_DIRS[@]})) || { echo "no test dirs: ${GRPO_EXPORT_TEST_GLOB}"; exit 1; }
   mkdir -p "$(dirname "${GRPO_TRAIN_FILE}")" "$(dirname "${GRPO_VAL_FILE}")"
-  exp=("${_py[@]}" scripts/export_llm3_to_verl_grpo.py)
-  for d in "${INPUT_DIRS[@]}"; do exp+=(--input-dir "${d}"); done
-  exp+=(--train-out "${GRPO_TRAIN_FILE}" --val-out "${GRPO_VAL_FILE}" --val-ratio "${GRPO_EXPORT_VAL_RATIO}" --seed "${GRPO_EXPORT_SEED}")
-  "${exp[@]}"
+  train_unused_val="${GRPO_TRAIN_FILE%.parquet}.unused_val.parquet"
+  val_unused_val="${GRPO_VAL_FILE%.parquet}.unused_val.parquet"
+  exp_train=("${_py[@]}" scripts/export_llm3_to_verl_grpo.py)
+  for d in "${TRAIN_INPUT_DIRS[@]}"; do exp_train+=(--input-dir "${d}"); done
+  exp_train+=(--train-out "${GRPO_TRAIN_FILE}" --val-out "${train_unused_val}" --val-ratio 0 --seed "${GRPO_EXPORT_SEED}")
+  "${exp_train[@]}"
+  exp_val=("${_py[@]}" scripts/export_llm3_to_verl_grpo.py)
+  for d in "${VAL_INPUT_DIRS[@]}"; do exp_val+=(--input-dir "${d}"); done
+  exp_val+=(--train-out "${GRPO_VAL_FILE}" --val-out "${val_unused_val}" --val-ratio 0 --seed "${GRPO_EXPORT_SEED}")
+  "${exp_val[@]}"
+  rm -f "${train_unused_val}" "${val_unused_val}"
+  echo "reserved test dirs (${#TEST_INPUT_DIRS[@]}): ${TEST_INPUT_DIRS[*]}"
 fi
 
 echo "GPUs=${NPROC_PER_NODE} train_batch=${GRPO_TRAIN_BATCH_SIZE} rollout_n=${GRPO_ROLLOUT_N} ppo_mini_batch=${GRPO_PPO_MINI_BATCH_SIZE} resume=${GRPO_RESUME_MODE} model_dtype=${GRPO_MODEL_DTYPE} dataloader_workers=${GRPO_DATALOADER_WORKERS} max_model_len=${GRPO_ROLLOUT_MAX_MODEL_LEN} rollout_gpu_mem=${GRPO_ROLLOUT_GPU_MEM_UTIL} conda=${CONDA_ENV:-<none>} train=${GRPO_TRAIN_FILE} model=${MODEL_PATH}"
@@ -146,7 +161,7 @@ echo "GPUs=${NPROC_PER_NODE} train_batch=${GRPO_TRAIN_BATCH_SIZE} rollout_n=${GR
   trainer.critic_warmup=0 \
   custom_reward_function.path=scripts/verl_llm3_reward.py \
   custom_reward_function.name=compute_score \
-  trainer.logger='["console"]' \
+  trainer.logger="${TRAINER_LOGGERS}" \
   trainer.project_name="${TRAINER_PROJECT_NAME}" \
   trainer.experiment_name="${TRAINER_EXPERIMENT_NAME}" \
   trainer.default_local_dir="${CKPT_DIR}" \

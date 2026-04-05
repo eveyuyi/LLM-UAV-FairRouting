@@ -1,10 +1,10 @@
 {
   "mode": "rank_only_alignment",
-  "pre_run_dir": "data/eval_runs/pre_post_rank_only_seed3003/pre/run_20260404_123405_qwen3-pre_noise0.5",
-  "post_run_dir": "data/eval_runs/pre_post_rank_only_seed3003/post/run_20260404_123410_qwen3-post_noise0.5",
+  "pre_run_dir": "data/eval_runs/pre_post_rank_only_seed3003/pre/run_20260404_131951_qwen3-pre_noise0.5",
+  "post_run_dir": "data/eval_runs/pre_post_rank_only_seed3003/post/run_20260404_132342_qwen3-post_noise0.5",
   "pre_alignment": "data/eval_runs/pre_post_rank_only_seed3003/evals/pre_alignment.json",
   "post_alignment": "data/eval_runs/pre_post_rank_only_seed3003/evals/post_alignment.json",
   "post_vs_pre_alignment_delta": "data/eval_runs/pre_post_rank_only_seed3003/evals/post_vs_pre_alignment_delta.json",
-  "time_slots": "2 3 4 5",
+  "time_slots": "12 24",
   "urgent_threshold": 2
 }

@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional
 if TYPE_CHECKING:
     from openai import OpenAI
 
-from llm4fairrouting.config.runtime_env import env_text, prepare_env_file
+from llm4fairrouting.config.runtime_env import env_int, env_text, prepare_env_file
 from llm4fairrouting.data.priority_labels import (
     derive_priority_assessment,
     get_demand_tier,
@@ -347,6 +347,74 @@ def _merge_weight_configs(
     }
 
 
+def _is_context_length_error(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return "maximum context length" in text or "reduce the length of the input messages" in text
+
+
+def _chunk_demands(demands: List[Dict], chunk_size: int) -> List[List[Dict]]:
+    if chunk_size <= 0:
+        chunk_size = 1
+    return [demands[idx: idx + chunk_size] for idx in range(0, len(demands), chunk_size)]
+
+
+def _call_llm_rank(
+    *,
+    demands: List[Dict],
+    client: "OpenAI",
+    model: str,
+    city_context: Optional[Dict],
+    temperature: float,
+) -> Dict:
+    from llm4fairrouting.llm.prompt_templates import (
+        DRONE_SYSTEM_PROMPT,
+        weight_adjustment_prompt,
+    )
+
+    prompt = weight_adjustment_prompt(demands, city_context)
+    raw = call_llm(client, model, DRONE_SYSTEM_PROMPT, prompt, temperature)
+    return _normalize_weight_config(parse_json_response(raw))
+
+
+def _merge_chunked_llm_results(chunk_results: List[Dict]) -> Dict:
+    if not chunk_results:
+        return {
+            "global_weights": {"w_distance": 1.0, "w_time": 1.0, "w_risk": 1.0},
+            "demand_configs": [],
+            "supplementary_constraints": [],
+        }
+
+    weight_keys = ("w_distance", "w_time", "w_risk")
+    merged_weights: Dict[str, float] = {}
+    for key in weight_keys:
+        vals = []
+        for result in chunk_results:
+            weights = result.get("global_weights") or {}
+            try:
+                vals.append(float(weights.get(key, 1.0)))
+            except (TypeError, ValueError):
+                vals.append(1.0)
+        merged_weights[key] = sum(vals) / len(vals) if vals else 1.0
+
+    demand_configs: List[Dict] = []
+    supplementary: List[Dict] = []
+    seen = set()
+    for result in chunk_results:
+        demand_configs.extend(list(result.get("demand_configs", [])))
+        for constraint in result.get("supplementary_constraints", []):
+            key = json.dumps(constraint, sort_keys=True, ensure_ascii=False)
+            if key in seen:
+                continue
+            seen.add(key)
+            supplementary.append(constraint)
+
+    return {
+        "global_weights": merged_weights,
+        "demand_configs": demand_configs,
+        "supplementary_constraints": supplementary,
+    }
+
+
 def adjust_weights(
     demands: List[Dict],
     client: "OpenAI",
@@ -355,16 +423,38 @@ def adjust_weights(
     temperature: float = 0.0,
 ) -> Dict:
     """Run LLM-based priority inference and reconcile it with deterministic evidence scoring."""
-    from llm4fairrouting.llm.prompt_templates import (
-        DRONE_SYSTEM_PROMPT,
-        weight_adjustment_prompt,
-    )
-
-    prompt = weight_adjustment_prompt(demands, city_context)
     print(f"  [Module 3a] Ranking {len(demands)} demands with LLM + evidence scorer")
+    llm_result: Dict
+    try:
+        llm_result = _call_llm_rank(
+            demands=demands,
+            client=client,
+            model=model,
+            city_context=city_context,
+            temperature=temperature,
+        )
+    except RuntimeError as exc:
+        if not _is_context_length_error(exc):
+            raise
+        chunk_size = env_int("LLM4FAIRROUTING_PRIORITY_RANK_CHUNK_SIZE", 6)
+        chunks = _chunk_demands(demands, chunk_size)
+        print(
+            f"  [Module 3a] Prompt too long, fallback to chunked ranking: "
+            f"{len(chunks)} chunks x <= {chunk_size} demands"
+        )
+        chunk_results = []
+        for idx, chunk in enumerate(chunks, start=1):
+            print(f"    [chunk {idx}/{len(chunks)}] ranking {len(chunk)} demands")
+            chunk_result = _call_llm_rank(
+                demands=chunk,
+                client=client,
+                model=model,
+                city_context=city_context,
+                temperature=temperature,
+            )
+            chunk_results.append(chunk_result)
+        llm_result = _merge_chunked_llm_results(chunk_results)
 
-    raw = call_llm(client, model, DRONE_SYSTEM_PROMPT, prompt, temperature)
-    llm_result = _normalize_weight_config(parse_json_response(raw))
     rule_result = _build_rule_weight_config(demands)
     merged = _merge_weight_configs(demands, rule_result, llm_result)
 
