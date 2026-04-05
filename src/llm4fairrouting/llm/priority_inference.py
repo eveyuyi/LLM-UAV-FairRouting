@@ -393,15 +393,35 @@ def _call_llm_rank(
     )
 
     prompt = weight_adjustment_prompt(demands, city_context)
-    raw = call_llm(
-        client,
-        model,
-        DRONE_SYSTEM_PROMPT,
-        prompt,
-        temperature,
-        max_tokens=env_int("LLM4FAIRROUTING_PRIORITY_MAX_OUTPUT_TOKENS", 700),
+    parse_retries = max(
+        1,
+        env_int(
+            "LLM4FAIRROUTING_PRIORITY_JSON_PARSE_RETRIES",
+            env_int("LLM4FAIRROUTING_JSON_PARSE_RETRIES", 3),
+        ),
     )
-    return _normalize_weight_config(parse_json_response(raw))
+    last_parse_error: json.JSONDecodeError | None = None
+
+    for attempt in range(1, parse_retries + 1):
+        raw = call_llm(
+            client,
+            model,
+            DRONE_SYSTEM_PROMPT,
+            prompt,
+            temperature,
+            max_tokens=env_int("LLM4FAIRROUTING_PRIORITY_MAX_OUTPUT_TOKENS", 700),
+        )
+        try:
+            return _normalize_weight_config(parse_json_response(raw))
+        except json.JSONDecodeError as exc:
+            last_parse_error = exc
+            print(
+                f"  [Module 3a] Invalid JSON attempt {attempt}/{parse_retries}: {exc}"
+            )
+
+    if last_parse_error is not None:
+        raise last_parse_error
+    raise json.JSONDecodeError("Empty JSON response", "", 0)
 
 
 def _call_llm_rank_with_chunk_fallback(

@@ -1,4 +1,7 @@
 import heapq
+import json
+
+import pytest
 
 from llm4fairrouting.llm import priority_inference as priority_inference_module
 from llm4fairrouting.llm.priority_inference import adjust_weights_offline, _normalize_weight_config
@@ -201,3 +204,58 @@ def test_chunked_priority_ranking_recursively_splits_oversized_batches(monkeypat
     assert {item["demand_id"] for item in result["demand_configs"]} == {
         "REQ0", "REQ1", "REQ2", "REQ3", "REQ4"
     }
+
+
+def test_call_llm_rank_retries_invalid_json_before_succeeding(monkeypatch):
+    responses = iter([
+        '{"priority_labels":[{"demand_id":"REQ1""priority":1,"window_rank":1,"reasoning":"broken"}]}',
+        '{"priority_labels":[{"demand_id":"REQ1","priority":1,"window_rank":1,"reasoning":"recovered"}]}',
+    ])
+    calls = []
+
+    def fake_call_llm(*args, **kwargs):
+        calls.append((args, kwargs))
+        return next(responses)
+
+    monkeypatch.setattr(priority_inference_module, "call_llm", fake_call_llm)
+    monkeypatch.setenv("LLM4FAIRROUTING_PRIORITY_JSON_PARSE_RETRIES", "2")
+
+    result = priority_inference_module._call_llm_rank(
+        demands=[{"demand_id": "REQ1"}],
+        client=None,
+        model="demo-model",
+        city_context=None,
+        temperature=0.0,
+    )
+
+    assert len(calls) == 2
+    assert result["demand_configs"] == [
+        {
+            "demand_id": "REQ1",
+            "priority": 1,
+            "window_rank": 1,
+            "reasoning": "recovered",
+        }
+    ]
+
+
+def test_call_llm_rank_raises_json_error_after_retry_budget_exhausted(monkeypatch):
+    calls = []
+
+    def fake_call_llm(*args, **kwargs):
+        calls.append((args, kwargs))
+        return '{"priority_labels":[{"demand_id":"REQ1""priority":1}]}'
+
+    monkeypatch.setattr(priority_inference_module, "call_llm", fake_call_llm)
+    monkeypatch.setenv("LLM4FAIRROUTING_PRIORITY_JSON_PARSE_RETRIES", "2")
+
+    with pytest.raises(json.JSONDecodeError):
+        priority_inference_module._call_llm_rank(
+            demands=[{"demand_id": "REQ1"}],
+            client=None,
+            model="demo-model",
+            city_context=None,
+            temperature=0.0,
+        )
+
+    assert len(calls) == 2
