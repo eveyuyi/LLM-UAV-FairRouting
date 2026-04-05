@@ -145,6 +145,29 @@ def test_normalize_weight_config_accepts_priority_labels_schema():
     assert [item["priority"] for item in result["demand_configs"]] == [1, 3]
 
 
+def test_adjust_weights_offline_tolerates_null_optional_list_fields():
+    result = adjust_weights_offline(
+        [
+            {
+                "demand_id": "REQ_NULLS",
+                "demand_tier": "regular",
+                "destination": {"fid": "DEST5", "coords": [113.88, 22.8], "type": "school"},
+                "cargo": {"type": "vaccine"},
+                "priority_evaluation_signals": {
+                    "patient_condition": "Routine campus clinic refill",
+                    "requester_role": "community_health_worker",
+                    "special_handling": None,
+                    "population_vulnerability": None,
+                },
+                "context_signals": None,
+            }
+        ]
+    )
+
+    assert result["demand_configs"][0]["demand_id"] == "REQ_NULLS"
+    assert isinstance(result["supplementary_constraints"], list)
+
+
 def test_chunked_priority_ranking_recursively_splits_oversized_batches(monkeypatch):
     def fake_call_llm_rank(*, demands, client, model, city_context, temperature):
         if len(demands) > 2:

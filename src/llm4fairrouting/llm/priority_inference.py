@@ -123,14 +123,30 @@ def _normalize_weight_config(result: Dict) -> Dict:
             {"w_distance": 1.0, "w_time": 1.0, "w_risk": 1.0},
         ),
         "demand_configs": demand_configs,
-        "supplementary_constraints": list(result.get("supplementary_constraints", [])),
+        "supplementary_constraints": _as_list(result.get("supplementary_constraints", [])),
     }
+
+
+def _as_dict(value: object) -> Dict:
+    return value if isinstance(value, dict) else {}
+
+
+def _as_list(value: object) -> List:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    if isinstance(value, tuple):
+        return list(value)
+    if isinstance(value, set):
+        return list(value)
+    return [value]
 
 
 def _extract_vulnerability(demand: Dict) -> Dict:
     """Extract vulnerability signals from structured fields and text fallbacks."""
-    signals = demand.get("priority_evaluation_signals", {})
-    vuln = signals.get("population_vulnerability", {})
+    signals = _as_dict(demand.get("priority_evaluation_signals", {}))
+    vuln = _as_dict(signals.get("population_vulnerability", {}))
 
     elderly_ratio = vuln.get("elderly_ratio", 0.0)
     elderly_involved = vuln.get("elderly_involved", False)
@@ -139,7 +155,7 @@ def _extract_vulnerability(demand: Dict) -> Dict:
 
     # fallback: parse context_signals text
     if not elderly_ratio:
-        for sig in demand.get("context_signals", []):
+        for sig in _as_list(demand.get("context_signals", [])):
             if "老年" in sig or "elderly_ratio" in sig:
                 try:
                     ratio = float(sig.split("老年比例")[-1].strip())
@@ -158,7 +174,7 @@ def _extract_vulnerability(demand: Dict) -> Dict:
 
 
 def _collect_text_evidence(demand: Dict) -> str:
-    signals = demand.get("priority_evaluation_signals", {})
+    signals = _as_dict(demand.get("priority_evaluation_signals", {}))
     evidence_parts = [
         signals.get("patient_condition", ""),
         signals.get("time_sensitivity", ""),
@@ -167,10 +183,10 @@ def _collect_text_evidence(demand: Dict) -> str:
         signals.get("nearby_critical_facility", ""),
         signals.get("requester_role", ""),
         signals.get("operational_readiness", ""),
-        " ".join(str(item) for item in signals.get("special_handling", [])),
-        " ".join(str(item) for item in demand.get("context_signals", [])),
-        demand.get("destination", {}).get("type", ""),
-        demand.get("cargo", {}).get("type", ""),
+        " ".join(str(item) for item in _as_list(signals.get("special_handling", []))),
+        " ".join(str(item) for item in _as_list(demand.get("context_signals", []))),
+        _as_dict(demand.get("destination", {})).get("type", ""),
+        _as_dict(demand.get("cargo", {})).get("type", ""),
     ]
     return " ".join(str(part or "") for part in evidence_parts).lower()
 
@@ -229,10 +245,10 @@ def _assess_demand_priority(demand: Dict) -> Dict:
 def _build_supplementary_constraints(demands: List[Dict]) -> List[Dict]:
     constraints: List[Dict] = []
     for demand in demands:
-        signals = demand.get("priority_evaluation_signals", {})
+        signals = _as_dict(demand.get("priority_evaluation_signals", {}))
         evidence_text = _collect_text_evidence(demand)
         if any(keyword in evidence_text for keyword in ("school", "kindergarten")):
-            destination = demand.get("destination", {})
+            destination = _as_dict(demand.get("destination", {}))
             constraints.append({
                 "type": "noise_avoidance",
                 "description": f"Avoid low-altitude flight near {destination.get('fid', '')} because of a nearby school zone.",
@@ -241,7 +257,7 @@ def _build_supplementary_constraints(demands: List[Dict]) -> List[Dict]:
                     "radius_m": 300,
                 },
             })
-        if "cold_chain" in signals.get("special_handling", []):
+        if "cold_chain" in _as_list(signals.get("special_handling", [])):
             constraints.append({
                 "type": "speed_override",
                 "description": f"Prioritize a direct path for {demand.get('demand_id')} to reduce thermal exposure.",
