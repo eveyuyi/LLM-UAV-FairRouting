@@ -77,6 +77,7 @@ _EMERGENCY_ROLES = {"emergency_doctor", "paramedic", "triage_nurse"}
 _CRITICAL_ROLES = {"icu_nurse", "clinical_pharmacist", "ward_coordinator"}
 _LIFE_CARGO = {"aed", "blood_product", "cardiac_drug", "thrombolytic"}
 _CRITICAL_CARGO = {"ventilator", "icu_drug"}
+PRIORITY_MODES = ("rule-only", "llm-only", "hybrid")
 
 
 def _get_tier(demand: Dict) -> str:
@@ -86,6 +87,20 @@ def _get_tier(demand: Dict) -> str:
 
 def _normalize_priority(priority: object, default: int = 4) -> int:
     return normalize_priority(priority, default=default)
+
+
+def resolve_priority_mode(priority_mode: Optional[str], *, offline: bool = False) -> str:
+    raw_mode = (priority_mode or "").strip().lower().replace("_", "-")
+    if not raw_mode:
+        return "rule-only" if offline else "hybrid"
+    if raw_mode not in PRIORITY_MODES:
+        raise ValueError(
+            f"Unsupported priority mode: {priority_mode}. "
+            f"Expected one of: {', '.join(PRIORITY_MODES)}"
+        )
+    if offline and raw_mode != "rule-only":
+        raise ValueError("Offline mode only supports priority_mode='rule-only'")
+    return raw_mode
 
 
 def _extract_llm_priority_rows(result: Dict) -> List[Dict]:
@@ -518,9 +533,23 @@ def adjust_weights(
     model: str,
     city_context: Optional[Dict] = None,
     temperature: float = 0.0,
+    mode: str = "hybrid",
 ) -> Dict:
-    """Run LLM-based priority inference and reconcile it with deterministic evidence scoring."""
-    print(f"  [Module 3a] Ranking {len(demands)} demands with LLM + evidence scorer")
+    """Run Module 3a in rule-only, llm-only, or hybrid mode."""
+    resolved_mode = resolve_priority_mode(mode, offline=False)
+    if resolved_mode == "rule-only":
+        print(f"  [Module 3a] Ranking {len(demands)} demands with evidence scorer only")
+        result = _build_rule_weight_config(demands)
+        n_configs = len(result.get("demand_configs", []))
+        n_supp = len(result.get("supplementary_constraints", []))
+        print(f"  [Module 3a] Produced {n_configs} demand configs and {n_supp} supplementary constraints")
+        return result
+
+    if resolved_mode == "llm-only":
+        print(f"  [Module 3a] Ranking {len(demands)} demands with LLM only")
+    else:
+        print(f"  [Module 3a] Ranking {len(demands)} demands with LLM + evidence scorer")
+
     llm_result = _call_llm_rank_with_chunk_fallback(
         demands=demands,
         client=client,
@@ -529,13 +558,16 @@ def adjust_weights(
         temperature=temperature,
     )
 
-    rule_result = _build_rule_weight_config(demands)
-    merged = _merge_weight_configs(demands, rule_result, llm_result)
+    if resolved_mode == "llm-only":
+        result = llm_result
+    else:
+        rule_result = _build_rule_weight_config(demands)
+        result = _merge_weight_configs(demands, rule_result, llm_result)
 
-    n_configs = len(merged.get("demand_configs", []))
-    n_supp = len(merged.get("supplementary_constraints", []))
+    n_configs = len(result.get("demand_configs", []))
+    n_supp = len(result.get("supplementary_constraints", []))
     print(f"  [Module 3a] Produced {n_configs} demand configs and {n_supp} supplementary constraints")
-    return merged
+    return result
 
 
 def adjust_weights_offline(demands: List[Dict]) -> Dict:
@@ -567,10 +599,22 @@ def main():
     parser.add_argument("--api-base", type=str, default=env_text("OPENAI_BASE_URL"))
     parser.add_argument("--api-key", type=str, default=env_text("OPENAI_API_KEY"))
     parser.add_argument("--model", type=str, default=env_text("LLM4FAIRROUTING_MODEL", "gpt-4o-mini"))
+    parser.add_argument(
+        "--priority-mode",
+        type=str,
+        choices=PRIORITY_MODES,
+        default=env_text("LLM4FAIRROUTING_PRIORITY_MODE"),
+        help="Module 3a mode; defaults to rule-only with --offline and hybrid otherwise",
+    )
     args = parser.parse_args()
+    resolved_priority_mode = resolve_priority_mode(args.priority_mode, offline=args.offline)
 
     with open(args.input, "r", encoding="utf-8") as f:
         windows_data = json.load(f)
+
+    client = None
+    if resolved_priority_mode != "rule-only":
+        client = create_openai_client(args.api_base, args.api_key)
 
     all_results = []
     for window in windows_data:
@@ -578,11 +622,15 @@ def main():
         tw = window.get("time_window", "")
         print(f"[Module 3a] Window {tw}: {len(demands)} demands")
 
-        if args.offline:
+        if resolved_priority_mode == "rule-only":
             result = adjust_weights_offline(demands)
         else:
-            client = create_openai_client(args.api_base, args.api_key)
-            result = adjust_weights(demands, client, args.model)
+            result = adjust_weights(
+                demands,
+                client,
+                args.model,
+                mode=resolved_priority_mode,
+            )
 
         result["time_window"] = tw
         all_results.append(result)

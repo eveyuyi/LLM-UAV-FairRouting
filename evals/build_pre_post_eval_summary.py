@@ -26,6 +26,13 @@ def _optional_json(path_text: object) -> Optional[Dict[str, object]]:
     return _load_json(candidate)
 
 
+def _run_meta(run_dir_text: object) -> Optional[Dict[str, object]]:
+    run_dir = str(run_dir_text or "").strip()
+    if not run_dir:
+        return None
+    return _optional_json(Path(run_dir) / "run_meta.json")
+
+
 def _nested(payload: Optional[Dict[str, object]], path: Sequence[str]) -> Optional[object]:
     current: object = payload
     for key in path:
@@ -248,6 +255,25 @@ def _sample_snapshot(manifest: Dict[str, object]) -> Dict[str, object]:
     return snapshot
 
 
+def _priority_mode_snapshot(manifest: Dict[str, object]) -> Dict[str, Optional[str]]:
+    pre_mode = str(manifest.get("pre_priority_mode") or "").strip() or None
+    post_mode = str(manifest.get("post_priority_mode") or "").strip() or None
+
+    if pre_mode is None:
+        pre_meta = _run_meta(manifest.get("pre_run_dir"))
+        pre_mode = str((pre_meta or {}).get("priority_mode") or "").strip() or None
+    if post_mode is None:
+        post_meta = _run_meta(manifest.get("post_run_dir"))
+        post_mode = str((post_meta or {}).get("priority_mode") or "").strip() or None
+
+    common_mode = pre_mode if pre_mode and pre_mode == post_mode else None
+    return {
+        "common": common_mode,
+        "pre": pre_mode,
+        "post": post_mode,
+    }
+
+
 def _build_headline(manifest: Dict[str, object], verdict: Dict[str, object]) -> str:
     mode = str(manifest.get("mode") or "evaluation")
     scope = str(manifest.get("rank_only_mode") or manifest.get("operational_mode") or "unknown")
@@ -306,6 +332,7 @@ def build_pre_post_summary(manifest_path: str | Path) -> Dict[str, object]:
         "scope": manifest.get("rank_only_mode") or manifest.get("operational_mode"),
         "headline": _build_headline(manifest, primary_verdict),
         "truth_source": manifest.get("truth_source"),
+        "priority_modes": _priority_mode_snapshot(manifest),
         "sample": _sample_snapshot(manifest),
         "verdicts": {
             "primary": primary_verdict,
@@ -344,6 +371,14 @@ def render_summary_markdown(summary: Dict[str, object]) -> str:
         f"- Scope: `{summary.get('scope')}`",
         f"- Truth source: `{summary.get('truth_source')}`",
     ]
+
+    priority_modes = summary.get("priority_modes") or {}
+    if isinstance(priority_modes, dict):
+        if priority_modes.get("common"):
+            lines.append(f"- Priority mode: `{priority_modes.get('common')}`")
+        elif priority_modes.get("pre") or priority_modes.get("post"):
+            lines.append(f"- Pre priority mode: `{priority_modes.get('pre')}`")
+            lines.append(f"- Post priority mode: `{priority_modes.get('post')}`")
 
     sample = summary.get("sample") or {}
     if isinstance(sample, dict):

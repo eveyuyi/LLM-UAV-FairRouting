@@ -24,6 +24,10 @@ the script evaluates all windows in the shard by default.
 
 By default, AUTO_TIMESTAMP_OUTPUT_ROOT=1, so each run appends a timestamp
 suffix to OUTPUT_ROOT and keeps historical evaluation summaries.
+
+Priority mode:
+  - Set PRIORITY_MODE=rule-only|llm-only|hybrid for both pre/post runs.
+  - Or override separately with PRE_PRIORITY_MODE=... and POST_PRIORITY_MODE=...
 EOF
 }
 
@@ -51,6 +55,9 @@ API_KEY="${OPENAI_API_KEY:-}"
 DEFAULT_OUTPUT_ROOT="data/eval_runs/pre_post_rank_only"
 DEFAULT_TIME_SLOTS_STR="0 1 2 3 4 5 6 7 8 9"
 AUTO_TIMESTAMP_OUTPUT_ROOT="${AUTO_TIMESTAMP_OUTPUT_ROOT:-1}"
+PRIORITY_MODE="${PRIORITY_MODE:-hybrid}"
+PRE_PRIORITY_MODE="${PRE_PRIORITY_MODE:-${PRIORITY_MODE}}"
+POST_PRIORITY_MODE="${POST_PRIORITY_MODE:-${PRIORITY_MODE}}"
 
 PRE_API_BASE="${PRE_API_BASE:-http://127.0.0.1:8000/v1}"
 PRE_MODEL="${PRE_MODEL:-qwen3-pre}"
@@ -109,6 +116,13 @@ if [[ "${AUTO_TIMESTAMP_OUTPUT_ROOT}" != "0" && "${AUTO_TIMESTAMP_OUTPUT_ROOT}" 
   exit 1
 fi
 
+for mode in "${PRE_PRIORITY_MODE}" "${POST_PRIORITY_MODE}"; do
+  if [[ "${mode}" != "rule-only" && "${mode}" != "llm-only" && "${mode}" != "hybrid" ]]; then
+    echo "Unsupported priority mode: ${mode}. Expected one of: rule-only, llm-only, hybrid" >&2
+    exit 1
+  fi
+done
+
 if [[ "${AUTO_TIMESTAMP_OUTPUT_ROOT}" == "1" ]]; then
   OUTPUT_ROOT="${OUTPUT_ROOT%/}_$(date '+%Y%m%d_%H%M%S')"
 fi
@@ -156,6 +170,8 @@ echo "[config] fixed_extracted_demands=${FIXED_EXTRACTED_DEMANDS:-<none>}" >&2
 echo "[config] output_root=${OUTPUT_ROOT}" >&2
 echo "[config] auto_timestamp_output_root=${AUTO_TIMESTAMP_OUTPUT_ROOT}" >&2
 echo "[config] time_slots=${TIME_SLOTS_STR:-<all>}" >&2
+echo "[config] pre_priority_mode=${PRE_PRIORITY_MODE}" >&2
+echo "[config] post_priority_mode=${POST_PRIORITY_MODE}" >&2
 
 latest_run_dir() {
   local root="$1"
@@ -328,10 +344,11 @@ run_rank_only_once() {
   local tag="$1"
   local api_base="$2"
   local model="$3"
+  local priority_mode="$4"
   local out_base="${OUTPUT_ROOT}/${tag}"
   mkdir -p "${out_base}"
 
-  echo "[${tag}] rank-only workflow (skip solver), model=${model}, api_base=${api_base}" >&2
+  echo "[${tag}] rank-only workflow (skip solver), model=${model}, api_base=${api_base}, priority_mode=${priority_mode}" >&2
   OPENAI_API_KEY="${API_KEY}" OPENAI_BASE_URL="${api_base}" LLM4FAIRROUTING_TIME_SLOTS="${TIME_SLOTS_STR}" PYTHONPATH=src \
   "${_py[@]}" -m llm4fairrouting.workflow.run_workflow \
     --output-dir "${out_base}" \
@@ -339,6 +356,7 @@ run_rank_only_once() {
     --stations "${STATIONS}" \
     --building-data "${BUILDING_DATA}" \
     --model "${model}" \
+    --priority-mode "${priority_mode}" \
     "${RUN_WORKFLOW_EXTRA_ARGS[@]}" \
     "${TIME_SLOT_ARGS[@]}" \
     --skip-solver \
@@ -357,9 +375,9 @@ run_rank_only_once() {
 mkdir -p "${OUTPUT_ROOT}/evals"
 
 RUN_DIR_RESULT=""
-run_rank_only_once "pre" "${PRE_API_BASE}" "${PRE_MODEL}"
+run_rank_only_once "pre" "${PRE_API_BASE}" "${PRE_MODEL}" "${PRE_PRIORITY_MODE}"
 PRE_RUN_DIR="${RUN_DIR_RESULT}"
-run_rank_only_once "post" "${POST_API_BASE}" "${POST_MODEL}"
+run_rank_only_once "post" "${POST_API_BASE}" "${POST_MODEL}" "${POST_PRIORITY_MODE}"
 POST_RUN_DIR="${RUN_DIR_RESULT}"
 
 echo "[eval] priority alignment (pre)"
@@ -385,12 +403,14 @@ PYTHONPATH=src "${_py[@]}" evals/eval_priority_alignment.py \
   --output "${OUTPUT_ROOT}/evals/post_alignment.json"
 
 echo "[eval] alignment delta (post - pre)"
-OUTPUT_ROOT="${OUTPUT_ROOT}" PYTHONPATH=src "${_py[@]}" - <<'PY'
+OUTPUT_ROOT="${OUTPUT_ROOT}" PRE_PRIORITY_MODE="${PRE_PRIORITY_MODE}" POST_PRIORITY_MODE="${POST_PRIORITY_MODE}" PYTHONPATH=src "${_py[@]}" - <<'PY'
 import json
 import os
 from pathlib import Path
 
 output_root = Path(os.environ["OUTPUT_ROOT"])
+pre_priority_mode = os.environ["PRE_PRIORITY_MODE"]
+post_priority_mode = os.environ["POST_PRIORITY_MODE"]
 
 pre_path = output_root / "evals" / "pre_alignment.json"
 post_path = output_root / "evals" / "post_alignment.json"
@@ -421,6 +441,10 @@ def nested_diff(path):
 payload = {
     "pre_alignment": str(pre_path),
     "post_alignment": str(post_path),
+    "priority_modes": {
+        "pre": pre_priority_mode,
+        "post": post_priority_mode,
+    },
     "truth_source": post.get("truth_source") or pre.get("truth_source"),
     "delta_metrics_post_minus_pre": {
         "accuracy": diff("accuracy"),
@@ -460,6 +484,8 @@ cat > "${OUTPUT_ROOT}/evals/eval_manifest.json" <<EOF
   "mode": "rank_only_alignment",
   "rank_only_mode": "${RANK_ONLY_MODE}",
   "truth_source": "${TRUTH_SOURCE}",
+  "pre_priority_mode": "${PRE_PRIORITY_MODE}",
+  "post_priority_mode": "${POST_PRIORITY_MODE}",
   "fixed_extracted_demands": "${FIXED_EXTRACTED_DEMANDS}",
   "selected_alignment_demands": "${ALIGNMENT_DEMANDS_PATH}",
   "selection_manifest": "${SELECTION_MANIFEST_PATH}",

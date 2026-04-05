@@ -4,7 +4,12 @@ import json
 import pytest
 
 from llm4fairrouting.llm import priority_inference as priority_inference_module
-from llm4fairrouting.llm.priority_inference import adjust_weights_offline, _normalize_weight_config
+from llm4fairrouting.llm.priority_inference import (
+    _normalize_weight_config,
+    adjust_weights,
+    adjust_weights_offline,
+    resolve_priority_mode,
+)
 from llm4fairrouting.routing.domain import DemandEvent, priority_service_score
 
 
@@ -169,6 +174,84 @@ def test_adjust_weights_offline_tolerates_null_optional_list_fields():
 
     assert result["demand_configs"][0]["demand_id"] == "REQ_NULLS"
     assert isinstance(result["supplementary_constraints"], list)
+
+
+def test_resolve_priority_mode_defaults_and_rejects_offline_llm_modes():
+    assert resolve_priority_mode(None, offline=False) == "hybrid"
+    assert resolve_priority_mode(None, offline=True) == "rule-only"
+    assert resolve_priority_mode("llm_only", offline=False) == "llm-only"
+
+    with pytest.raises(ValueError):
+        resolve_priority_mode("llm-only", offline=True)
+
+
+def test_adjust_weights_llm_only_uses_only_llm_output(monkeypatch):
+    monkeypatch.setattr(
+        priority_inference_module,
+        "_call_llm_rank_with_chunk_fallback",
+        lambda **_: {
+            "global_weights": {"w_distance": 1.2, "w_time": 0.9, "w_risk": 1.1},
+            "demand_configs": [
+                {"demand_id": "REQ001", "priority": 2, "window_rank": 1, "reasoning": "llm only"}
+            ],
+            "supplementary_constraints": [{"type": "speed_override"}],
+        },
+    )
+    monkeypatch.setattr(
+        priority_inference_module,
+        "_build_rule_weight_config",
+        lambda demands: (_ for _ in ()).throw(AssertionError("rule path should not be used")),
+    )
+
+    result = adjust_weights(
+        [{"demand_id": "REQ001", "demand_tier": "critical"}],
+        client=None,
+        model="demo-model",
+        mode="llm-only",
+    )
+
+    assert result["demand_configs"][0]["priority"] == 2
+    assert result["demand_configs"][0]["reasoning"] == "llm only"
+    assert result["supplementary_constraints"] == [{"type": "speed_override"}]
+
+
+def test_adjust_weights_hybrid_merges_llm_and_rule_outputs(monkeypatch):
+    monkeypatch.setattr(
+        priority_inference_module,
+        "_call_llm_rank_with_chunk_fallback",
+        lambda **_: {
+            "global_weights": {"w_distance": 1.5, "w_time": 0.8, "w_risk": 1.0},
+            "demand_configs": [
+                {"demand_id": "REQ001", "priority": 4, "window_rank": 1, "reasoning": "llm"}
+            ],
+            "supplementary_constraints": [{"type": "llm_constraint"}],
+        },
+    )
+    monkeypatch.setattr(
+        priority_inference_module,
+        "_build_rule_weight_config",
+        lambda demands: {
+            "global_weights": {"w_distance": 1.0, "w_time": 1.0, "w_risk": 1.0},
+            "demand_configs": [
+                {"demand_id": "REQ001", "demand_tier": "life_support", "priority": 1, "window_rank": 1, "reasoning": "rule"}
+            ],
+            "supplementary_constraints": [{"type": "rule_constraint"}],
+        },
+    )
+
+    result = adjust_weights(
+        [{"demand_id": "REQ001", "demand_tier": "life_support"}],
+        client=None,
+        model="demo-model",
+        mode="hybrid",
+    )
+
+    assert result["demand_configs"][0]["priority"] == 1
+    assert result["demand_configs"][0]["reasoning"] == "rule | llm"
+    assert result["supplementary_constraints"] == [
+        {"type": "rule_constraint"},
+        {"type": "llm_constraint"},
+    ]
 
 
 def test_chunked_priority_ranking_recursively_splits_oversized_batches(monkeypatch):

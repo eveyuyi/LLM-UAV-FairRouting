@@ -106,6 +106,8 @@ def test_build_pre_post_summary_for_rank_only_mode() -> None:
                 "mode": "rank_only_alignment",
                 "rank_only_mode": "llm3_only",
                 "truth_source": "fixed_demands",
+                "pre_priority_mode": "llm-only",
+                "post_priority_mode": "hybrid",
                 "selection_manifest": str(selection_manifest),
                 "slot_sampling": "",
                 "pre_alignment": str(pre_alignment),
@@ -124,11 +126,15 @@ def test_build_pre_post_summary_for_rank_only_mode() -> None:
 
     assert summary["verdicts"]["primary"]["overall"] == "post_better"
     assert summary["alignment"]["delta_post_minus_pre"]["accuracy"] == 0.25
+    assert summary["priority_modes"] == {"common": None, "pre": "llm-only", "post": "hybrid"}
     assert summary["sample"]["n_selected_windows"] == 3
 
     markdown = render_summary_markdown(summary)
     assert "POST looks better than PRE" in markdown
     assert "Alignment Delta (Post - Pre)" in markdown
+    assert "Pre priority mode" in markdown
+    assert "llm-only" in markdown
+    assert "hybrid" in markdown
 
 
 def test_build_pre_post_summary_for_operational_mode() -> None:
@@ -213,6 +219,19 @@ def test_build_pre_post_summary_for_operational_mode() -> None:
         encoding="utf-8",
     )
 
+    pre_run_dir = base / "pre_run"
+    post_run_dir = base / "post_run"
+    pre_run_dir.mkdir(parents=True, exist_ok=True)
+    post_run_dir.mkdir(parents=True, exist_ok=True)
+    (pre_run_dir / "run_meta.json").write_text(
+        json.dumps({"priority_mode": "rule-only"}, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    (post_run_dir / "run_meta.json").write_text(
+        json.dumps({"priority_mode": "rule-only"}, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
     manifest = eval_dir / "eval_manifest.json"
     manifest.write_text(
         json.dumps(
@@ -225,8 +244,8 @@ def test_build_pre_post_summary_for_operational_mode() -> None:
                 "pre_alignment": str(pre_alignment),
                 "post_alignment": str(post_alignment),
                 "post_vs_pre_operational_impact": str(operational),
-                "pre_run_dir": "/tmp/pre",
-                "post_run_dir": "/tmp/post",
+                "pre_run_dir": str(pre_run_dir),
+                "post_run_dir": str(post_run_dir),
             },
             ensure_ascii=False,
             indent=2,
@@ -238,8 +257,11 @@ def test_build_pre_post_summary_for_operational_mode() -> None:
 
     assert summary["verdicts"]["primary"]["overall"] == "post_better"
     assert summary["operational"]["comparison"]["priority_1_on_time_rate_gain"] == 0.2
+    assert summary["priority_modes"] == {"common": "rule-only", "pre": "rule-only", "post": "rule-only"}
     assert summary["sample"]["n_selected_windows"] == 2
 
     markdown = render_summary_markdown(summary)
     assert "Operational Comparison" in markdown
     assert "priority_weighted_on_time_gain" in markdown
+    assert "Priority mode" in markdown
+    assert "rule-only" in markdown

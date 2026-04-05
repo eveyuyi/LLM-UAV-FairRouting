@@ -31,8 +31,10 @@ from llm4fairrouting.multiobjective.nsga3_heuristic import run_nsga3_heuristic_s
 from llm4fairrouting.multiobjective.nsga3_search import run_nsga3_pareto_search
 from llm4fairrouting.routing.rrt_visualization import select_representative_frontier_solution
 from llm4fairrouting.llm.priority_inference import (
+    PRIORITY_MODES,
     adjust_weights,
     adjust_weights_offline,
+    resolve_priority_mode,
 )
 from llm4fairrouting.llm.client_utils import create_openai_client
 from llm4fairrouting.data.seed_paths import (
@@ -223,6 +225,7 @@ def run_workflow(
     extracted_demands_path: Optional[str] = None,
     stations_path: Optional[str] = None,
     offline: bool = False,
+    priority_mode: Optional[str] = None,
     api_base: Optional[str] = None,
     api_key: Optional[str] = None,
     model: str = "gpt-4o-mini",
@@ -261,6 +264,7 @@ def run_workflow(
     run_dir.mkdir(parents=True, exist_ok=True)
     resolved_stations_path = str(stations_path or STATION_DATA_PATH)
     resolved_dialogue_path = str(dialogue_path or DEMAND_DIALOGUES_PATH)
+    resolved_priority_mode = resolve_priority_mode(priority_mode, offline=offline)
 
     # 将 stdout 同步写入终端和 log 文件
     log_path = run_dir / "workflow.log"
@@ -284,6 +288,7 @@ def run_workflow(
             "created_at": datetime.now().isoformat(),
             "model": model,
             "offline": offline,
+            "priority_mode": resolved_priority_mode,
             "noise_weight": noise_weight,
             "drone_activation_cost": drone_activation_cost,
             "temperature": temperature,
@@ -314,7 +319,10 @@ def run_workflow(
 
         client = None
 
-        if not offline:
+        needs_llm_client = (not offline) and (
+            extracted_demands_path is None or resolved_priority_mode != "rule-only"
+        )
+        if needs_llm_client:
             client = create_openai_client(api_base, api_key)
 
         # ----------------------------------------------------------------
@@ -394,10 +402,16 @@ def run_workflow(
             print(f"\n  ---- Window {tw}: {len(demands)} demands ----")
 
             # 3a: 权重调整
-            if offline:
+            if resolved_priority_mode == "rule-only":
                 weight_config = adjust_weights_offline(demands)
             else:
-                weight_config = adjust_weights(demands, client, model)
+                weight_config = adjust_weights(
+                    demands,
+                    client,
+                    model,
+                    temperature=temperature,
+                    mode=resolved_priority_mode,
+                )
 
             weight_config["time_window"] = tw
 
@@ -634,6 +648,13 @@ def main():
         help="Run without calling an LLM",
     )
     parser.add_argument(
+        "--priority-mode",
+        type=str,
+        choices=PRIORITY_MODES,
+        default=env_text("LLM4FAIRROUTING_PRIORITY_MODE"),
+        help="Module 3a mode; defaults to rule-only with --offline and hybrid otherwise",
+    )
+    parser.add_argument(
         "--skip-solver",
         action=argparse.BooleanOptionalAction,
         default=env_bool("LLM4FAIRROUTING_SKIP_SOLVER", False),
@@ -767,6 +788,7 @@ def main():
         extracted_demands_path=args.extracted_demands,
         stations_path=args.stations,
         offline=args.offline,
+        priority_mode=args.priority_mode,
         api_base=args.api_base,
         api_key=args.api_key,
         model=args.model,
