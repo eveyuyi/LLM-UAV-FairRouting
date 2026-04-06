@@ -71,7 +71,10 @@ def filter_accepted_dialogues(dialogues: Iterable[Mapping[str, object]]) -> List
 def _dialogue_pass_by_priority(dialogues: Iterable[Mapping[str, object]]) -> dict[int, Dict[str, float | int]]:
     counts: dict[int, MutableMapping[str, int]] = defaultdict(lambda: {"passed": 0, "total": 0})
     for dialogue in dialogues:
-        latent_priority = int(dialogue.get("annotations", {}).get("latent_priority", 4) or 4)
+        annotations = dict(dialogue.get("annotations", {}) or {})
+        latent_priority = int(
+            annotations.get("seed_latent_priority", annotations.get("latent_priority", 4)) or 4
+        )
         passed = bool(dialogue.get("audit", {}).get("passed", False))
         counts[latent_priority]["total"] += 1
         if passed:

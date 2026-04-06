@@ -229,7 +229,7 @@ def _counterfactual_variants(gold: Dict) -> List[Dict]:
     return variants
 
 
-def _surface_contradiction_windows(flattened: List[Dict], *, max_windows: int = 4) -> List[List[Dict]]:
+def _surface_contradiction_windows(flattened: List[Dict], *, max_windows: int = 6) -> List[List[Dict]]:
     if len(flattened) < 2:
         return []
 
@@ -271,7 +271,12 @@ def _surface_contradiction_windows(flattened: List[Dict], *, max_windows: int = 
     return windows
 
 
-def _near_tie_windows(flattened: List[Dict], *, max_windows: int = 4) -> List[List[Dict]]:
+def _near_tie_windows(
+    flattened: List[Dict],
+    *,
+    max_windows: int = 6,
+    per_priority_limit: int = 2,
+) -> List[List[Dict]]:
     by_priority: Dict[int, List[Dict]] = {}
     for demand in flattened:
         priority = int(demand.get("labels", {}).get("extraction_observable_priority", 4))
@@ -287,13 +292,6 @@ def _near_tie_windows(flattened: List[Dict], *, max_windows: int = 4) -> List[Li
                 int(item.get("labels", {}).get("extraction_observable_score", 0)),
                 str(item.get("demand_id", "")),
             )
-        )
-        tightest_pair = min(
-            zip(candidates, candidates[1:]),
-            key=lambda pair: abs(
-                int(pair[0].get("labels", {}).get("extraction_observable_score", 0))
-                - int(pair[1].get("labels", {}).get("extraction_observable_score", 0))
-            ),
         )
         neighbor = None
         for delta in (1, -1, 2):
@@ -311,7 +309,42 @@ def _near_tie_windows(flattened: List[Dict], *, max_windows: int = 4) -> List[Li
                 break
         if neighbor is None:
             continue
-        windows.append([deepcopy(tightest_pair[0]), deepcopy(tightest_pair[1]), neighbor])
+
+        adjacent_pairs = sorted(
+            (
+                (
+                    left_idx,
+                    right_idx,
+                    abs(
+                        int(candidates[left_idx].get("labels", {}).get("extraction_observable_score", 0))
+                        - int(candidates[right_idx].get("labels", {}).get("extraction_observable_score", 0))
+                    ),
+                )
+                for left_idx, right_idx in zip(range(len(candidates) - 1), range(1, len(candidates)))
+            ),
+            key=lambda item: (
+                item[2],
+                str(candidates[item[0]].get("demand_id", "")),
+                str(candidates[item[1]].get("demand_id", "")),
+            ),
+        )
+
+        used_indices: set[int] = set()
+        added_for_priority = 0
+        for left_idx, right_idx, _ in adjacent_pairs:
+            if left_idx in used_indices or right_idx in used_indices:
+                continue
+            windows.append(
+                [
+                    deepcopy(candidates[left_idx]),
+                    deepcopy(candidates[right_idx]),
+                    deepcopy(neighbor),
+                ]
+            )
+            used_indices.update({left_idx, right_idx})
+            added_for_priority += 1
+            if added_for_priority >= per_priority_limit or len(windows) >= max_windows:
+                break
         if len(windows) >= max_windows:
             break
     return windows

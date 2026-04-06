@@ -175,7 +175,10 @@ def _priority_from_score(
     if tier == "life_support":
         return 1
     if tier == "critical":
-        return min(priority, 2)
+        # Keep the critical tier as the distinct P2 band. Otherwise the current
+        # score bonuses collapse almost every critical request into P1, which
+        # removes the class boundary that LLM3 is meant to learn.
+        return 2
     if tier == "regular":
         if "post-exposure" in evidence_text or _extract_deadline_minutes(demand) <= 30:
             return min(priority, 2)

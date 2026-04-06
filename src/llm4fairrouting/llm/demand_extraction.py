@@ -174,8 +174,9 @@ def _enrich_demands_with_metadata(demands: List[Dict], dialogues: List[Dict]) ->
         annotations = dialogue.get("annotations", {})
         audit = dialogue.get("audit", {})
         labels = demand.setdefault("labels", {})
-        if annotations.get("latent_priority") is not None:
-            labels["latent_priority"] = int(annotations["latent_priority"])
+        true_latent_priority = annotations.get("seed_latent_priority", annotations.get("latent_priority"))
+        if true_latent_priority is not None:
+            labels["latent_priority"] = int(true_latent_priority)
         if audit.get("dialogue_observable_priority") is not None:
             labels["dialogue_observable_priority"] = int(audit["dialogue_observable_priority"])
         if annotations.get("gold_structured_demand"):

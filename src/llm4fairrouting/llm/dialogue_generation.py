@@ -1143,7 +1143,9 @@ def _event_to_dialogue(
         },
         "annotations": {
             "dialogue_style": style,
-            "latent_priority": int(gold_structured_demand.get("extraction_observable_priority", priority)),
+            # Preserve simulator latent priority as the truth anchor.
+            # LLM3 supervision stays on gold_structured_demand.labels.extraction_observable_priority.
+            "latent_priority": int(priority),
             "priority_factors": dict(normalized_event.get("priority_factors", {})),
             "must_mention_factors": _event_must_mention_factors(normalized_event),
             "optional_factors": _event_optional_factors(normalized_event),
@@ -1151,7 +1153,7 @@ def _event_to_dialogue(
             "dialogue_styles": list(normalized_event.get("dialogue_styles", [])),
         },
     }
-    # Keep legacy seed priority for analysis/debugging while training target follows scorer output.
+    # Keep the legacy alias for compatibility with older analytics and manifests.
     dialogue["annotations"]["seed_latent_priority"] = int(priority)
     dialogue["audit"] = audit_dialogue(dialogue)
     labels = derive_priority_labels(
