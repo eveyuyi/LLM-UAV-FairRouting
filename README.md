@@ -200,6 +200,20 @@ llm4fairrouting-demand-events --manifest-output data/seed/daily_demand_events_ma
 - surface-vs-structure contradiction windows, where low-need requests can use urgent wording while higher-need requests remain calm and clinical
 - near-tie ranking windows, where multiple requests have similar observable priority and require finer ordering
 
+If you want to evaluate those categories separately, split each shard with:
+
+```bash
+python scripts/split_hard_eval_windows.py data/eval/hard_eval_v1
+```
+
+This writes per-shard subtype files under `hard_eval_subsets/`:
+
+- `counterfactual.jsonl`
+- `surface_contradiction.jsonl`
+- `near_tie.jsonl`
+- `mixed_priority.jsonl`
+- `other.jsonl`
+
 Online generation can also be parallelized:
 
 - `--dialogue-concurrency` controls how many LLM1 dialogue batches are sent concurrently
