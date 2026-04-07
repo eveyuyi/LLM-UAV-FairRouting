@@ -15,6 +15,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 import pytest
 
+import llm4fairrouting.llm.dialogue_generation as dialogue_generation_module
 from llm4fairrouting.llm.dialogue_generation import (
     _event_to_dialogue,
     _find_nearest_station,
@@ -23,6 +24,7 @@ from llm4fairrouting.llm.dialogue_generation import (
     _infer_poi,
     _map_priority_to_tier,
     _pick_tier_template,
+    generate_dialogues_online,
     generate_dialogues_offline,
     load_demand_events,
     load_stations,
@@ -217,6 +219,36 @@ class TestEventToDialogue:
         assert "elderly_ratio" in demo and "population" in demo
         assert 0.0 <= demo["elderly_ratio"] <= 1.0
         assert demo["population"] > 0
+
+
+def test_generate_dialogues_online_parallel_updates_all_dialogues(monkeypatch):
+    monkeypatch.setattr(
+        dialogue_generation_module,
+        "call_llm",
+        lambda client, model, system_prompt, user_prompt, temperature=0.0: "{}",
+    )
+    monkeypatch.setattr(
+        dialogue_generation_module,
+        "_parse_llm_batch_response",
+        lambda raw, batch: {
+            dlg["dialogue_id"]: f"generated::{dlg['dialogue_id']}"
+            for dlg in batch
+        },
+    )
+
+    dialogues = generate_dialogues_online(
+        SAMPLE_EVENTS[:3],
+        SAMPLE_STATIONS,
+        client=object(),
+        model="fake",
+        base_date="2024-03-15",
+        temperature=0.0,
+        batch_size=1,
+        max_concurrency=2,
+    )
+
+    assert [dlg["dialogue_id"] for dlg in dialogues] == ["D0001", "D0002", "D0003"]
+    assert all(dlg["conversation"].startswith("generated::D") for dlg in dialogues)
 
     def test_origin_coords_is_list(self):
         dlg = _event_to_dialogue(SAMPLE_EVENT, SAMPLE_STATIONS, "2024-03-15", 1)

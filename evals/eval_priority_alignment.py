@@ -49,8 +49,13 @@ def _load_weight_configs(source_path: str) -> Dict[str, Dict]:
 
 
 def _load_extracted_demands(path: str) -> Dict[str, Dict[str, Dict]]:
-    with open(path, "r", encoding="utf-8") as handle:
-        windows = json.load(handle)
+    source = Path(path)
+    if source.suffix.lower() == ".jsonl":
+        with open(source, "r", encoding="utf-8") as handle:
+            windows = [json.loads(line) for line in handle if line.strip()]
+    else:
+        with open(source, "r", encoding="utf-8") as handle:
+            windows = json.load(handle)
     by_window: Dict[str, Dict[str, Dict]] = {}
     for window in windows:
         time_window = str(window.get("time_window", ""))
@@ -93,6 +98,21 @@ def _load_ground_truth_priorities(path: str) -> Dict[str, int]:
         event_id: int(payload["priority"])
         for event_id, payload in load_ground_truth_event_index(path).items()
     }
+
+
+def _observable_priority_from_demand(demand: Optional[Dict]) -> Optional[int]:
+    if not demand:
+        return None
+    labels = demand.get("labels", {}) or {}
+    value = labels.get("extraction_observable_priority")
+    if value is None:
+        value = demand.get("extraction_observable_priority")
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _safe_rank_metric(metric_fn, y_true: List[int], y_pred: List[int]) -> Optional[float]:
@@ -178,11 +198,18 @@ def evaluate_priority_alignment(
     dialogues_path: str,
     ground_truth_path: str,
     urgent_threshold: int = 2,
+    truth_source: str = "auto",
+    truth_demands_path: Optional[str] = None,
 ) -> Dict[str, object]:
     weight_configs = _load_weight_configs(weights_path)
     extracted_demands = _load_extracted_demands(demands_path)
+    truth_demands = _load_extracted_demands(truth_demands_path) if truth_demands_path else {}
     dialogue_lookup, _event_lookup = _load_dialogue_metadata(dialogues_path)
     ground_truth = _load_ground_truth_priorities(ground_truth_path)
+    if truth_source not in {"auto", "run_extracted", "fixed_demands", "ground_truth_manifest"}:
+        raise ValueError(f"Unsupported truth_source: {truth_source}")
+    if truth_source == "fixed_demands" and not truth_demands_path:
+        raise ValueError("truth_demands_path is required when truth_source='fixed_demands'")
 
     y_true: List[int] = []
     y_pred: List[int] = []
@@ -198,10 +225,15 @@ def evaluate_priority_alignment(
             dialogue_id = str(demand.get("source_dialogue_id", "")).strip()
             source_event_id = str(demand.get("source_event_id", "")).strip()
             event_id = source_event_id or str((dialogue_lookup.get(dialogue_id) or {}).get("event_id", "")).strip()
-            true_priority = (
-                demand.get("labels", {}).get("extraction_observable_priority")
-                or demand.get("extraction_observable_priority")
-            )
+            true_priority = None
+            if truth_source == "run_extracted":
+                true_priority = _observable_priority_from_demand(demand)
+            elif truth_source == "fixed_demands":
+                truth_demand = (truth_demands.get(time_window) or {}).get(demand_id)
+                true_priority = _observable_priority_from_demand(truth_demand)
+            elif truth_source == "auto":
+                true_priority = _observable_priority_from_demand(demand)
+
             if true_priority is None:
                 if not event_id or event_id not in ground_truth:
                     continue
@@ -230,6 +262,8 @@ def evaluate_priority_alignment(
         "n_aligned_demands": len(y_true),
         "labels": labels,
         "urgent_threshold": urgent_threshold,
+        "truth_source": truth_source,
+        "truth_demands_path": truth_demands_path,
         "per_item": per_item,
     }
     if not y_true:
@@ -290,6 +324,16 @@ def main() -> None:
     parser.add_argument("--dialogues", required=True, help="Dialogue JSONL file used to build extracted demands")
     parser.add_argument("--ground-truth", required=True, help="Ground-truth rich event manifest JSONL/JSON")
     parser.add_argument("--urgent-threshold", type=int, default=2, help="Priorities <= threshold are treated as urgent")
+    parser.add_argument(
+        "--truth-source",
+        choices=("auto", "run_extracted", "fixed_demands", "ground_truth_manifest"),
+        default="auto",
+        help="Which source to use for true priorities",
+    )
+    parser.add_argument(
+        "--truth-demands",
+        help="Optional fixed demands JSON/JSONL used as the truth source when --truth-source=fixed_demands",
+    )
     parser.add_argument("--output", default="evals/results/priority_alignment.json", help="Output JSON path")
     args = parser.parse_args()
 
@@ -299,6 +343,8 @@ def main() -> None:
         dialogues_path=args.dialogues,
         ground_truth_path=args.ground_truth,
         urgent_threshold=args.urgent_threshold,
+        truth_source=args.truth_source,
+        truth_demands_path=args.truth_demands,
     )
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)

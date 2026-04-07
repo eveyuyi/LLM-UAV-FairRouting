@@ -50,11 +50,39 @@ def test_call_llm_retries_before_succeeding(monkeypatch):
 
     assert result == '{"status": "ok"}'
     assert client.completions.calls == 3
-    assert sleep_calls == [2.0, 2.0]
+    assert sleep_calls == [3.0, 6.0]
+
+
+def test_call_llm_does_not_retry_non_retryable_context_error(monkeypatch):
+    sleep_calls = []
+    monkeypatch.setattr(client_utils.time, "sleep", sleep_calls.append)
+
+    class _ContextCompletions:
+        def __init__(self):
+            self.calls = 0
+
+        def create(self, **_: object):
+            self.calls += 1
+            raise RuntimeError(
+                "Error code: 400 - {'error': {'message': "
+                "\"'max_tokens' or 'max_completion_tokens' is too large: 1200. "
+                "This model's maximum context length is 16384 tokens and your request "
+                "has 16263 input tokens\"}}"
+            )
+
+    completions = _ContextCompletions()
+    client = type("Client", (), {"chat": type("Chat", (), {"completions": completions})()})()
+
+    with pytest.raises(RuntimeError) as exc_info:
+        client_utils.call_llm(client, "demo-model", "system", "user")
+
+    assert "without retry" in str(exc_info.value)
+    assert completions.calls == 1
+    assert sleep_calls == []
 
 
 class _FakeOpenAI:
-    def __init__(self, *, base_url: str, api_key: str):
+    def __init__(self, *, base_url: str, api_key: str, **_: object):
         self.base_url = base_url
         self.api_key = api_key
 

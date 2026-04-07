@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -30,8 +31,10 @@ from llm4fairrouting.multiobjective.nsga3_heuristic import run_nsga3_heuristic_s
 from llm4fairrouting.multiobjective.nsga3_search import run_nsga3_pareto_search
 from llm4fairrouting.routing.rrt_visualization import select_representative_frontier_solution
 from llm4fairrouting.llm.priority_inference import (
+    PRIORITY_MODES,
     adjust_weights,
     adjust_weights_offline,
+    resolve_priority_mode,
 )
 from llm4fairrouting.llm.client_utils import create_openai_client
 from llm4fairrouting.data.seed_paths import (
@@ -109,6 +112,67 @@ def _filter_dialogues_by_time_slots(dialogues: list[Dict], time_slots: Optional[
     ]
 
 
+_WINDOW_LABEL_RE = re.compile(
+    r"^\d{4}-\d{2}-\d{2}T(?P<start_hour>\d{2}):(?P<start_min>\d{2})-\d{2}:\d{2}$"
+)
+
+
+def _timestamp_time_slot(timestamp: object) -> Optional[int]:
+    raw = str(timestamp or "").strip()
+    if not raw:
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    return (parsed.hour * 60 + parsed.minute) // 5
+
+
+def _window_time_slots(window: Dict) -> set[int]:
+    slots: set[int] = set()
+    label = str(window.get("time_window", "")).strip().split("::", 1)[0]
+    match = _WINDOW_LABEL_RE.match(label)
+    if match:
+        start_hour = int(match.group("start_hour"))
+        start_min = int(match.group("start_min"))
+        slots.add((start_hour * 60 + start_min) // 5)
+
+    for demand in window.get("demands", []) or []:
+        slot = _timestamp_time_slot(demand.get("request_timestamp"))
+        if slot is not None:
+            slots.add(slot)
+
+    return slots
+
+
+def _filter_extracted_windows_by_time_slots(
+    windows: list[Dict],
+    time_slots: Optional[list[int]],
+) -> list[Dict]:
+    if time_slots is None:
+        return list(windows)
+
+    allowed_slots = {int(slot) for slot in time_slots}
+    return [
+        window
+        for window in windows
+        if _window_time_slots(window) & allowed_slots
+    ]
+
+
+def _load_precomputed_window_results(path: str) -> list[Dict]:
+    source = Path(path)
+    suffix = source.suffix.lower()
+    if suffix == ".jsonl":
+        with open(source, "r", encoding="utf-8") as handle:
+            return [json.loads(line) for line in handle if line.strip()]
+    with open(source, "r", encoding="utf-8") as handle:
+        payload = json.load(handle)
+    if not isinstance(payload, list):
+        raise ValueError(f"Precomputed extracted demands must be a JSON/JSONL list: {path}")
+    return payload
+
+
 def _extract_drone_path_details(all_solutions: list[Dict]) -> list[Dict]:
     """Return the first available structured drone-path payload from workflow results."""
     for solution_entry in all_solutions:
@@ -158,8 +222,10 @@ def _load_representative_search_workflow_results(search_payload: Optional[Dict])
 def run_workflow(
     output_dir: str,
     dialogue_path: Optional[str] = None,
+    extracted_demands_path: Optional[str] = None,
     stations_path: Optional[str] = None,
     offline: bool = False,
+    priority_mode: Optional[str] = None,
     api_base: Optional[str] = None,
     api_key: Optional[str] = None,
     model: str = "gpt-4o-mini",
@@ -184,12 +250,21 @@ def run_workflow(
     nsga3_seed: int = 42,
     nsga3_save_all_candidate_results: bool = False,
 ):
-    """Run the workflow from a canonical dialogue dataset through ranking and solving."""
+    """Run the workflow from a canonical dialogue dataset through ranking and solving.
+
+    Backward compatibility note:
+    - When ``extracted_demands_path`` is ``None`` (the default), the workflow behaves the
+      same as before and executes Module 2 on the provided dialogues.
+    - When ``extracted_demands_path`` is set, Module 2 is intentionally skipped and the
+      provided precomputed window demands are used as the fixed input to Module 3 and the
+      solver. This is mainly for evaluation/debugging, especially pure-LLM3 comparisons.
+    """
     base_dir = Path(output_dir)
     run_dir = _build_run_dir(base_dir, model, noise_weight)
     run_dir.mkdir(parents=True, exist_ok=True)
     resolved_stations_path = str(stations_path or STATION_DATA_PATH)
     resolved_dialogue_path = str(dialogue_path or DEMAND_DIALOGUES_PATH)
+    resolved_priority_mode = resolve_priority_mode(priority_mode, offline=offline)
 
     # 将 stdout 同步写入终端和 log 文件
     log_path = run_dir / "workflow.log"
@@ -213,6 +288,7 @@ def run_workflow(
             "created_at": datetime.now().isoformat(),
             "model": model,
             "offline": offline,
+            "priority_mode": resolved_priority_mode,
             "noise_weight": noise_weight,
             "drone_activation_cost": drone_activation_cost,
             "temperature": temperature,
@@ -226,6 +302,7 @@ def run_workflow(
             "drone_speed": drone_speed,
             "stations_path": resolved_stations_path,
             "dialogue_path": resolved_dialogue_path,
+            "extracted_demands_path": extracted_demands_path,
             "time_slots": time_slots,
             "skip_solver": skip_solver,
             "pareto_scan": pareto_scan,
@@ -242,23 +319,11 @@ def run_workflow(
 
         client = None
 
-        if not offline:
+        needs_llm_client = (not offline) and (
+            extracted_demands_path is None or resolved_priority_mode != "rule-only"
+        )
+        if needs_llm_client:
             client = create_openai_client(api_base, api_key)
-
-        print("=" * 60)
-        print("Input: Daily Demand Dialogues")
-        print("=" * 60)
-
-        with open(resolved_dialogue_path, "r", encoding="utf-8") as f:
-            dialogues = [json.loads(l.strip()) for l in f if l.strip()]
-        print(f"  Loaded {len(dialogues)} dialogues from {resolved_dialogue_path}")
-        if time_slots is not None:
-            filtered_dialogues = _filter_dialogues_by_time_slots(dialogues, time_slots)
-            print(
-                f"  Applied time-slot filter {time_slots}: "
-                f"kept {len(filtered_dialogues)} / {len(dialogues)} dialogues"
-            )
-            dialogues = filtered_dialogues
 
         # ----------------------------------------------------------------
         # Step 2: Module 2 — 按窗口提取需求
@@ -267,16 +332,45 @@ def run_workflow(
         print("Step 2: Context Extraction (Module 2)")
         print("=" * 60)
 
-        if offline:
-            window_results = extract_demands_offline(dialogues, window_minutes)
+        if extracted_demands_path:
+            print("=" * 60)
+            print("Input: Precomputed Extracted Demands")
+            print("=" * 60)
+            window_results = _load_precomputed_window_results(extracted_demands_path)
+            print(f"  Loaded {len(window_results)} demand windows from {extracted_demands_path}")
+            if time_slots is not None:
+                filtered_windows = _filter_extracted_windows_by_time_slots(window_results, time_slots)
+                print(
+                    f"  Applied time-slot filter {time_slots}: "
+                    f"kept {len(filtered_windows)} / {len(window_results)} windows"
+                )
+                window_results = filtered_windows
         else:
-            window_results = extract_all_demands(
-                dialogues,
-                client,
-                model,
-                window_minutes,
-                temperature,
-            )
+            print("=" * 60)
+            print("Input: Daily Demand Dialogues")
+            print("=" * 60)
+
+            with open(resolved_dialogue_path, "r", encoding="utf-8") as f:
+                dialogues = [json.loads(l.strip()) for l in f if l.strip()]
+            print(f"  Loaded {len(dialogues)} dialogues from {resolved_dialogue_path}")
+            if time_slots is not None:
+                filtered_dialogues = _filter_dialogues_by_time_slots(dialogues, time_slots)
+                print(
+                    f"  Applied time-slot filter {time_slots}: "
+                    f"kept {len(filtered_dialogues)} / {len(dialogues)} dialogues"
+                )
+                dialogues = filtered_dialogues
+
+            if offline:
+                window_results = extract_demands_offline(dialogues, window_minutes)
+            else:
+                window_results = extract_all_demands(
+                    dialogues,
+                    client,
+                    model,
+                    window_minutes,
+                    temperature,
+                )
 
         demands_path = run_dir / "extracted_demands.json"
         with open(demands_path, "w", encoding="utf-8") as f:
@@ -308,10 +402,16 @@ def run_workflow(
             print(f"\n  ---- Window {tw}: {len(demands)} demands ----")
 
             # 3a: 权重调整
-            if offline:
+            if resolved_priority_mode == "rule-only":
                 weight_config = adjust_weights_offline(demands)
             else:
-                weight_config = adjust_weights(demands, client, model)
+                weight_config = adjust_weights(
+                    demands,
+                    client,
+                    model,
+                    temperature=temperature,
+                    mode=resolved_priority_mode,
+                )
 
             weight_config["time_window"] = tw
 
@@ -519,6 +619,12 @@ def main():
         help=f"Dialogue dataset path (default {DEMAND_DIALOGUES_FILENAME})",
     )
     parser.add_argument(
+        "--extracted-demands",
+        type=str,
+        default=env_text("LLM4FAIRROUTING_EXTRACTED_DEMANDS"),
+        help="Optional precomputed extracted_demands.json to skip Module 2 and evaluate Module 3 on fixed inputs",
+    )
+    parser.add_argument(
         "--stations", type=str,
         default=env_text("LLM4FAIRROUTING_STATIONS", str(STATION_DATA_PATH)),
         help=f"{STATION_DATA_FILENAME} station data path",
@@ -540,6 +646,13 @@ def main():
         action=argparse.BooleanOptionalAction,
         default=env_bool("LLM4FAIRROUTING_OFFLINE", False),
         help="Run without calling an LLM",
+    )
+    parser.add_argument(
+        "--priority-mode",
+        type=str,
+        choices=PRIORITY_MODES,
+        default=env_text("LLM4FAIRROUTING_PRIORITY_MODE"),
+        help="Module 3a mode; defaults to rule-only with --offline and hybrid otherwise",
     )
     parser.add_argument(
         "--skip-solver",
@@ -672,8 +785,10 @@ def main():
     run_workflow(
         output_dir=args.output_dir,
         dialogue_path=args.dialogues,
+        extracted_demands_path=args.extracted_demands,
         stations_path=args.stations,
         offline=args.offline,
+        priority_mode=args.priority_mode,
         api_base=args.api_base,
         api_key=args.api_key,
         model=args.model,

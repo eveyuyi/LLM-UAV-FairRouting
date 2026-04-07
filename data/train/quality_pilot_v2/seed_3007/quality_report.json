@@ -1,0 +1,185 @@
+{
+  "schema_version": "priority_quality_report_v1",
+  "generated_at": "2026-04-04T03:19:33Z",
+  "quality_gate_policy_version": "quality_gate_v1",
+  "thresholds": {
+    "min_audit_pass_rate": 0.9,
+    "min_priority_pass_rate_p1": 0.8,
+    "min_priority_pass_rate_p2": 0.8,
+    "max_priority_gap_vs_p4": 0.15,
+    "max_scenario_context_missing_rate": 0.15,
+    "max_requester_role_missing_rate": 0.05,
+    "min_requester_role_match_rate": 0.85,
+    "min_surface_contradiction_ratio": 0.1,
+    "min_near_tie_ratio": 0.1,
+    "min_surface_contradiction_count": 3,
+    "min_near_tie_count": 3
+  },
+  "counts": {
+    "events": 182,
+    "dialogues_raw": 364,
+    "dialogues_accepted": 364,
+    "pipeline_windows": 48,
+    "hard_windows": 36
+  },
+  "metrics": {
+    "dialogue_audit_pass_rate": 1.0,
+    "dialogue_audit_pass_by_priority": {
+      "1": {
+        "passed": 70,
+        "total": 70,
+        "rate": 1.0
+      },
+      "3": {
+        "passed": 52,
+        "total": 52,
+        "rate": 1.0
+      },
+      "4": {
+        "passed": 242,
+        "total": 242,
+        "rate": 1.0
+      }
+    },
+    "dialogue_observability": {
+      "mean": 0.9094,
+      "median": 0.9,
+      "min": 0.75,
+      "max": 1.0
+    },
+    "missing_must_mention_counts": {},
+    "missing_must_mention_rates": {},
+    "requester_role_pipeline": {
+      "total": 364,
+      "matched": 350,
+      "missing": 0,
+      "match_rate": 0.9615,
+      "missing_rate": 0.0,
+      "top_drifts": [
+        {
+          "expected": "consumer",
+          "observed": "customer",
+          "count": 8
+        },
+        {
+          "expected": "office_administrator",
+          "observed": "office_admin",
+          "count": 2
+        },
+        {
+          "expected": "emergency_doctor",
+          "observed": "er_physician",
+          "count": 2
+        },
+        {
+          "expected": "paramedic",
+          "observed": "emergency_doctor",
+          "count": 1
+        },
+        {
+          "expected": "pharmacy_staff",
+          "observed": "clinic_staff",
+          "count": 1
+        }
+      ]
+    },
+    "hard_case_coverage": {
+      "total": 36,
+      "counts": {
+        "counterfactual": 28,
+        "mixed_priority": 1,
+        "surface_contradiction": 4,
+        "near_tie": 3,
+        "other": 0
+      },
+      "ratios": {
+        "counterfactual": 0.7778,
+        "mixed_priority": 0.0278,
+        "surface_contradiction": 0.1111,
+        "near_tie": 0.0833,
+        "other": 0.0
+      }
+    }
+  },
+  "checks": {
+    "audit_pass_rate": {
+      "value": 1.0,
+      "threshold": {
+        "min": 0.9
+      },
+      "passed": true
+    },
+    "priority_1_audit_pass_rate": {
+      "value": 1.0,
+      "threshold": {
+        "min": 0.8
+      },
+      "passed": true
+    },
+    "priority_2_audit_pass_rate": {
+      "value": null,
+      "threshold": {
+        "min": 0.8
+      },
+      "passed": true,
+      "skipped": true,
+      "reason": "No priority-2 dialogues in this shard"
+    },
+    "priority_gap_vs_p4": {
+      "value": 0.0,
+      "threshold": {
+        "max": 0.15
+      },
+      "passed": true
+    },
+    "scenario_context_missing_rate": {
+      "value": 0.0,
+      "threshold": {
+        "max": 0.15
+      },
+      "passed": true
+    },
+    "requester_role_missing_rate": {
+      "value": 0.0,
+      "threshold": {
+        "max": 0.05
+      },
+      "passed": true
+    },
+    "requester_role_match_rate": {
+      "value": 0.9615,
+      "threshold": {
+        "min": 0.85
+      },
+      "passed": true
+    },
+    "surface_contradiction_ratio": {
+      "value": 0.1111,
+      "threshold": {
+        "min": 0.1
+      },
+      "passed": true
+    },
+    "near_tie_ratio": {
+      "value": 0.0833,
+      "threshold": {
+        "min": 0.1
+      },
+      "passed": false
+    },
+    "surface_contradiction_count": {
+      "value": 4.0,
+      "threshold": {
+        "min": 3.0
+      },
+      "passed": true
+    },
+    "near_tie_count": {
+      "value": 3.0,
+      "threshold": {
+        "min": 3.0
+      },
+      "passed": true
+    }
+  }
+}

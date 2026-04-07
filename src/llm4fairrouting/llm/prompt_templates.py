@@ -9,6 +9,7 @@ Prompt templates for the drone-delivery workflow.
 import json
 from typing import List, Dict, Optional
 
+from llm4fairrouting.llm.ranking_prompt_utils import render_priority_ranking_prompt
 
 # ============================================================================
 # System prompt
@@ -167,59 +168,4 @@ Return valid JSON only."""
 
 def weight_adjustment_prompt(demands: List[Dict], city_context: Optional[Dict] = None) -> str:
     """Module 3 prompt: rank demands and assign solver priorities."""
-    demands_json = json.dumps(demands, ensure_ascii=False, indent=2)
-    city_json = json.dumps(city_context or {}, ensure_ascii=False, indent=2)
-
-    return f"""You are Module 3 of the drone-delivery workflow.
-Rank the demands within this time window and assign solver priorities.
-
-## Demand List
-{demands_json}
-
-## City Context
-{city_json}
-
-## Priority Semantics
-- `priority=1`: life-support or immediately life-threatening demand
-- `priority=2`: urgent clinical demand with strong time pressure
-- `priority=3`: routine but time-bound operational demand
-- `priority=4`: flexible same-day demand
-
-## Ranking Guidance
-- Use `demand_tier`, `time_constraint`, `patient_condition`, requester role, special handling, and vulnerability signals together.
-- Life-threatening cases, strict deadlines, and ready receivers should rank higher.
-- Consumer OTC medication may move up to `priority=3` when the dialogue shows real urgency.
-- Suggest supplementary constraints only when they materially affect routing.
-
-## Output Format
-```json
-{{
-  "global_weights": {{
-    "w_distance": 1.0,
-    "w_time": 1.0,
-    "w_risk": 1.0
-  }},
-  "demand_configs": [
-    {{
-      "demand_id": "REQ001",
-      "demand_tier": "life_support",
-      "priority": 1,
-      "window_rank": 1,
-      "reasoning": "Cardiac arrest, CPR in progress, rescue window under 4 minutes"
-    }}
-  ],
-  "supplementary_constraints": [
-    {{
-      "type": "noise_avoidance | speed_override | no_fly_zone",
-      "description": "Short routing note",
-      "affected_zone": {{"center": [113.88, 22.65], "radius_m": 300}},
-      "time_window": ["09:00", "09:30"]
-    }}
-  ]
-}}
-```
-
-## Notes
-- `window_rank=1` means the most urgent demand in the current window.
-- Keep `reasoning` short and concrete.
-- Return valid JSON only."""
+    return render_priority_ranking_prompt(demands, city_context=city_context)

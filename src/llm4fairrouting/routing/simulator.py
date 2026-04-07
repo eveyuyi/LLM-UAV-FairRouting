@@ -108,6 +108,10 @@ class FinalDroneSimulator:
             analytics_output_dir=analytics_output_dir,
             enable_conflict_refiner=enable_conflict_refiner,
         )
+        solver_cls = self.cplex_solver.__class__.__name__.lower()
+        self.assignment_solver_label = (
+            "heuristic" if "heuristic" in solver_cls else "cplex"
+        )
 
     def run(self, end_time: float):
         print(f"\n开始模拟，结束时间 {end_time} 小时")
@@ -511,7 +515,9 @@ class FinalDroneSimulator:
         if not idle_drones or not pending:
             return
 
-        print(f"\n[{self.current_time:.3f}] 调用CPLEX求解器")
+        print(
+            f"\n[{self.current_time:.3f}] 调用分配求解器 ({self.assignment_solver_label})"
+        )
         print(f"  空闲无人机: {len(idle_drones)}, 待处理需求: {len(pending)}")
 
         solve_context = self._active_window_context()

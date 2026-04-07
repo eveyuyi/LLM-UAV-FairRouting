@@ -1,6 +1,15 @@
 import heapq
+import json
 
-from llm4fairrouting.llm.priority_inference import adjust_weights_offline
+import pytest
+
+from llm4fairrouting.llm import priority_inference as priority_inference_module
+from llm4fairrouting.llm.priority_inference import (
+    _normalize_weight_config,
+    adjust_weights,
+    adjust_weights_offline,
+    resolve_priority_mode,
+)
 from llm4fairrouting.routing.domain import DemandEvent, priority_service_score
 
 
@@ -128,3 +137,208 @@ def test_adjust_weights_offline_ranks_short_deadline_critical_case_ahead_of_regu
     configs = result["demand_configs"]
     assert configs[0]["demand_id"] == "REQ101"
     assert configs[0]["priority"] <= configs[1]["priority"]
+
+
+def test_normalize_weight_config_accepts_priority_labels_schema():
+    result = _normalize_weight_config(
+        {
+            "priority_labels": [
+                {"demand_id": "DEM_001", "priority": 1, "window_rank": 1, "reasoning": "highest need"},
+                {"demand_id": "DEM_002", "priority": 3, "window_rank": 2, "reasoning": "lower need"},
+            ]
+        }
+    )
+
+    assert [item["demand_id"] for item in result["demand_configs"]] == ["DEM_001", "DEM_002"]
+    assert [item["priority"] for item in result["demand_configs"]] == [1, 3]
+
+
+def test_adjust_weights_offline_tolerates_null_optional_list_fields():
+    result = adjust_weights_offline(
+        [
+            {
+                "demand_id": "REQ_NULLS",
+                "demand_tier": "regular",
+                "destination": {"fid": "DEST5", "coords": [113.88, 22.8], "type": "school"},
+                "cargo": {"type": "vaccine"},
+                "priority_evaluation_signals": {
+                    "patient_condition": "Routine campus clinic refill",
+                    "requester_role": "community_health_worker",
+                    "special_handling": None,
+                    "population_vulnerability": None,
+                },
+                "context_signals": None,
+            }
+        ]
+    )
+
+    assert result["demand_configs"][0]["demand_id"] == "REQ_NULLS"
+    assert isinstance(result["supplementary_constraints"], list)
+
+
+def test_resolve_priority_mode_defaults_and_rejects_offline_llm_modes():
+    assert resolve_priority_mode(None, offline=False) == "hybrid"
+    assert resolve_priority_mode(None, offline=True) == "rule-only"
+    assert resolve_priority_mode("llm_only", offline=False) == "llm-only"
+
+    with pytest.raises(ValueError):
+        resolve_priority_mode("llm-only", offline=True)
+
+
+def test_adjust_weights_llm_only_uses_only_llm_output(monkeypatch):
+    monkeypatch.setattr(
+        priority_inference_module,
+        "_call_llm_rank_with_chunk_fallback",
+        lambda **_: {
+            "global_weights": {"w_distance": 1.2, "w_time": 0.9, "w_risk": 1.1},
+            "demand_configs": [
+                {"demand_id": "REQ001", "priority": 2, "window_rank": 1, "reasoning": "llm only"}
+            ],
+            "supplementary_constraints": [{"type": "speed_override"}],
+        },
+    )
+    monkeypatch.setattr(
+        priority_inference_module,
+        "_build_rule_weight_config",
+        lambda demands: (_ for _ in ()).throw(AssertionError("rule path should not be used")),
+    )
+
+    result = adjust_weights(
+        [{"demand_id": "REQ001", "demand_tier": "critical"}],
+        client=None,
+        model="demo-model",
+        mode="llm-only",
+    )
+
+    assert result["demand_configs"][0]["priority"] == 2
+    assert result["demand_configs"][0]["reasoning"] == "llm only"
+    assert result["supplementary_constraints"] == [{"type": "speed_override"}]
+
+
+def test_adjust_weights_hybrid_merges_llm_and_rule_outputs(monkeypatch):
+    monkeypatch.setattr(
+        priority_inference_module,
+        "_call_llm_rank_with_chunk_fallback",
+        lambda **_: {
+            "global_weights": {"w_distance": 1.5, "w_time": 0.8, "w_risk": 1.0},
+            "demand_configs": [
+                {"demand_id": "REQ001", "priority": 4, "window_rank": 1, "reasoning": "llm"}
+            ],
+            "supplementary_constraints": [{"type": "llm_constraint"}],
+        },
+    )
+    monkeypatch.setattr(
+        priority_inference_module,
+        "_build_rule_weight_config",
+        lambda demands: {
+            "global_weights": {"w_distance": 1.0, "w_time": 1.0, "w_risk": 1.0},
+            "demand_configs": [
+                {"demand_id": "REQ001", "demand_tier": "life_support", "priority": 1, "window_rank": 1, "reasoning": "rule"}
+            ],
+            "supplementary_constraints": [{"type": "rule_constraint"}],
+        },
+    )
+
+    result = adjust_weights(
+        [{"demand_id": "REQ001", "demand_tier": "life_support"}],
+        client=None,
+        model="demo-model",
+        mode="hybrid",
+    )
+
+    assert result["demand_configs"][0]["priority"] == 1
+    assert result["demand_configs"][0]["reasoning"] == "rule | llm"
+    assert result["supplementary_constraints"] == [
+        {"type": "rule_constraint"},
+        {"type": "llm_constraint"},
+    ]
+
+
+def test_chunked_priority_ranking_recursively_splits_oversized_batches(monkeypatch):
+    def fake_call_llm_rank(*, demands, client, model, city_context, temperature):
+        if len(demands) > 2:
+            raise RuntimeError("maximum context length is 16384 tokens")
+        return {
+            "global_weights": {"w_distance": 1.0, "w_time": 1.0, "w_risk": 1.0},
+            "demand_configs": [
+                {
+                    "demand_id": demand["demand_id"],
+                    "priority": 2,
+                    "window_rank": idx,
+                    "reasoning": f"ranked {demand['demand_id']}",
+                }
+                for idx, demand in enumerate(demands, start=1)
+            ],
+            "supplementary_constraints": [],
+        }
+
+    monkeypatch.setattr(priority_inference_module, "_call_llm_rank", fake_call_llm_rank)
+    monkeypatch.setattr(priority_inference_module, "env_int", lambda *_args, **_kwargs: 3)
+
+    result = priority_inference_module._call_llm_rank_with_chunk_fallback(
+        demands=[{"demand_id": f"REQ{i}"} for i in range(5)],
+        client=None,
+        model="demo-model",
+        city_context=None,
+        temperature=0.0,
+    )
+
+    assert len(result["demand_configs"]) == 5
+    assert {item["demand_id"] for item in result["demand_configs"]} == {
+        "REQ0", "REQ1", "REQ2", "REQ3", "REQ4"
+    }
+
+
+def test_call_llm_rank_retries_invalid_json_before_succeeding(monkeypatch):
+    responses = iter([
+        '{"priority_labels":[{"demand_id":"REQ1""priority":1,"window_rank":1,"reasoning":"broken"}]}',
+        '{"priority_labels":[{"demand_id":"REQ1","priority":1,"window_rank":1,"reasoning":"recovered"}]}',
+    ])
+    calls = []
+
+    def fake_call_llm(*args, **kwargs):
+        calls.append((args, kwargs))
+        return next(responses)
+
+    monkeypatch.setattr(priority_inference_module, "call_llm", fake_call_llm)
+    monkeypatch.setenv("LLM4FAIRROUTING_PRIORITY_JSON_PARSE_RETRIES", "2")
+
+    result = priority_inference_module._call_llm_rank(
+        demands=[{"demand_id": "REQ1"}],
+        client=None,
+        model="demo-model",
+        city_context=None,
+        temperature=0.0,
+    )
+
+    assert len(calls) == 2
+    assert result["demand_configs"] == [
+        {
+            "demand_id": "REQ1",
+            "priority": 1,
+            "window_rank": 1,
+            "reasoning": "recovered",
+        }
+    ]
+
+
+def test_call_llm_rank_raises_json_error_after_retry_budget_exhausted(monkeypatch):
+    calls = []
+
+    def fake_call_llm(*args, **kwargs):
+        calls.append((args, kwargs))
+        return '{"priority_labels":[{"demand_id":"REQ1""priority":1}]}'
+
+    monkeypatch.setattr(priority_inference_module, "call_llm", fake_call_llm)
+    monkeypatch.setenv("LLM4FAIRROUTING_PRIORITY_JSON_PARSE_RETRIES", "2")
+
+    with pytest.raises(json.JSONDecodeError):
+        priority_inference_module._call_llm_rank(
+            demands=[{"demand_id": "REQ1"}],
+            client=None,
+            model="demo-model",
+            city_context=None,
+            temperature=0.0,
+        )
+
+    assert len(calls) == 2

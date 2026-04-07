@@ -4,9 +4,17 @@ from __future__ import annotations
 
 import json
 import random
+import sys
 from copy import deepcopy
 from pathlib import Path
 from typing import Dict, Iterable, List, Sequence, Tuple
+
+ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
+
+from llm4fairrouting.llm.ranking_prompt_utils import render_priority_ranking_prompt
 
 ANSWER_LEAK_KEYS = {
     "labels",
@@ -59,30 +67,7 @@ def sanitize_demands(demands: Sequence[Dict]) -> List[Dict]:
 
 
 def build_prompt_text(time_window: str, demands: Sequence[Dict]) -> str:
-    payload = {
-        "time_window": time_window,
-        "demands": sanitize_demands(demands),
-    }
-    return (
-        "You are given one drone-delivery time window and several structured delivery demands.\n"
-        "Return JSON only with this schema:\n"
-        "{\n"
-        '  "priority_labels": [\n'
-        "    {\n"
-        '      "demand_id": "string",\n'
-        '      "priority": 1,\n'
-        '      "window_rank": 1,\n'
-        '      "reasoning": "short string"\n'
-        "    }\n"
-        "  ]\n"
-        "}\n\n"
-        "Rules:\n"
-        "- priority must be an integer from 1 to 4, where 1 is the highest priority.\n"
-        "- window_rank must start at 1, be unique, and cover every demand exactly once.\n"
-        "- reasoning should be short and grounded in the structured evidence.\n\n"
-        "Input:\n"
-        f"{json.dumps(payload, ensure_ascii=False, indent=2)}"
-    )
+    return render_priority_ranking_prompt(sanitize_demands(demands), time_window=time_window)
 
 
 def build_response_text(priority_labels: Sequence[Dict]) -> str:

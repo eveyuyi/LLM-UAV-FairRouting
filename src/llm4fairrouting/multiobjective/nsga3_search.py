@@ -1,4 +1,4 @@
-﻿"""NSGA-III outer-loop search over workflow solver parameters."""
+"""NSGA-III outer-loop search over workflow solver parameters."""
 
 from __future__ import annotations
 

@@ -3,7 +3,9 @@ Module 2: Context Extraction — 按时间窗口聚合对话，调用 LLM 提取
 """
 
 import json
+import os
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import defaultdict
 from pathlib import Path
 
@@ -172,8 +174,9 @@ def _enrich_demands_with_metadata(demands: List[Dict], dialogues: List[Dict]) ->
         annotations = dialogue.get("annotations", {})
         audit = dialogue.get("audit", {})
         labels = demand.setdefault("labels", {})
-        if annotations.get("latent_priority") is not None:
-            labels["latent_priority"] = int(annotations["latent_priority"])
+        true_latent_priority = annotations.get("seed_latent_priority", annotations.get("latent_priority"))
+        if true_latent_priority is not None:
+            labels["latent_priority"] = int(true_latent_priority)
         if audit.get("dialogue_observable_priority") is not None:
             labels["dialogue_observable_priority"] = int(audit["dialogue_observable_priority"])
         if annotations.get("gold_structured_demand"):
@@ -374,6 +377,25 @@ def _build_context_signals(
     return signals
 
 
+def _canonical_demand_id(dialogue: Dict, fallback_index: int) -> str:
+    """Return a stable system demand id for a dialogue-derived demand.
+
+    `demand_id` is an internal identifier used to align Module 2/3 outputs, so it should
+    come from stable metadata rather than from the LLM response. This keeps ids unique even
+    when a large extraction window is pre-split into multiple chunks.
+    """
+    metadata = dialogue.get("metadata", {}) or {}
+    event_id = str(metadata.get("event_id", "")).strip()
+    if event_id:
+        return event_id
+
+    dialogue_id = str(dialogue.get("dialogue_id", "")).strip()
+    if dialogue_id:
+        return dialogue_id
+
+    return f"REQ{fallback_index:03d}"
+
+
 def _build_heuristic_demand(dialogue: Dict, demand_id: str) -> Dict:
     metadata = dialogue.get("metadata", {})
     conversation = str(dialogue.get("conversation", ""))
@@ -461,7 +483,8 @@ def _prefer_value(primary, fallback):
 
 def _merge_demand_records(heuristic: Dict, extracted: Dict) -> Dict:
     merged = {
-        "demand_id": _prefer_value(extracted.get("demand_id"), heuristic["demand_id"]),
+        # Keep a canonical system id instead of trusting the model-generated id field.
+        "demand_id": heuristic["demand_id"],
         "source_dialogue_id": _prefer_value(
             extracted.get("source_dialogue_id"), heuristic["source_dialogue_id"]
         ),
@@ -513,7 +536,10 @@ def _normalize_extracted_window(result: Dict, dialogues: List[Dict]) -> Dict:
     }
     normalized_demands: List[Dict] = []
     for index, dialogue in enumerate(dialogues, start=1):
-        heuristic = _build_heuristic_demand(dialogue, demand_id=f"REQ{index:03d}")
+        heuristic = _build_heuristic_demand(
+            dialogue,
+            demand_id=_canonical_demand_id(dialogue, fallback_index=index),
+        )
         extracted = by_dialogue_id.get(str(dialogue.get("dialogue_id")))
         if extracted is None and index - 1 < len(extracted_demands):
             extracted = extracted_demands[index - 1]
@@ -551,15 +577,67 @@ def extract_demands_for_window(
         DRONE_SYSTEM_PROMPT,
         context_extraction_prompt,
     )
-    prompt = context_extraction_prompt(dialogues, time_window)
-    print(f"  [Module 2] Window {time_window}: extracting {len(dialogues)} dialogues with the LLM")
+    def _extract_once(window_dialogues: List[Dict], label: str) -> Dict:
+        prompt = context_extraction_prompt(window_dialogues, label)
+        print(f"  [Module 2] Window {label}: extracting {len(window_dialogues)} dialogues with the LLM")
+        parse_retries = max(1, int(os.getenv("LLM4FAIRROUTING_JSON_PARSE_RETRIES", "3") or 3))
+        last_parse_error: Exception | None = None
+        for attempt in range(1, parse_retries + 1):
+            raw = call_llm(client, model, DRONE_SYSTEM_PROMPT, prompt, temperature)
+            try:
+                result = _normalize_extracted_window(parse_json_response(raw), window_dialogues)
+                n_demands = len(result.get("demands", []))
+                print(f"  [Module 2] Extracted {n_demands} normalized demands")
+                return result
+            except json.JSONDecodeError as exc:
+                last_parse_error = exc
+                print(
+                    f"  [Module 2] Window {label}: invalid JSON attempt {attempt}/{parse_retries}: {exc}"
+                )
+        raise RuntimeError(
+            f"json_parse_failed: window={label}, dialogues={len(window_dialogues)}; last_error={last_parse_error}"
+        )
 
-    raw = call_llm(client, model, DRONE_SYSTEM_PROMPT, prompt, temperature)
-    result = _normalize_extracted_window(parse_json_response(raw), dialogues)
+    def _is_context_length_error(exc: Exception) -> bool:
+        text = str(exc).lower()
+        return "maximum context length" in text or "context length" in text
 
-    n_demands = len(result.get("demands", []))
-    print(f"  [Module 2] Extracted {n_demands} normalized demands")
-    return result
+    def _is_json_parse_error(exc: Exception) -> bool:
+        return "json_parse_failed" in str(exc).lower()
+
+    def _extract_with_split(window_dialogues: List[Dict], label: str) -> List[Dict]:
+        try:
+            return list(_extract_once(window_dialogues, label).get("demands", []))
+        except RuntimeError as exc:
+            should_split = _is_context_length_error(exc) or _is_json_parse_error(exc)
+            if len(window_dialogues) <= 1 or not should_split:
+                raise
+            mid = len(window_dialogues) // 2
+            reason = "context too long" if _is_context_length_error(exc) else "invalid JSON responses"
+            print(
+                f"  [Module 2] Window {label}: {reason}, splitting "
+                f"{len(window_dialogues)} -> {mid}+{len(window_dialogues)-mid}"
+            )
+            left = _extract_with_split(window_dialogues[:mid], f"{label}#a")
+            right = _extract_with_split(window_dialogues[mid:], f"{label}#b")
+            return left + right
+
+    # Optional hard cap before request; useful for small-context models.
+    # Set LLM4FAIRROUTING_MAX_DIALOGUES_PER_EXTRACTION_WINDOW=4 (for example).
+    max_dialogues = int(os.getenv("LLM4FAIRROUTING_MAX_DIALOGUES_PER_EXTRACTION_WINDOW", "0") or 0)
+    if max_dialogues > 0 and len(dialogues) > max_dialogues:
+        print(
+            f"  [Module 2] Window {time_window}: pre-splitting "
+            f"{len(dialogues)} dialogues by cap={max_dialogues}"
+        )
+        all_demands: List[Dict] = []
+        for idx in range(0, len(dialogues), max_dialogues):
+            chunk = dialogues[idx: idx + max_dialogues]
+            all_demands.extend(_extract_with_split(chunk, f"{time_window}#chunk{idx//max_dialogues+1}"))
+        return {"time_window": time_window, "demands": all_demands}
+
+    all_demands = _extract_with_split(dialogues, time_window)
+    return {"time_window": time_window, "demands": all_demands}
 
 
 def extract_all_demands(
@@ -568,6 +646,7 @@ def extract_all_demands(
     model: str,
     window_minutes: int = 5,
     temperature: float = 0.0,
+    max_concurrency: int = 1,
 ) -> List[Dict]:
     """对所有对话按时间窗口分组，逐窗口提取需求。
 
@@ -581,12 +660,24 @@ def extract_all_demands(
     windows = group_by_time_window(dialogues, window_minutes)
     print(f"[Module 2] Grouped dialogues into {len(windows)} time windows")
 
-    results = []
-    for label, group in windows.items():
-        result = extract_demands_for_window(group, label, client, model, temperature)
-        results.append(result)
+    window_items = list(windows.items())
+    max_concurrency = max(1, int(max_concurrency or 1))
+    if max_concurrency <= 1:
+        return [
+            extract_demands_for_window(group, label, client, model, temperature)
+            for label, group in window_items
+        ]
 
-    return results
+    results_by_index: dict[int, Dict] = {}
+    with ThreadPoolExecutor(max_workers=max_concurrency) as pool:
+        futures = {
+            pool.submit(extract_demands_for_window, group, label, client, model, temperature): index
+            for index, (label, group) in enumerate(window_items)
+        }
+        for future in as_completed(futures):
+            results_by_index[futures[future]] = future.result()
+
+    return [results_by_index[index] for index in sorted(results_by_index)]
 
 
 # ============================================================================
@@ -692,6 +783,7 @@ def main():
     parser.add_argument("--api-base", type=str, default=env_text("OPENAI_BASE_URL"))
     parser.add_argument("--api-key", type=str, default=env_text("OPENAI_API_KEY"))
     parser.add_argument("--model", type=str, default=env_text("LLM4FAIRROUTING_MODEL", "gpt-4o-mini"))
+    parser.add_argument("--max-concurrency", type=int, default=1)
     args = parser.parse_args()
 
     with open(args.input, "r", encoding="utf-8") as f:
@@ -703,7 +795,13 @@ def main():
         results = extract_demands_offline(dialogues, args.window)
     else:
         client = create_openai_client(args.api_base, args.api_key)
-        results = extract_all_demands(dialogues, client, args.model, args.window)
+        results = extract_all_demands(
+            dialogues,
+            client,
+            args.model,
+            args.window,
+            max_concurrency=args.max_concurrency,
+        )
 
     out_path = args.output or str(PROJECT_ROOT / "data" / "drone" / "extracted_demands.json")
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)

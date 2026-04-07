@@ -21,15 +21,30 @@ dist/
 # Generated outputs
 /data/drone/
 /data/cache/
+/data/checkpoints/
 /data/compare_runs/
+/data/eval_runs/
 /data/extract_eval_plan_runs/
+/data/hydra_outputs/
 /data/independent_window_experiments/
 /data/result/
 /data/result_without_priority/
 /data/static_independent_runs/
 /data/test_one_window_nsga3h/
+# Track curated training drops; keep other train outputs local
+/data/train/*
+!/data/train/quality_pilot_v2/
+!/data/train/quality_pilot_v2/**
+/outputs/
 /results/
+/scripts/occupy_GPU.sh
+/checkpoints/
 
 # Test and local verification artifacts
 /.test_artifacts/
 /verification_tmp/
+
+# Local audit and training artifacts
+/=10.1
+/data/audits/
+/tensorboard_log/

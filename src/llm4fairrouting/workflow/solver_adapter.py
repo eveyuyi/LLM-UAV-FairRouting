@@ -203,8 +203,14 @@ DEFAULT_SIMULATION_PADDING_H = 24.0
 
 
 def _parse_window_bounds(time_window: str) -> Tuple[datetime, datetime]:
-    """Parse labels like ``2024-03-15T00:00-00:05`` into datetimes."""
-    date_part, span = time_window.split("T", 1)
+    """Parse labels like ``2024-03-15T00:00-00:05`` into datetimes.
+
+    Window labels may carry scenario suffixes such as ``::technical`` or
+    ``::direct``. Those suffixes are metadata only and should not affect the
+    temporal bounds used by the dynamic solver.
+    """
+    normalized_window = str(time_window).strip().split("::", 1)[0]
+    date_part, span = normalized_window.split("T", 1)
     start_str, end_str = span.split("-", 1)
     start_dt = datetime.fromisoformat(f"{date_part}T{start_str}")
 

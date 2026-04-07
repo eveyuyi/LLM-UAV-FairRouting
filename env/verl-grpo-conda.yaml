@@ -1,0 +1,14 @@
+name: verl310_grpo_stable
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pip>=24
+  - setuptools>=68
+  - wheel
+  # torch / torchvision / torchaudio come from pip (CUDA 12.8 wheels) below
+  - pip:
+      # PyTorch CUDA 12.8 wheels (index url must be passed via --extra-index-url when running pip manually;
+      # conda's pip block does not support --index-url, so run the command in the rebuild script instead)
+      - -r env/verl-grpo-requirements-lock.txt

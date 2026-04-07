@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional
 if TYPE_CHECKING:
     from openai import OpenAI
 
-from llm4fairrouting.config.runtime_env import env_text, prepare_env_file
+from llm4fairrouting.config.runtime_env import env_int, env_text, prepare_env_file
 from llm4fairrouting.data.priority_labels import (
     derive_priority_assessment,
     get_demand_tier,
@@ -77,6 +77,7 @@ _EMERGENCY_ROLES = {"emergency_doctor", "paramedic", "triage_nurse"}
 _CRITICAL_ROLES = {"icu_nurse", "clinical_pharmacist", "ward_coordinator"}
 _LIFE_CARGO = {"aed", "blood_product", "cardiac_drug", "thrombolytic"}
 _CRITICAL_CARGO = {"ventilator", "icu_drug"}
+PRIORITY_MODES = ("rule-only", "llm-only", "hybrid")
 
 
 def _get_tier(demand: Dict) -> str:
@@ -88,9 +89,38 @@ def _normalize_priority(priority: object, default: int = 4) -> int:
     return normalize_priority(priority, default=default)
 
 
+def resolve_priority_mode(priority_mode: Optional[str], *, offline: bool = False) -> str:
+    raw_mode = (priority_mode or "").strip().lower().replace("_", "-")
+    if not raw_mode:
+        return "rule-only" if offline else "hybrid"
+    if raw_mode not in PRIORITY_MODES:
+        raise ValueError(
+            f"Unsupported priority mode: {priority_mode}. "
+            f"Expected one of: {', '.join(PRIORITY_MODES)}"
+        )
+    if offline and raw_mode != "rule-only":
+        raise ValueError("Offline mode only supports priority_mode='rule-only'")
+    return raw_mode
+
+
+def _extract_llm_priority_rows(result: Dict) -> List[Dict]:
+    """Accept both inference-time and training-time output schemas.
+
+    Inference prompts historically asked for `demand_configs`, while the VERL SFT/GRPO
+    datasets use the lighter `priority_labels` schema. Supporting both keeps serving and
+    training formats aligned and prevents trained models from being treated as if they
+    returned an empty ranking.
+    """
+    for key in ("demand_configs", "priority_labels", "ranked_demands", "demands", "labels"):
+        value = result.get(key)
+        if isinstance(value, list):
+            return value
+    return []
+
+
 def _normalize_weight_config(result: Dict) -> Dict:
     demand_configs = []
-    for rank, config in enumerate(result.get("demand_configs", []), start=1):
+    for rank, config in enumerate(_extract_llm_priority_rows(result), start=1):
         demand_config = {
             "demand_id": str(config.get("demand_id", "")).strip(),
             "priority": _normalize_priority(config.get("priority"), default=4),
@@ -108,14 +138,30 @@ def _normalize_weight_config(result: Dict) -> Dict:
             {"w_distance": 1.0, "w_time": 1.0, "w_risk": 1.0},
         ),
         "demand_configs": demand_configs,
-        "supplementary_constraints": list(result.get("supplementary_constraints", [])),
+        "supplementary_constraints": _as_list(result.get("supplementary_constraints", [])),
     }
+
+
+def _as_dict(value: object) -> Dict:
+    return value if isinstance(value, dict) else {}
+
+
+def _as_list(value: object) -> List:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    if isinstance(value, tuple):
+        return list(value)
+    if isinstance(value, set):
+        return list(value)
+    return [value]
 
 
 def _extract_vulnerability(demand: Dict) -> Dict:
     """Extract vulnerability signals from structured fields and text fallbacks."""
-    signals = demand.get("priority_evaluation_signals", {})
-    vuln = signals.get("population_vulnerability", {})
+    signals = _as_dict(demand.get("priority_evaluation_signals", {}))
+    vuln = _as_dict(signals.get("population_vulnerability", {}))
 
     elderly_ratio = vuln.get("elderly_ratio", 0.0)
     elderly_involved = vuln.get("elderly_involved", False)
@@ -124,7 +170,7 @@ def _extract_vulnerability(demand: Dict) -> Dict:
 
     # fallback: parse context_signals text
     if not elderly_ratio:
-        for sig in demand.get("context_signals", []):
+        for sig in _as_list(demand.get("context_signals", [])):
             if "老年" in sig or "elderly_ratio" in sig:
                 try:
                     ratio = float(sig.split("老年比例")[-1].strip())
@@ -143,7 +189,7 @@ def _extract_vulnerability(demand: Dict) -> Dict:
 
 
 def _collect_text_evidence(demand: Dict) -> str:
-    signals = demand.get("priority_evaluation_signals", {})
+    signals = _as_dict(demand.get("priority_evaluation_signals", {}))
     evidence_parts = [
         signals.get("patient_condition", ""),
         signals.get("time_sensitivity", ""),
@@ -152,10 +198,10 @@ def _collect_text_evidence(demand: Dict) -> str:
         signals.get("nearby_critical_facility", ""),
         signals.get("requester_role", ""),
         signals.get("operational_readiness", ""),
-        " ".join(str(item) for item in signals.get("special_handling", [])),
-        " ".join(str(item) for item in demand.get("context_signals", [])),
-        demand.get("destination", {}).get("type", ""),
-        demand.get("cargo", {}).get("type", ""),
+        " ".join(str(item) for item in _as_list(signals.get("special_handling", []))),
+        " ".join(str(item) for item in _as_list(demand.get("context_signals", []))),
+        _as_dict(demand.get("destination", {})).get("type", ""),
+        _as_dict(demand.get("cargo", {})).get("type", ""),
     ]
     return " ".join(str(part or "") for part in evidence_parts).lower()
 
@@ -214,10 +260,10 @@ def _assess_demand_priority(demand: Dict) -> Dict:
 def _build_supplementary_constraints(demands: List[Dict]) -> List[Dict]:
     constraints: List[Dict] = []
     for demand in demands:
-        signals = demand.get("priority_evaluation_signals", {})
+        signals = _as_dict(demand.get("priority_evaluation_signals", {}))
         evidence_text = _collect_text_evidence(demand)
         if any(keyword in evidence_text for keyword in ("school", "kindergarten")):
-            destination = demand.get("destination", {})
+            destination = _as_dict(demand.get("destination", {}))
             constraints.append({
                 "type": "noise_avoidance",
                 "description": f"Avoid low-altitude flight near {destination.get('fid', '')} because of a nearby school zone.",
@@ -226,7 +272,7 @@ def _build_supplementary_constraints(demands: List[Dict]) -> List[Dict]:
                     "radius_m": 300,
                 },
             })
-        if "cold_chain" in signals.get("special_handling", []):
+        if "cold_chain" in _as_list(signals.get("special_handling", [])):
             constraints.append({
                 "type": "speed_override",
                 "description": f"Prioritize a direct path for {demand.get('demand_id')} to reduce thermal exposure.",
@@ -332,31 +378,196 @@ def _merge_weight_configs(
     }
 
 
-def adjust_weights(
+def _is_context_length_error(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return (
+        "maximum context length" in text
+        or "reduce the length of the input messages" in text
+        or ("max_tokens" in text and "too large" in text)
+        or ("max_completion_tokens" in text and "too large" in text)
+    )
+
+
+def _chunk_demands(demands: List[Dict], chunk_size: int) -> List[List[Dict]]:
+    if chunk_size <= 0:
+        chunk_size = 1
+    return [demands[idx: idx + chunk_size] for idx in range(0, len(demands), chunk_size)]
+
+
+def _call_llm_rank(
+    *,
     demands: List[Dict],
     client: "OpenAI",
     model: str,
-    city_context: Optional[Dict] = None,
-    temperature: float = 0.0,
+    city_context: Optional[Dict],
+    temperature: float,
 ) -> Dict:
-    """Run LLM-based priority inference and reconcile it with deterministic evidence scoring."""
     from llm4fairrouting.llm.prompt_templates import (
         DRONE_SYSTEM_PROMPT,
         weight_adjustment_prompt,
     )
 
     prompt = weight_adjustment_prompt(demands, city_context)
-    print(f"  [Module 3a] Ranking {len(demands)} demands with LLM + evidence scorer")
+    parse_retries = max(
+        1,
+        env_int(
+            "LLM4FAIRROUTING_PRIORITY_JSON_PARSE_RETRIES",
+            env_int("LLM4FAIRROUTING_JSON_PARSE_RETRIES", 3),
+        ),
+    )
+    last_parse_error: json.JSONDecodeError | None = None
 
-    raw = call_llm(client, model, DRONE_SYSTEM_PROMPT, prompt, temperature)
-    llm_result = _normalize_weight_config(parse_json_response(raw))
-    rule_result = _build_rule_weight_config(demands)
-    merged = _merge_weight_configs(demands, rule_result, llm_result)
+    for attempt in range(1, parse_retries + 1):
+        raw = call_llm(
+            client,
+            model,
+            DRONE_SYSTEM_PROMPT,
+            prompt,
+            temperature,
+            max_tokens=env_int("LLM4FAIRROUTING_PRIORITY_MAX_OUTPUT_TOKENS", 700),
+        )
+        try:
+            return _normalize_weight_config(parse_json_response(raw))
+        except json.JSONDecodeError as exc:
+            last_parse_error = exc
+            print(
+                f"  [Module 3a] Invalid JSON attempt {attempt}/{parse_retries}: {exc}"
+            )
 
-    n_configs = len(merged.get("demand_configs", []))
-    n_supp = len(merged.get("supplementary_constraints", []))
+    if last_parse_error is not None:
+        raise last_parse_error
+    raise json.JSONDecodeError("Empty JSON response", "", 0)
+
+
+def _call_llm_rank_with_chunk_fallback(
+    *,
+    demands: List[Dict],
+    client: "OpenAI",
+    model: str,
+    city_context: Optional[Dict],
+    temperature: float,
+    depth: int = 0,
+) -> Dict:
+    try:
+        return _call_llm_rank(
+            demands=demands,
+            client=client,
+            model=model,
+            city_context=city_context,
+            temperature=temperature,
+        )
+    except RuntimeError as exc:
+        if not _is_context_length_error(exc) or len(demands) <= 1:
+            raise
+
+    configured_chunk_size = env_int("LLM4FAIRROUTING_PRIORITY_RANK_CHUNK_SIZE", 6)
+    chunk_size = min(max(configured_chunk_size, 1), max(len(demands) - 1, 1))
+    if chunk_size >= len(demands):
+        chunk_size = max(1, len(demands) // 2)
+    if chunk_size >= len(demands):
+        chunk_size = len(demands) - 1
+
+    chunks = _chunk_demands(demands, chunk_size)
+    indent = "    " * depth
+    print(
+        f"{indent}  [Module 3a] Prompt too long, fallback to chunked ranking: "
+        f"{len(chunks)} chunks x <= {chunk_size} demands"
+    )
+    chunk_results = []
+    for idx, chunk in enumerate(chunks, start=1):
+        print(f"{indent}    [chunk {idx}/{len(chunks)}] ranking {len(chunk)} demands")
+        chunk_result = _call_llm_rank_with_chunk_fallback(
+            demands=chunk,
+            client=client,
+            model=model,
+            city_context=city_context,
+            temperature=temperature,
+            depth=depth + 1,
+        )
+        chunk_results.append(chunk_result)
+    return _merge_chunked_llm_results(chunk_results)
+
+
+def _merge_chunked_llm_results(chunk_results: List[Dict]) -> Dict:
+    if not chunk_results:
+        return {
+            "global_weights": {"w_distance": 1.0, "w_time": 1.0, "w_risk": 1.0},
+            "demand_configs": [],
+            "supplementary_constraints": [],
+        }
+
+    weight_keys = ("w_distance", "w_time", "w_risk")
+    merged_weights: Dict[str, float] = {}
+    for key in weight_keys:
+        vals = []
+        for result in chunk_results:
+            weights = result.get("global_weights") or {}
+            try:
+                vals.append(float(weights.get(key, 1.0)))
+            except (TypeError, ValueError):
+                vals.append(1.0)
+        merged_weights[key] = sum(vals) / len(vals) if vals else 1.0
+
+    demand_configs: List[Dict] = []
+    supplementary: List[Dict] = []
+    seen = set()
+    for result in chunk_results:
+        demand_configs.extend(list(result.get("demand_configs", [])))
+        for constraint in result.get("supplementary_constraints", []):
+            key = json.dumps(constraint, sort_keys=True, ensure_ascii=False)
+            if key in seen:
+                continue
+            seen.add(key)
+            supplementary.append(constraint)
+
+    return {
+        "global_weights": merged_weights,
+        "demand_configs": demand_configs,
+        "supplementary_constraints": supplementary,
+    }
+
+
+def adjust_weights(
+    demands: List[Dict],
+    client: "OpenAI",
+    model: str,
+    city_context: Optional[Dict] = None,
+    temperature: float = 0.0,
+    mode: str = "hybrid",
+) -> Dict:
+    """Run Module 3a in rule-only, llm-only, or hybrid mode."""
+    resolved_mode = resolve_priority_mode(mode, offline=False)
+    if resolved_mode == "rule-only":
+        print(f"  [Module 3a] Ranking {len(demands)} demands with evidence scorer only")
+        result = _build_rule_weight_config(demands)
+        n_configs = len(result.get("demand_configs", []))
+        n_supp = len(result.get("supplementary_constraints", []))
+        print(f"  [Module 3a] Produced {n_configs} demand configs and {n_supp} supplementary constraints")
+        return result
+
+    if resolved_mode == "llm-only":
+        print(f"  [Module 3a] Ranking {len(demands)} demands with LLM only")
+    else:
+        print(f"  [Module 3a] Ranking {len(demands)} demands with LLM + evidence scorer")
+
+    llm_result = _call_llm_rank_with_chunk_fallback(
+        demands=demands,
+        client=client,
+        model=model,
+        city_context=city_context,
+        temperature=temperature,
+    )
+
+    if resolved_mode == "llm-only":
+        result = llm_result
+    else:
+        rule_result = _build_rule_weight_config(demands)
+        result = _merge_weight_configs(demands, rule_result, llm_result)
+
+    n_configs = len(result.get("demand_configs", []))
+    n_supp = len(result.get("supplementary_constraints", []))
     print(f"  [Module 3a] Produced {n_configs} demand configs and {n_supp} supplementary constraints")
-    return merged
+    return result
 
 
 def adjust_weights_offline(demands: List[Dict]) -> Dict:
@@ -388,10 +599,22 @@ def main():
     parser.add_argument("--api-base", type=str, default=env_text("OPENAI_BASE_URL"))
     parser.add_argument("--api-key", type=str, default=env_text("OPENAI_API_KEY"))
     parser.add_argument("--model", type=str, default=env_text("LLM4FAIRROUTING_MODEL", "gpt-4o-mini"))
+    parser.add_argument(
+        "--priority-mode",
+        type=str,
+        choices=PRIORITY_MODES,
+        default=env_text("LLM4FAIRROUTING_PRIORITY_MODE"),
+        help="Module 3a mode; defaults to rule-only with --offline and hybrid otherwise",
+    )
     args = parser.parse_args()
+    resolved_priority_mode = resolve_priority_mode(args.priority_mode, offline=args.offline)
 
     with open(args.input, "r", encoding="utf-8") as f:
         windows_data = json.load(f)
+
+    client = None
+    if resolved_priority_mode != "rule-only":
+        client = create_openai_client(args.api_base, args.api_key)
 
     all_results = []
     for window in windows_data:
@@ -399,11 +622,15 @@ def main():
         tw = window.get("time_window", "")
         print(f"[Module 3a] Window {tw}: {len(demands)} demands")
 
-        if args.offline:
+        if resolved_priority_mode == "rule-only":
             result = adjust_weights_offline(demands)
         else:
-            client = create_openai_client(args.api_base, args.api_key)
-            result = adjust_weights(demands, client, args.model)
+            result = adjust_weights(
+                demands,
+                client,
+                args.model,
+                mode=resolved_priority_mode,
+            )
 
         result["time_window"] = tw
         all_results.append(result)

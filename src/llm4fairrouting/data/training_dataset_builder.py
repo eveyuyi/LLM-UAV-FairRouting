@@ -14,6 +14,13 @@ from llm4fairrouting.data.demand_event_generation import generate_daily_demand_d
 from llm4fairrouting.data.event_semantics import DIALOGUE_STYLE_VARIANTS
 from llm4fairrouting.data.event_structuring import build_gold_structured_demand
 from llm4fairrouting.data.priority_policy import PRIORITY_POLICY_VERSION
+from llm4fairrouting.data.quality_gates import (
+    DEFAULT_QUALITY_THRESHOLDS,
+    QUALITY_GATE_POLICY_VERSION,
+    build_quality_report,
+    build_release_manifest,
+    filter_accepted_dialogues,
+)
 from llm4fairrouting.data.demand_event_generation import save_event_manifest
 from llm4fairrouting.data.priority_labels import (
     attach_priority_labels,
@@ -41,6 +48,8 @@ TRAINING_OUTPUT_FILENAMES = {
     "llm3_sft_clean": "llm3_sft_clean.jsonl",
     "llm3_sft_pipeline": "llm3_sft_pipeline.jsonl",
     "llm3_grpo_hard": "llm3_grpo_hard.jsonl",
+    "quality_report": "quality_report.json",
+    "release_manifest": "release_manifest.json",
     "dataset_manifest": "dataset_manifest.json",
 }
 
@@ -220,7 +229,7 @@ def _counterfactual_variants(gold: Dict) -> List[Dict]:
     return variants
 
 
-def _surface_contradiction_variants(flattened: List[Dict]) -> List[Dict]:
+def _surface_contradiction_windows(flattened: List[Dict], *, max_windows: int = 6) -> List[List[Dict]]:
     if len(flattened) < 2:
         return []
 
@@ -232,38 +241,48 @@ def _surface_contradiction_variants(flattened: List[Dict]) -> List[Dict]:
             str(item.get("demand_id", "")),
         ),
     )
-    high_need = deepcopy(ranked[0])
-    low_need = deepcopy(ranked[-1])
+    windows: List[List[Dict]] = []
+    for index in range(min(max_windows, len(ranked) // 2)):
+        high_need = deepcopy(ranked[index])
+        low_need = deepcopy(ranked[-(index + 1)])
+        if high_need.get("demand_id") == low_need.get("demand_id"):
+            continue
 
-    low_need["demand_id"] = f"{low_need['demand_id']}_surface_urgent"
-    low_need["priority_evaluation_signals"]["medical_urgency_self_report"] = (
-        "The requester repeatedly says this feels urgent, but provides no stronger structural evidence."
-    )
-    low_need["priority_evaluation_signals"]["time_sensitivity"] = (
-        "The caller sounds highly anxious and keeps using urgent wording."
-    )
-    _append_context_signal(low_need, "Hard case: urgent wording without strong structural need")
-    _refresh_synthetic_labels(low_need)
+        low_need["demand_id"] = f"{low_need['demand_id']}_surface_urgent_{index + 1}"
+        low_need["priority_evaluation_signals"]["medical_urgency_self_report"] = (
+            "The requester repeatedly says this feels urgent, but provides no stronger structural evidence."
+        )
+        low_need["priority_evaluation_signals"]["time_sensitivity"] = (
+            "The caller sounds highly anxious and keeps using urgent wording."
+        )
+        _append_context_signal(low_need, "Hard case: urgent wording without strong structural need")
+        _refresh_synthetic_labels(low_need)
 
-    high_need["demand_id"] = f"{high_need['demand_id']}_surface_calm"
-    high_need["priority_evaluation_signals"]["medical_urgency_self_report"] = (
-        "The requester speaks calmly and clinically while the structural need remains unchanged."
-    )
-    high_need["priority_evaluation_signals"]["time_sensitivity"] = (
-        "The team communicates in a calm tone, but the operational deadline still stands."
-    )
-    _append_context_signal(high_need, "Hard case: calm wording despite stronger structural need")
-    _refresh_synthetic_labels(high_need)
+        high_need["demand_id"] = f"{high_need['demand_id']}_surface_calm_{index + 1}"
+        high_need["priority_evaluation_signals"]["medical_urgency_self_report"] = (
+            "The requester speaks calmly and clinically while the structural need remains unchanged."
+        )
+        high_need["priority_evaluation_signals"]["time_sensitivity"] = (
+            "The team communicates in a calm tone, but the operational deadline still stands."
+        )
+        _append_context_signal(high_need, "Hard case: calm wording despite stronger structural need")
+        _refresh_synthetic_labels(high_need)
+        windows.append([high_need, low_need])
+    return windows
 
-    return [high_need, low_need]
 
-
-def _near_tie_window_demands(flattened: List[Dict]) -> List[Dict]:
+def _near_tie_windows(
+    flattened: List[Dict],
+    *,
+    max_windows: int = 6,
+    per_priority_limit: int = 2,
+) -> List[List[Dict]]:
     by_priority: Dict[int, List[Dict]] = {}
     for demand in flattened:
         priority = int(demand.get("labels", {}).get("extraction_observable_priority", 4))
         by_priority.setdefault(priority, []).append(deepcopy(demand))
 
+    windows: List[List[Dict]] = []
     for priority in sorted(by_priority):
         candidates = by_priority[priority]
         if len(candidates) < 2:
@@ -273,13 +292,6 @@ def _near_tie_window_demands(flattened: List[Dict]) -> List[Dict]:
                 int(item.get("labels", {}).get("extraction_observable_score", 0)),
                 str(item.get("demand_id", "")),
             )
-        )
-        tightest_pair = min(
-            zip(candidates, candidates[1:]),
-            key=lambda pair: abs(
-                int(pair[0].get("labels", {}).get("extraction_observable_score", 0))
-                - int(pair[1].get("labels", {}).get("extraction_observable_score", 0))
-            ),
         )
         neighbor = None
         for delta in (1, -1, 2):
@@ -297,8 +309,45 @@ def _near_tie_window_demands(flattened: List[Dict]) -> List[Dict]:
                 break
         if neighbor is None:
             continue
-        return [deepcopy(tightest_pair[0]), deepcopy(tightest_pair[1]), neighbor]
-    return []
+
+        adjacent_pairs = sorted(
+            (
+                (
+                    left_idx,
+                    right_idx,
+                    abs(
+                        int(candidates[left_idx].get("labels", {}).get("extraction_observable_score", 0))
+                        - int(candidates[right_idx].get("labels", {}).get("extraction_observable_score", 0))
+                    ),
+                )
+                for left_idx, right_idx in zip(range(len(candidates) - 1), range(1, len(candidates)))
+            ),
+            key=lambda item: (
+                item[2],
+                str(candidates[item[0]].get("demand_id", "")),
+                str(candidates[item[1]].get("demand_id", "")),
+            ),
+        )
+
+        used_indices: set[int] = set()
+        added_for_priority = 0
+        for left_idx, right_idx, _ in adjacent_pairs:
+            if left_idx in used_indices or right_idx in used_indices:
+                continue
+            windows.append(
+                [
+                    deepcopy(candidates[left_idx]),
+                    deepcopy(candidates[right_idx]),
+                    deepcopy(neighbor),
+                ]
+            )
+            used_indices.update({left_idx, right_idx})
+            added_for_priority += 1
+            if added_for_priority >= per_priority_limit or len(windows) >= max_windows:
+                break
+        if len(windows) >= max_windows:
+            break
+    return windows
 
 
 def _build_hard_contrastive_windows(clean_windows: List[Dict]) -> List[Dict]:
@@ -338,21 +387,19 @@ def _build_hard_contrastive_windows(clean_windows: List[Dict]) -> List[Dict]:
             )
         )
 
-    surface_contrast = _surface_contradiction_variants(flattened)
-    if surface_contrast:
+    for index, surface_contrast in enumerate(_surface_contradiction_windows(flattened), start=1):
         hard_windows.append(
             _window_sample(
-                time_window="hard_window::surface_contradiction",
+                time_window=f"hard_window::surface_contradiction_{index}",
                 demands=surface_contrast,
                 dataset_source="hard_contrastive",
             )
         )
 
-    near_tie = _near_tie_window_demands(flattened)
-    if near_tie:
+    for index, near_tie in enumerate(_near_tie_windows(flattened), start=1):
         hard_windows.append(
             _window_sample(
-                time_window="hard_window::near_tie",
+                time_window=f"hard_window::near_tie_{index}",
                 demands=near_tie,
                 dataset_source="hard_contrastive",
             )
@@ -376,6 +423,7 @@ def _build_pipeline_structured_windows(
     client,
     model: str,
     window_minutes: int,
+    extraction_concurrency: int = 1,
 ) -> tuple[List[Dict], Dict[str, List[Dict]]]:
     pipeline_windows: List[Dict] = []
     extracted_payloads: Dict[str, List[Dict]] = {}
@@ -391,6 +439,7 @@ def _build_pipeline_structured_windows(
                 model=model,
                 window_minutes=window_minutes,
                 temperature=0.0,
+                max_concurrency=extraction_concurrency,
             )
         extracted_payloads[style] = extracted
         for window in extracted:
@@ -422,6 +471,9 @@ def build_priority_training_dataset(
     temperature: float = 0.2,
     batch_size: int = 5,
     window_minutes: int = 5,
+    dialogue_concurrency: int = 1,
+    extraction_concurrency: int = 1,
+    quality_thresholds: Optional[Dict[str, float]] = None,
     **event_generation_kwargs,
 ) -> Dict:
     styles = [
@@ -455,7 +507,9 @@ def build_priority_training_dataset(
             temperature=temperature,
             batch_size=batch_size,
             styles=styles,
+            max_concurrency=dialogue_concurrency,
         )
+    accepted_dialogues = filter_accepted_dialogues(dialogues)
 
     clean_windows = _build_clean_structured_windows(
         event_records,
@@ -463,15 +517,25 @@ def build_priority_training_dataset(
         window_minutes=window_minutes,
     )
     pipeline_windows, extracted_payloads = _build_pipeline_structured_windows(
-        dialogues=dialogues,
+        dialogues=accepted_dialogues,
         styles=styles,
         offline=offline,
         client=client,
         model=model,
         window_minutes=window_minutes,
+        extraction_concurrency=extraction_concurrency,
     )
     hard_windows = _build_hard_contrastive_windows(clean_windows)
-    llm2_sft = _build_llm2_sft_records(dialogues)
+    llm2_sft = _build_llm2_sft_records(accepted_dialogues)
+
+    quality_thresholds = {**DEFAULT_QUALITY_THRESHOLDS, **(quality_thresholds or {})}
+    quality_report = build_quality_report(
+        event_records=event_records,
+        dialogues=dialogues,
+        pipeline_windows=pipeline_windows,
+        hard_windows=hard_windows,
+        thresholds=quality_thresholds,
+    )
 
     artifacts = {
         "events_manifest": event_records,
@@ -494,17 +558,28 @@ def build_priority_training_dataset(
         "model": model,
         "window_minutes": window_minutes,
         "priority_policy_version": PRIORITY_POLICY_VERSION,
+        "quality_gate_policy_version": QUALITY_GATE_POLICY_VERSION,
         "output_dir": str(Path(output_dir).resolve()) if output_dir else None,
         "files": {
             name: TRAINING_OUTPUT_FILENAMES[name]
-            for name in artifacts
+            for name in (*artifacts.keys(), "quality_report", "release_manifest")
         },
         "counts": counts,
+        "raw_counts": {
+            "dialogues": len(dialogues),
+            "accepted_dialogues": len(accepted_dialogues),
+        },
         "extracted_demands_by_style": {
             style: len(windows)
             for style, windows in extracted_payloads.items()
         },
+        "quality_thresholds": quality_thresholds,
     }
+    release_manifest = build_release_manifest(
+        dataset_manifest=dataset_manifest,
+        quality_report=quality_report,
+    )
+    dataset_manifest["release_status"] = release_manifest["release_status"]
 
     if output_paths:
         save_event_manifest(event_records, str(output_paths["events_manifest"]))
@@ -513,6 +588,14 @@ def build_priority_training_dataset(
         _write_jsonl(clean_windows, output_paths["llm3_sft_clean"])
         _write_jsonl(pipeline_windows, output_paths["llm3_sft_pipeline"])
         _write_jsonl(hard_windows, output_paths["llm3_grpo_hard"])
+        output_paths["quality_report"].write_text(
+            json.dumps(quality_report, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        output_paths["release_manifest"].write_text(
+            json.dumps(release_manifest, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
         manifest_path = output_paths["dataset_manifest"]
         manifest_path.parent.mkdir(parents=True, exist_ok=True)
         with open(manifest_path, "w", encoding="utf-8") as handle:
@@ -521,6 +604,8 @@ def build_priority_training_dataset(
     return {
         **dataset_manifest,
         "artifacts": artifacts,
+        "quality_report": quality_report,
+        "release_manifest": release_manifest,
     }
 
 
@@ -554,6 +639,19 @@ def main() -> None:
     parser.add_argument("--medical-ratio", type=float, default=0.2)
     parser.add_argument("--num-supply-medical", type=int, default=5)
     parser.add_argument("--num-supply-commercial", type=int, default=5)
+    parser.add_argument("--min-audit-pass-rate", type=float, default=DEFAULT_QUALITY_THRESHOLDS["min_audit_pass_rate"])
+    parser.add_argument("--min-priority-pass-rate-p1", type=float, default=DEFAULT_QUALITY_THRESHOLDS["min_priority_pass_rate_p1"])
+    parser.add_argument("--min-priority-pass-rate-p2", type=float, default=DEFAULT_QUALITY_THRESHOLDS["min_priority_pass_rate_p2"])
+    parser.add_argument("--max-priority-gap-vs-p4", type=float, default=DEFAULT_QUALITY_THRESHOLDS["max_priority_gap_vs_p4"])
+    parser.add_argument("--max-scenario-context-missing-rate", type=float, default=DEFAULT_QUALITY_THRESHOLDS["max_scenario_context_missing_rate"])
+    parser.add_argument("--max-requester-role-missing-rate", type=float, default=DEFAULT_QUALITY_THRESHOLDS["max_requester_role_missing_rate"])
+    parser.add_argument("--min-requester-role-match-rate", type=float, default=DEFAULT_QUALITY_THRESHOLDS["min_requester_role_match_rate"])
+    parser.add_argument("--min-surface-contradiction-ratio", type=float, default=DEFAULT_QUALITY_THRESHOLDS["min_surface_contradiction_ratio"])
+    parser.add_argument("--min-near-tie-ratio", type=float, default=DEFAULT_QUALITY_THRESHOLDS["min_near_tie_ratio"])
+    parser.add_argument("--min-surface-contradiction-count", type=int, default=DEFAULT_QUALITY_THRESHOLDS["min_surface_contradiction_count"])
+    parser.add_argument("--min-near-tie-count", type=int, default=DEFAULT_QUALITY_THRESHOLDS["min_near_tie_count"])
+    parser.add_argument("--dialogue-concurrency", type=int, default=1)
+    parser.add_argument("--extraction-concurrency", type=int, default=1)
     args = parser.parse_args()
 
     dataset = build_priority_training_dataset(
@@ -576,12 +674,28 @@ def main() -> None:
         medical_ratio=args.medical_ratio,
         num_supply_medical=args.num_supply_medical,
         num_supply_commercial=args.num_supply_commercial,
+        dialogue_concurrency=args.dialogue_concurrency,
+        extraction_concurrency=args.extraction_concurrency,
+        quality_thresholds={
+            "min_audit_pass_rate": args.min_audit_pass_rate,
+            "min_priority_pass_rate_p1": args.min_priority_pass_rate_p1,
+            "min_priority_pass_rate_p2": args.min_priority_pass_rate_p2,
+            "max_priority_gap_vs_p4": args.max_priority_gap_vs_p4,
+            "max_scenario_context_missing_rate": args.max_scenario_context_missing_rate,
+            "max_requester_role_missing_rate": args.max_requester_role_missing_rate,
+            "min_requester_role_match_rate": args.min_requester_role_match_rate,
+            "min_surface_contradiction_ratio": args.min_surface_contradiction_ratio,
+            "min_near_tie_ratio": args.min_near_tie_ratio,
+            "min_surface_contradiction_count": args.min_surface_contradiction_count,
+            "min_near_tie_count": args.min_near_tie_count,
+        },
     )
     print(
         f"Built training dataset in {dataset['output_dir']} with "
         f"{dataset['counts']['events_manifest']} events, "
         f"{dataset['counts']['dialogues']} dialogues, "
-        f"{dataset['counts']['llm2_sft']} LLM2 samples."
+        f"{dataset['counts']['llm2_sft']} accepted LLM2 samples. "
+        f"Release status: {dataset['release_status']}"
     )
 
 

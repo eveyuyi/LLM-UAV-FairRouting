@@ -1,0 +1,39 @@
+{
+  "global_weights": {
+    "w_distance": 1.0,
+    "w_time": 1.0,
+    "w_risk": 1.0
+  },
+  "demand_configs": [
+    {
+      "demand_id": "REQ001",
+      "demand_tier": "consumer",
+      "priority": 4,
+      "window_rank": 1,
+      "reasoning": "tier=consumer, hard_deadline, handoff_ready | Daily supplies with 120-minute hard deadline, no life-threatening context, standard delivery, household ready to collect"
+    },
+    {
+      "demand_id": "REQ001",
+      "demand_tier": "consumer",
+      "priority": 4,
+      "window_rank": 2,
+      "reasoning": "tier=consumer, hard_deadline, handoff_ready | Daily supplies with 120-minute hard deadline, no life-threatening context, standard delivery, household ready to collect"
+    },
+    {
+      "demand_id": "REQ002",
+      "demand_tier": "consumer",
+      "priority": 4,
+      "window_rank": 3,
+      "reasoning": "tier=consumer, handoff_ready | Food delivery with soft time sensitivity, routine consumer request, no urgency or vulnerability beyond elderly involvement"
+    },
+    {
+      "demand_id": "REQ002",
+      "demand_tier": "consumer",
+      "priority": 4,
+      "window_rank": 4,
+      "reasoning": "tier=consumer, handoff_ready | Food delivery with soft time sensitivity, routine consumer request, no urgency or vulnerability beyond elderly involvement"
+    }
+  ],
+  "supplementary_constraints": [],
+  "time_window": "2024-03-15T00:40-00:45"
+}

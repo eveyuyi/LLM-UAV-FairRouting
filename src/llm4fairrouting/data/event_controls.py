@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Dict, List, Tuple
 
 from llm4fairrouting.data.event_core import EventCore
@@ -10,6 +11,11 @@ from llm4fairrouting.data.event_semantics import unique_keywords
 
 _EMERGENCY_ROLES = {"emergency_doctor", "paramedic", "triage_nurse"}
 _CRITICAL_ROLES = {"icu_nurse", "clinical_pharmacist", "ward_coordinator"}
+_SCENARIO_STOPWORDS = {
+    "the", "and", "for", "with", "from", "this", "that", "into", "while",
+    "needs", "need", "soon", "before", "after", "local", "team", "case",
+    "order", "requested", "request", "delivery", "drone", "support",
+}
 
 
 def _factor_spec(
@@ -27,6 +33,26 @@ def _factor_spec(
         "keywords": unique_keywords(keywords),
         "source_field": source_field,
     }
+
+
+def _scenario_context_keywords(text: str) -> List[str]:
+    normalized = str(text or "").strip()
+    if not normalized:
+        return []
+    keywords = [normalized]
+    clauses = [
+        clause.strip(" .,:;")
+        for clause in re.split(r"[.;]| and | before | while ", normalized.lower())
+        if clause.strip(" .,:;")
+    ]
+    keywords.extend(clauses)
+    tokens = re.findall(r"[a-z0-9_]+", normalized.lower())
+    keywords.extend(
+        token
+        for token in tokens
+        if len(token) >= 6 and token not in _SCENARIO_STOPWORDS
+    )
+    return unique_keywords(keywords)
 
 
 def _priority_reason_codes(core: EventCore) -> tuple[List[str], List[str]]:
@@ -98,7 +124,15 @@ def build_must_mention_factors(core: EventCore) -> List[Dict[str, object]]:
             "scenario_context",
             core.scenario_context,
             core.scenario_context,
-            ["cpr", "cardiac arrest", "transfusion", "stroke", "backup ventilator", "vaccination", "same-day"],
+            _scenario_context_keywords(core.scenario_context) + [
+                "cpr",
+                "cardiac arrest",
+                "transfusion",
+                "stroke",
+                "backup ventilator",
+                "vaccination",
+                "same-day",
+            ],
             source_field="scenario_context",
         ),
         _factor_spec(

@@ -1,0 +1,35 @@
+# Stable lock for VERL GRPO training environment (Python 3.10)
+# This lock avoids known incompatibilities observed with vllm>=0.18.
+
+# Core RL trainer stack
+verl==0.7.1
+ray[default]==2.54.1
+hydra-core==1.3.2
+datasets==4.8.4
+dill==0.4.1
+pyarrow==23.0.1
+pandas==2.3.3
+numpy==1.26.4
+tensordict==0.10.0
+
+# Model/training stack
+# Keep torch stack aligned with vllm==0.12.0 constraint.
+torch==2.9.0
+torchvision==0.24.0
+torchaudio==2.9.0
+transformers==4.57.6
+accelerate==1.13.0
+peft==0.18.1
+trl==0.9.6
+pydantic==2.12.5
+
+# Rollout backend (must satisfy VERL 0.7.1 constraints)
+vllm==0.12.0
+py-cpuinfo==9.0.0
+einops==0.8.1
+
+# Utilities often required by training scripts
+sentencepiece==0.2.1
+protobuf==6.33.0
+tensorboard==2.20.0
+wandb==0.25.1

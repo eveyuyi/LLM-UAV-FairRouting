@@ -1,4 +1,4 @@
-﻿"""NSGA-III outer-loop search backed by a greedy heuristic assignment solver."""
+"""NSGA-III outer-loop search backed by a greedy heuristic assignment solver."""
 
 from __future__ import annotations
 

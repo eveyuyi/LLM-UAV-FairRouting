@@ -103,11 +103,20 @@ def get_demand_tier(demand: Dict) -> str:
     return _URGENCY_TIER_MAP.get(urgency, "regular")
 
 
+def _as_dict(value: object) -> Dict:
+    return value if isinstance(value, dict) else {}
+
+
 def _extract_vulnerability(demand: Dict) -> Dict:
-    signals = demand.get("priority_evaluation_signals", {})
-    vuln = signals.get("population_vulnerability", {}) or {}
+    signals = _as_dict(demand.get("priority_evaluation_signals", {}))
+    vuln = _as_dict(signals.get("population_vulnerability", {}))
+    elderly_ratio_raw = vuln.get("elderly_ratio", 0.0) or 0.0
+    try:
+        elderly_ratio = float(elderly_ratio_raw)
+    except (TypeError, ValueError):
+        elderly_ratio = 0.0
     return {
-        "elderly_ratio": float(vuln.get("elderly_ratio", 0.0) or 0.0),
+        "elderly_ratio": elderly_ratio,
         "elderly_involved": bool(vuln.get("elderly_involved", False)),
         "vulnerable_community": bool(vuln.get("vulnerable_community", False)),
         "children_involved": bool(vuln.get("children_involved", False)),
@@ -115,7 +124,9 @@ def _extract_vulnerability(demand: Dict) -> Dict:
 
 
 def _collect_text_evidence(demand: Dict) -> str:
-    signals = demand.get("priority_evaluation_signals", {})
+    signals = _as_dict(demand.get("priority_evaluation_signals", {}))
+    destination = _as_dict(demand.get("destination", {}))
+    cargo = _as_dict(demand.get("cargo", {}))
     evidence_parts = [
         signals.get("patient_condition", ""),
         signals.get("time_sensitivity", ""),
@@ -125,11 +136,11 @@ def _collect_text_evidence(demand: Dict) -> str:
         signals.get("requester_role", ""),
         signals.get("operational_readiness", ""),
         demand.get("operational_readiness", ""),
-        " ".join(str(item) for item in signals.get("special_handling", [])),
-        " ".join(str(item) for item in demand.get("special_handling", [])),
-        " ".join(str(item) for item in demand.get("context_signals", [])),
-        demand.get("destination", {}).get("type", ""),
-        demand.get("cargo", {}).get("type", ""),
+        " ".join(str(item) for item in (signals.get("special_handling") or [])),
+        " ".join(str(item) for item in (demand.get("special_handling") or [])),
+        " ".join(str(item) for item in (demand.get("context_signals") or [])),
+        destination.get("type", ""),
+        cargo.get("type", ""),
     ]
     return " ".join(str(part or "") for part in evidence_parts).lower()
 
@@ -164,7 +175,10 @@ def _priority_from_score(
     if tier == "life_support":
         return 1
     if tier == "critical":
-        return min(priority, 2)
+        # Keep the critical tier as the distinct P2 band. Otherwise the current
+        # score bonuses collapse almost every critical request into P1, which
+        # removes the class boundary that LLM3 is meant to learn.
+        return 2
     if tier == "regular":
         if "post-exposure" in evidence_text or _extract_deadline_minutes(demand) <= 30:
             return min(priority, 2)

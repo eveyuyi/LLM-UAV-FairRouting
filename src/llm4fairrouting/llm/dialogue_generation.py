@@ -18,6 +18,7 @@ import hashlib
 import math
 import random
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from copy import deepcopy
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -623,11 +624,18 @@ def audit_dialogue(dialogue: Dict) -> Dict[str, object]:
     annotations = dialogue.get("annotations", {})
     gold_demand = annotations.get("gold_structured_demand")
     latent_priority = annotations.get("latent_priority")
+    scorer_gold_priority = None
+    if isinstance(gold_demand, dict):
+        scorer_gold_priority = (
+            gold_demand.get("extraction_observable_priority")
+            or (gold_demand.get("labels", {}) or {}).get("extraction_observable_priority")
+        )
+    expected_priority = scorer_gold_priority if scorer_gold_priority is not None else latent_priority
     must_mention = list(annotations.get("must_mention_factors", []) or [])
     optional = list(annotations.get("optional_factors", []) or [])
     if not must_mention and not optional:
         return {
-            "dialogue_observable_priority": latent_priority,
+            "dialogue_observable_priority": expected_priority,
             "observed_factors_in_dialogue": [],
             "missing_must_mention_factors": [],
             "observability_score": 1.0,
@@ -660,16 +668,16 @@ def audit_dialogue(dialogue: Dict) -> Dict[str, object]:
     dialogue_observable_priority = None
     if gold_demand:
         masked = _mask_gold_demand_for_unobserved_factors(gold_demand, observed_names)
-        derived = derive_priority_labels(masked, latent_priority=latent_priority)
+        derived = derive_priority_labels(masked, latent_priority=expected_priority)
         dialogue_observable_priority = int(
-            derived.get("extraction_observable_priority", latent_priority or 4)
+            derived.get("extraction_observable_priority", expected_priority or 4)
         )
-    elif latent_priority is not None and not missing_factors:
-        dialogue_observable_priority = int(latent_priority)
+    elif expected_priority is not None and not missing_factors:
+        dialogue_observable_priority = int(expected_priority)
 
     passed = not missing_factors
-    if latent_priority is not None and dialogue_observable_priority is not None:
-        passed = passed and int(dialogue_observable_priority) == int(latent_priority)
+    if expected_priority is not None and dialogue_observable_priority is not None:
+        passed = passed and int(dialogue_observable_priority) == int(expected_priority)
 
     return {
         "dialogue_observable_priority": dialogue_observable_priority,
@@ -1135,7 +1143,9 @@ def _event_to_dialogue(
         },
         "annotations": {
             "dialogue_style": style,
-            "latent_priority": priority,
+            # Preserve simulator latent priority as the truth anchor.
+            # LLM3 supervision stays on gold_structured_demand.labels.extraction_observable_priority.
+            "latent_priority": int(priority),
             "priority_factors": dict(normalized_event.get("priority_factors", {})),
             "must_mention_factors": _event_must_mention_factors(normalized_event),
             "optional_factors": _event_optional_factors(normalized_event),
@@ -1143,10 +1153,12 @@ def _event_to_dialogue(
             "dialogue_styles": list(normalized_event.get("dialogue_styles", [])),
         },
     }
+    # Keep the legacy alias for compatibility with older analytics and manifests.
+    dialogue["annotations"]["seed_latent_priority"] = int(priority)
     dialogue["audit"] = audit_dialogue(dialogue)
     labels = derive_priority_labels(
         gold_structured_demand,
-        latent_priority=priority,
+        latent_priority=dialogue["annotations"]["latent_priority"],
         dialogue_observable_priority=dialogue["audit"].get("dialogue_observable_priority"),
     )
     dialogue["annotations"]["gold_structured_demand"]["labels"] = {
@@ -1331,6 +1343,7 @@ def generate_dialogues_online(
     temperature: float = 0.7,
     batch_size: int = 5,
     styles: Optional[List[str]] = None,
+    max_concurrency: int = 1,
 ) -> List[Dict]:
     """调用 LLM 批量生成自然语言对话，替换规则模板文本。
 
@@ -1361,10 +1374,10 @@ def generate_dialogues_online(
         flush=True,
     )
 
+    batch_specs = []
     for start in range(0, total, batch_size):
-        batch_started_at = time.perf_counter()
-        batch_index = start // batch_size + 1
         batch = dialogues[start: start + batch_size]
+        batch_index = start // batch_size + 1
         batch_context = []
         for dlg in batch:
             event, style = spec_by_id[dlg["dialogue_id"]]
@@ -1397,45 +1410,100 @@ def generate_dialogues_online(
             })
 
         prompt = dialogue_generation_prompt(batch_context)
-        print(
-            f"  [Module 1] Batch {batch_index}/{total_batches}: "
-            f"sending {len(batch)} dialogues to the LLM "
-            f"({start}/{total} completed)",
-            flush=True,
-        )
+        batch_specs.append({
+            "batch_index": batch_index,
+            "start": start,
+            "batch": batch,
+            "prompt": prompt,
+        })
 
+    def _run_batch(batch_spec: Dict) -> tuple[Dict, Dict[str, str], float]:
+        batch_started_at = time.perf_counter()
+        batch = batch_spec["batch"]
         try:
-            raw = call_llm(client, model, DRONE_SYSTEM_PROMPT, prompt, temperature)
+            raw = call_llm(client, model, DRONE_SYSTEM_PROMPT, batch_spec["prompt"], temperature)
             llm_texts = _parse_llm_batch_response(raw, batch)
         except Exception as e:
             print(f"  [Module 1] LLM failed, falling back to rule-based text: {e}", flush=True)
             llm_texts = {dlg["dialogue_id"]: dlg["conversation"] for dlg in batch}
+        return batch_spec, llm_texts, time.perf_counter() - batch_started_at
 
-        for dlg in batch:
-            if dlg["dialogue_id"] in llm_texts:
-                dlg["conversation"] = llm_texts[dlg["dialogue_id"]]
-            dlg["audit"] = audit_dialogue(dlg)
-            if not dlg["audit"].get("passed", True):
-                event, style = spec_by_id[dlg["dialogue_id"]]
-                regenerated = _event_to_dialogue(
-                    event,
-                    stations,
-                    base_date,
-                    int(dlg["dialogue_id"][1:]),
-                    style=style,
+    completed_batches = 0
+    max_concurrency = max(1, int(max_concurrency or 1))
+    if max_concurrency > 1:
+        for batch_spec in batch_specs:
+            print(
+                f"  [Module 1] Batch {batch_spec['batch_index']}/{total_batches}: "
+                f"sending {len(batch_spec['batch'])} dialogues to the LLM "
+                f"({batch_spec['start']}/{total} completed)",
+                flush=True,
+            )
+        with ThreadPoolExecutor(max_workers=max_concurrency) as pool:
+            futures = [pool.submit(_run_batch, batch_spec) for batch_spec in batch_specs]
+            for future in as_completed(futures):
+                batch_spec, llm_texts, elapsed = future.result()
+                batch = batch_spec["batch"]
+                for dlg in batch:
+                    if dlg["dialogue_id"] in llm_texts:
+                        dlg["conversation"] = llm_texts[dlg["dialogue_id"]]
+                    dlg["audit"] = audit_dialogue(dlg)
+                    if not dlg["audit"].get("passed", True):
+                        event, style = spec_by_id[dlg["dialogue_id"]]
+                        regenerated = _event_to_dialogue(
+                            event,
+                            stations,
+                            base_date,
+                            int(dlg["dialogue_id"][1:]),
+                            style=style,
+                        )
+                        dlg["conversation"] = regenerated["conversation"]
+                        dlg["audit"] = regenerated["audit"]
+                completed_batches += 1
+                completed = min(completed_batches * batch_size, total)
+                print(
+                    f"  [Module 1] Batch {batch_spec['batch_index']}/{total_batches} complete: "
+                    f"{completed}/{total} dialogues ready "
+                    f"({completed / total * 100:.1f}%), "
+                    f"batch {elapsed:.1f}s, "
+                    f"elapsed {time.perf_counter() - started_at:.1f}s",
+                    flush=True,
                 )
-                dlg["conversation"] = regenerated["conversation"]
-                dlg["audit"] = regenerated["audit"]
+    else:
+        for batch_spec in batch_specs:
+            print(
+                f"  [Module 1] Batch {batch_spec['batch_index']}/{total_batches}: "
+                f"sending {len(batch_spec['batch'])} dialogues to the LLM "
+                f"({batch_spec['start']}/{total} completed)",
+                flush=True,
+            )
+            _, llm_texts, elapsed = _run_batch(batch_spec)
+            batch = batch_spec["batch"]
+            for dlg in batch:
+                if dlg["dialogue_id"] in llm_texts:
+                    dlg["conversation"] = llm_texts[dlg["dialogue_id"]]
+                dlg["audit"] = audit_dialogue(dlg)
+                if not dlg["audit"].get("passed", True):
+                    event, style = spec_by_id[dlg["dialogue_id"]]
+                    regenerated = _event_to_dialogue(
+                        event,
+                        stations,
+                        base_date,
+                        int(dlg["dialogue_id"][1:]),
+                        style=style,
+                    )
+                    dlg["conversation"] = regenerated["conversation"]
+                    dlg["audit"] = regenerated["audit"]
 
-        completed = min(start + len(batch), total)
-        print(
-            f"  [Module 1] Batch {batch_index}/{total_batches} complete: "
-            f"{completed}/{total} dialogues ready "
-            f"({completed / total * 100:.1f}%), "
-            f"batch {time.perf_counter() - batch_started_at:.1f}s, "
-            f"elapsed {time.perf_counter() - started_at:.1f}s",
-            flush=True,
-        )
+            completed_batches += 1
+            completed = min(completed_batches * batch_size, total)
+            print(
+                f"  [Module 1] Batch {batch_spec['batch_index']}/{total_batches} complete: "
+                f"{completed}/{total} dialogues ready "
+                f"({completed / total * 100:.1f}%), "
+                f"batch {elapsed:.1f}s, "
+                f"elapsed {time.perf_counter() - started_at:.1f}s",
+                flush=True,
+            )
 
     print(
         f"[Module 1] LLM dialogue generation complete in "
@@ -1482,6 +1550,7 @@ def generate_dialogues(
     temperature: float = 0.7,
     batch_size: int = 5,
     styles: Optional[List[str]] = None,
+    max_concurrency: int = 1,
 ) -> List[Dict]:
     """Module 1 统一入口：加载数据并生成对话。
 
@@ -1530,7 +1599,15 @@ def generate_dialogues(
         if client is None:
             raise ValueError("online mode requires an OpenAI client")
         dialogues = generate_dialogues_online(
-            events, stations, client, model, base_date, temperature, batch_size, styles=styles
+            events,
+            stations,
+            client,
+            model,
+            base_date,
+            temperature,
+            batch_size,
+            styles=styles,
+            max_concurrency=max_concurrency,
         )
     return dialogues
 
@@ -1587,6 +1664,7 @@ def main():
     parser.add_argument("--model", type=str, default=env_text("LLM4FAIRROUTING_MODEL", "gpt-4o-mini"))
     parser.add_argument("--temperature", type=float, default=0.7)
     parser.add_argument("--batch-size", type=int, default=5)
+    parser.add_argument("--max-concurrency", type=int, default=1)
     parser.add_argument(
         "--styles",
         type=str,
@@ -1612,6 +1690,7 @@ def main():
         temperature=args.temperature,
         batch_size=args.batch_size,
         styles=args.styles,
+        max_concurrency=args.max_concurrency,
     )
 
     save_dialogues(dialogues, args.output)

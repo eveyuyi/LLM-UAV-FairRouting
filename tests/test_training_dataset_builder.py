@@ -72,6 +72,8 @@ def test_build_priority_training_dataset_creates_three_training_layers(tmp_path)
         "llm3_sft_clean": "llm3_sft_clean.jsonl",
         "llm3_sft_pipeline": "llm3_sft_pipeline.jsonl",
         "llm3_grpo_hard": "llm3_grpo_hard.jsonl",
+        "quality_report": "quality_report.json",
+        "release_manifest": "release_manifest.json",
     }
 
     for relative_path in manifest["files"].values():
@@ -89,3 +91,5 @@ def test_build_priority_training_dataset_creates_three_training_layers(tmp_path)
     assert "priority_labels" in first_pipeline_window
     assert "pairwise_preferences" in first_pipeline_window
     assert "critical_topk_targets" in first_pipeline_window
+    assert dataset["quality_report"]["counts"]["dialogues_raw"] == len(dataset["artifacts"]["dialogues"])
+    assert dataset["release_manifest"]["release_status"] in {"accepted", "needs_regen", "debug_only"}

@@ -174,15 +174,106 @@ llm4fairrouting-demand-events --manifest-output data/seed/daily_demand_events_ma
 - `llm3_sft_clean.jsonl`
 - `llm3_sft_pipeline.jsonl`
 - `llm3_grpo_hard.jsonl`
+- `quality_report.json`
+- `release_manifest.json`
 - `dataset_manifest.json`
 
-`dataset_manifest.json` stores the schema version, generation time, sample counts, and relative artifact paths.
+`dataset_manifest.json` stores the schema version, generation time, sample counts, relative artifact paths, and the active quality-gate thresholds.
+
+`quality_report.json` records shard-level quality metrics such as:
+
+- overall dialogue audit pass rate
+- pass rate stratified by priority
+- missing must-mention factors
+- requester-role recovery quality in pipeline outputs
+- hard-case coverage for `surface_contradiction` and `near_tie`
+
+`release_manifest.json` turns those metrics into a release decision:
+
+- `accepted`: shard is ready for `llm2_sft`, `llm3_sft_pipeline`, and `llm3_grpo_hard`
+- `needs_regen`: shard still keeps `llm3_sft_clean`, but pipeline / hard slices should not be mixed into the main release yet
+- `debug_only`: structural failure; do not train on it
 
 `llm3_grpo_hard.jsonl` now mixes several kinds of hard cases:
 
 - factor-isolated counterfactuals such as tighter deadlines, upgraded requester roles, added cold-chain handling, changed receiver readiness, and stronger vulnerability signals
 - surface-vs-structure contradiction windows, where low-need requests can use urgent wording while higher-need requests remain calm and clinical
 - near-tie ranking windows, where multiple requests have similar observable priority and require finer ordering
+
+If you want to evaluate those categories separately, split each shard with:
+
+```bash
+python scripts/split_hard_eval_windows.py data/eval/hard_eval_v1
+```
+
+This writes per-shard subtype files under `hard_eval_subsets/`:
+
+- `counterfactual.jsonl`
+- `surface_contradiction.jsonl`
+- `near_tie.jsonl`
+- `mixed_priority.jsonl`
+- `other.jsonl`
+
+Online generation can also be parallelized:
+
+- `--dialogue-concurrency` controls how many LLM1 dialogue batches are sent concurrently
+- `--extraction-concurrency` controls how many LLM2 extraction windows are sent concurrently
+- `llm4fairrouting-data-quality <dataset_dir>` recomputes `quality_report.json` and `release_manifest.json`
+- `llm4fairrouting-release-manifest <root_dir>` aggregates per-shard release manifests into one batch-level release plan
+
+#### Medium-Scale LLM3 Sweep
+
+For medium-scale `LLM3` tuning, keep the split at the seed level instead of randomly splitting windows:
+
+- `train`: several seed shards for SFT / GRPO
+- `val`: a small fixed set of seed shards for model selection
+- `test`: a fixed set of seed shards reserved for final evaluation only
+
+The sweep runner reuses `scripts/training_sft.sh` and `scripts/training_grpo.sh` and writes one `trial_manifest.json` per trial:
+
+```bash
+python scripts/sweep_llm3_train.py \
+  --dataset-root data/train/llm3_medium_5min_v1 \
+  --output-root data/sweeps/llm3_medium_sweep_v1 \
+  --stage sft \
+  --model-path /path/to/Qwen3-4B-Instruct \
+  --train-seeds 4101-4108 \
+  --val-seeds 4109-4110 \
+  --test-seeds 4111-4112
+```
+
+Each completed SFT trial now also:
+
+- merges the latest checkpoint into a temporary HuggingFace model directory
+- runs a `rule-only` cached baseline on the validation seeds
+- serves the trial checkpoint with vLLM
+- runs `rank-only` validation in pure `LLM3` mode by default
+- writes aggregated validation metrics into the trial manifest
+- refreshes `leaderboard.jsonl` and `leaderboard.csv` under the sweep output root
+
+After picking one or more SFT checkpoints, launch a GRPO sweep against that chosen base trial:
+
+```bash
+python scripts/sweep_llm3_train.py \
+  --dataset-root data/train/llm3_medium_5min_v1 \
+  --output-root data/sweeps/llm3_medium_sweep_v1 \
+  --stage grpo \
+  --train-seeds 4101-4108 \
+  --val-seeds 4109-4110 \
+  --test-seeds 4111-4112 \
+  --grpo-base-sft-trial sft_pipeline_lr1em4_bs128
+```
+
+Each completed GRPO trial now also:
+does not auto-run model serving or validation anymore.
+
+The recommended GRPO workflow is now:
+
+1. train the GRPO trial and keep the checkpoint manifest
+2. merge the chosen `global_step_*` checkpoint into a HuggingFace directory
+3. deploy the merged model on a fixed port with `scripts/serve_vllm_model.sh`
+4. compare it against the base model with `scripts/eval_pre_post_priority_alignment.sh`
+5. aggregate multiple manual eval runs with `scripts/aggregate_rank_only_evals.py`
 
 #### Module 1
 

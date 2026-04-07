@@ -44,6 +44,7 @@ def build_daily_demand_dialogues(
     temperature: float = 0.2,
     batch_size: int = 5,
     styles: list[str] | None = None,
+    max_concurrency: int = 1,
 ) -> list[dict]:
     """Materialize one canonical dialogue dataset from the seed demand events."""
     started_at = time.perf_counter()
@@ -69,6 +70,7 @@ def build_daily_demand_dialogues(
         temperature=temperature,
         batch_size=batch_size,
         styles=styles,
+        max_concurrency=max_concurrency,
     )
     save_dialogues(dialogues, output_path)
     print(
@@ -113,6 +115,7 @@ def main() -> None:
     parser.add_argument("--time-slots", type=int, nargs="+", default=env_int_list("LLM4FAIRROUTING_TIME_SLOTS"))
     parser.add_argument("--temperature", type=float, default=env_float("LLM4FAIRROUTING_TEMPERATURE", 0.2))
     parser.add_argument("--batch-size", type=int, default=env_int("LLM4FAIRROUTING_BATCH_SIZE", 5))
+    parser.add_argument("--max-concurrency", type=int, default=env_int("LLM4FAIRROUTING_MAX_CONCURRENCY", 1))
     parser.add_argument("--styles", nargs="+", default=None)
     args = parser.parse_args()
 
@@ -129,6 +132,7 @@ def main() -> None:
         temperature=args.temperature,
         batch_size=args.batch_size,
         styles=args.styles,
+        max_concurrency=args.max_concurrency,
     )
     print(f"Built {len(dialogues)} canonical seed dialogues at {args.output}", flush=True)
 
