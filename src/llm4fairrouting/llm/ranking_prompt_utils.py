@@ -71,7 +71,6 @@ def compact_ranking_demand(demand: Dict) -> Dict:
 
     record: Dict[str, object] = {
         "demand_id": str(demand.get("demand_id", "")),
-        "tier": str(demand.get("demand_tier") or cargo.get("demand_tier") or ""),
         "cargo": str(cargo.get("type", "") or ""),
         "dest": str(destination.get("type", "") or ""),
     }
@@ -182,7 +181,7 @@ def render_priority_ranking_prompt(
         "Rules:\n"
         "- priority is 1-4, where 1 is highest.\n"
         "- window_rank must be unique and cover every demand exactly once.\n"
-        "- Use tier, deadline, requester, patient condition, scenario, handling, vulnerability, and receiver readiness.\n"
+        "- Assess need from cargo type, deadline, requester role, patient condition, scenario, special handling, vulnerability, and receiver readiness.\n"
         "- Keep reasoning short and concrete.\n"
         "Input:\n"
         f"{payload_json}"

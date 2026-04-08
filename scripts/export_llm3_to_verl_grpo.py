@@ -16,48 +16,57 @@ from llm3_verl_utils import (
     write_parquet,
 )
 
-GRPO_FILENAME = "llm3_grpo_hard.jsonl"
+GRPO_SOURCE_MAP = {
+    "hard": "llm3_grpo_hard.jsonl",
+    "clean": "llm3_sft_clean.jsonl",
+    "pipeline": "llm3_sft_pipeline.jsonl",
+}
 DATA_SOURCE = "llm3_priority_window"
 
 
-def build_grpo_rows(input_dirs: List[Path]) -> List[Dict]:
+def _sample_to_grpo_row(sample: Dict, input_dir: Path, source_name: str) -> Dict:
+    prompt_text = build_prompt_text(
+        time_window=str(sample.get("time_window", "")),
+        demands=sample.get("demands", []),
+    )
+    demand_ids = [
+        str(demand.get("demand_id", ""))
+        for demand in sample.get("demands", [])
+    ]
+    return {
+        "data_source": DATA_SOURCE,
+        "prompt": [{"role": "user", "content": prompt_text}],
+        "ability": "priority_ranking",
+        "reward_model": {
+            "style": "rule",
+            "ground_truth": {
+                "priority_labels": sample.get("priority_labels", []),
+                "pairwise_preferences": sample.get("pairwise_preferences", []),
+                "critical_topk_targets": sample.get("critical_topk_targets", []),
+            },
+        },
+        "extra_info": {
+            "time_window": sample.get("time_window"),
+            "dataset_source": sample.get("dataset_source", source_name),
+            "num_demands": len(sample.get("demands", [])),
+            "demand_ids": demand_ids,
+            "input_dir": str(input_dir),
+        },
+    }
+
+
+def build_grpo_rows(input_dirs: List[Path], sources: List[str] | None = None) -> List[Dict]:
+    if sources is None:
+        sources = ["hard"]
     rows: List[Dict] = []
     for input_dir in input_dirs:
-        file_path = input_dir / GRPO_FILENAME
-        if not file_path.exists():
-            continue
-
-        for sample in load_jsonl(file_path):
-            prompt_text = build_prompt_text(
-                time_window=str(sample.get("time_window", "")),
-                demands=sample.get("demands", []),
-            )
-            demand_ids = [
-                str(demand.get("demand_id", ""))
-                for demand in sample.get("demands", [])
-            ]
-            rows.append(
-                {
-                    "data_source": DATA_SOURCE,
-                    "prompt": [{"role": "user", "content": prompt_text}],
-                    "ability": "priority_ranking",
-                    "reward_model": {
-                        "style": "rule",
-                        "ground_truth": {
-                            "priority_labels": sample.get("priority_labels", []),
-                            "pairwise_preferences": sample.get("pairwise_preferences", []),
-                            "critical_topk_targets": sample.get("critical_topk_targets", []),
-                        },
-                    },
-                    "extra_info": {
-                        "time_window": sample.get("time_window"),
-                        "dataset_source": sample.get("dataset_source"),
-                        "num_demands": len(sample.get("demands", [])),
-                        "demand_ids": demand_ids,
-                        "input_dir": str(input_dir),
-                    },
-                }
-            )
+        for source_name in sources:
+            filename = GRPO_SOURCE_MAP[source_name]
+            file_path = input_dir / filename
+            if not file_path.exists():
+                continue
+            for sample in load_jsonl(file_path):
+                rows.append(_sample_to_grpo_row(sample, input_dir, source_name))
     return rows
 
 
@@ -69,7 +78,14 @@ def main() -> None:
         "--input-dir",
         action="append",
         required=True,
-        help="Directory that contains llm3_grpo_hard.jsonl. Repeat this flag for multiple shards.",
+        help="Directory that contains GRPO source files. Repeat this flag for multiple shards.",
+    )
+    parser.add_argument(
+        "--sources",
+        nargs="+",
+        choices=sorted(GRPO_SOURCE_MAP),
+        default=["hard"],
+        help="Which GRPO sources to include (default: hard only).",
     )
     parser.add_argument("--train-out", required=True)
     parser.add_argument("--val-out", required=True)
@@ -79,7 +95,7 @@ def main() -> None:
     args = parser.parse_args()
 
     input_dirs = collect_input_dirs(args.input_dir)
-    rows = build_grpo_rows(input_dirs=input_dirs)
+    rows = build_grpo_rows(input_dirs=input_dirs, sources=args.sources)
     train_rows, val_rows = shuffle_split(rows, val_ratio=args.val_ratio, seed=args.seed)
 
     summary = {
