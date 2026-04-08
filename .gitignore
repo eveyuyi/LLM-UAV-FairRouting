@@ -25,6 +25,7 @@ dist/
 /data/compare_runs/
 /data/eval_runs/
 /data/extract_eval_plan_runs/
+/data/eval/hard_eval*/
 /data/hydra_outputs/
 /data/independent_window_experiments/
 /data/result/
