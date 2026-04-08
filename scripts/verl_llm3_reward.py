@@ -1,14 +1,36 @@
-"""Custom reward function for LLM3 priority-ranking GRPO in VERL."""
+"""Custom reward function for LLM3 priority-ranking GRPO in VERL.
+
+The reward is intentionally aligned with the downstream rank-only evaluation:
+- exact priority assignment is the primary objective
+- urgent-item identification (P1/P2) is explicitly rewarded
+- pairwise and top-k ordering remain important, but secondary
+
+This avoids a failure mode where the model can earn a decent reward by
+outputting approximately-correct rankings while collapsing exact priorities.
+"""
 
 from __future__ import annotations
 
 import json
 from typing import Dict, Iterable, List, Optional
 
-JSON_WEIGHT = 0.10
-PRIORITY_WEIGHT = 0.55
-PAIRWISE_WEIGHT = 0.25
-TOPK_WEIGHT = 0.10
+JSON_WEIGHT = 0.05
+BALANCED_PRIORITY_WEIGHT = 0.25
+EXACT_PRIORITY_WEIGHT = 0.25
+DISTANCE_PRIORITY_WEIGHT = 0.05
+PAIRWISE_WEIGHT = 0.10
+TOPK_WEIGHT = 0.05
+URGENT_F1_WEIGHT = 0.10
+PRIORITY1_RECALL_WEIGHT = 0.10
+DISTRIBUTION_WEIGHT = 0.05
+
+URGENT_THRESHOLD = 2
+PRIORITY_IMPORTANCE = {
+    1: 4.0,
+    2: 3.0,
+    3: 2.0,
+    4: 1.0,
+}
 
 
 def _maybe_parse_json(value):
@@ -33,6 +55,14 @@ def _normalize_priority(value) -> Optional[int]:
     except (TypeError, ValueError):
         return None
     return min(max(priority, 1), 4)
+
+
+def _safe_positive_int(value, default: int = 1) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return int(default)
+    return parsed if parsed >= 1 else int(default)
 
 
 def _normalize_rank(value) -> Optional[int]:
@@ -90,6 +120,179 @@ def _priority_match_score(pred_priority: Optional[int], gt_priority: int) -> flo
     return max(0.0, 1.0 - (abs(int(pred_priority) - int(gt_priority)) / 3.0))
 
 
+def _priority_weight(priority: int) -> float:
+    return float(PRIORITY_IMPORTANCE.get(int(priority), 1.0))
+
+
+def _weighted_exact_priority_score(pred_map: Dict[str, Dict], gt_labels: List[Dict]) -> float:
+    numerator = 0.0
+    denominator = 0.0
+    for gt_label in gt_labels:
+        gt_priority = _normalize_priority(gt_label.get("priority"))
+        if gt_priority is None:
+            continue
+        weight = _priority_weight(gt_priority)
+        denominator += weight
+        pred_priority = pred_map.get(gt_label["demand_id"], {}).get("priority")
+        if pred_priority is not None and int(pred_priority) == int(gt_priority):
+            numerator += weight
+    if denominator <= 0.0:
+        return 0.0
+    return numerator / denominator
+
+
+def _weighted_distance_priority_score(pred_map: Dict[str, Dict], gt_labels: List[Dict]) -> float:
+    numerator = 0.0
+    denominator = 0.0
+    for gt_label in gt_labels:
+        gt_priority = _normalize_priority(gt_label.get("priority"))
+        if gt_priority is None:
+            continue
+        weight = _priority_weight(gt_priority)
+        denominator += weight
+        pred_priority = pred_map.get(gt_label["demand_id"], {}).get("priority")
+        numerator += weight * _priority_match_score(pred_priority, gt_priority)
+    if denominator <= 0.0:
+        return 0.0
+    return numerator / denominator
+
+
+def _balanced_priority_recall_score(pred_map: Dict[str, Dict], gt_labels: List[Dict]) -> float:
+    hits_by_priority: Dict[int, int] = {}
+    totals_by_priority: Dict[int, int] = {}
+    for gt_label in gt_labels:
+        gt_priority = _normalize_priority(gt_label.get("priority"))
+        if gt_priority is None:
+            continue
+        totals_by_priority[gt_priority] = totals_by_priority.get(gt_priority, 0) + 1
+        pred_priority = pred_map.get(gt_label["demand_id"], {}).get("priority")
+        if pred_priority is not None and int(pred_priority) == int(gt_priority):
+            hits_by_priority[gt_priority] = hits_by_priority.get(gt_priority, 0) + 1
+
+    per_class_recalls: List[float] = []
+    for priority, total in sorted(totals_by_priority.items()):
+        if total <= 0:
+            continue
+        per_class_recalls.append(float(hits_by_priority.get(priority, 0)) / float(total))
+    if not per_class_recalls:
+        return 0.0
+    return sum(per_class_recalls) / len(per_class_recalls)
+
+
+def _priority_lookup(gt_labels: List[Dict]) -> Dict[str, int]:
+    lookup: Dict[str, int] = {}
+    for gt_label in gt_labels:
+        demand_id = str(gt_label.get("demand_id", "")).strip()
+        gt_priority = _normalize_priority(gt_label.get("priority"))
+        if demand_id and gt_priority is not None:
+            lookup[demand_id] = int(gt_priority)
+    return lookup
+
+
+def _distribution_score(pred_map: Dict[str, Dict], gt_labels: List[Dict]) -> float:
+    gt_counts = {priority: 0 for priority in range(1, 5)}
+    pred_counts = {priority: 0 for priority in range(1, 5)}
+
+    for gt_label in gt_labels:
+        gt_priority = _normalize_priority(gt_label.get("priority"))
+        if gt_priority is not None:
+            gt_counts[int(gt_priority)] += 1
+        pred_priority = pred_map.get(str(gt_label.get("demand_id", "")), {}).get("priority")
+        pred_priority = _normalize_priority(pred_priority)
+        if pred_priority is not None:
+            pred_counts[int(pred_priority)] += 1
+
+    total_gt = sum(gt_counts.values())
+    total_pred = sum(pred_counts.values())
+    if total_gt <= 0 or total_pred <= 0:
+        return 0.0
+
+    l1 = 0.0
+    for priority in range(1, 5):
+        gt_ratio = float(gt_counts[priority]) / float(total_gt)
+        pred_ratio = float(pred_counts[priority]) / float(total_pred)
+        l1 += abs(gt_ratio - pred_ratio)
+    return max(0.0, 1.0 - (l1 / 2.0))
+
+
+def _safe_f1(tp: float, fp: float, fn: float) -> float:
+    precision = 0.0 if tp + fp <= 0.0 else tp / (tp + fp)
+    recall = 0.0 if tp + fn <= 0.0 else tp / (tp + fn)
+    if precision + recall <= 0.0:
+        return 0.0
+    return (2.0 * precision * recall) / (precision + recall)
+
+
+def _urgent_f1_score(pred_map: Dict[str, Dict], gt_labels: List[Dict]) -> float:
+    tp = 0.0
+    fp = 0.0
+    fn = 0.0
+    for gt_label in gt_labels:
+        gt_priority = _normalize_priority(gt_label.get("priority"))
+        if gt_priority is None:
+            continue
+        weight = _priority_weight(gt_priority)
+        pred_priority = pred_map.get(gt_label["demand_id"], {}).get("priority")
+        gt_urgent = int(gt_priority) <= URGENT_THRESHOLD
+        pred_urgent = pred_priority is not None and int(pred_priority) <= URGENT_THRESHOLD
+        if gt_urgent and pred_urgent:
+            tp += weight
+        elif (not gt_urgent) and pred_urgent:
+            fp += weight
+        elif gt_urgent and (not pred_urgent):
+            fn += weight
+    return _safe_f1(tp, fp, fn)
+
+
+def _priority1_recall_score(pred_map: Dict[str, Dict], gt_labels: List[Dict]) -> float:
+    numerator = 0.0
+    denominator = 0.0
+    for gt_label in gt_labels:
+        gt_priority = _normalize_priority(gt_label.get("priority"))
+        if gt_priority != 1:
+            continue
+        weight = _priority_weight(1)
+        denominator += weight
+        pred_priority = pred_map.get(gt_label["demand_id"], {}).get("priority")
+        if pred_priority is not None and int(pred_priority) == 1:
+            numerator += weight
+    if denominator <= 0.0:
+        return 0.0
+    return numerator / denominator
+
+
+def _weighted_pairwise_score(
+    pred_map: Dict[str, Dict],
+    pairwise_preferences: List[Dict],
+    gt_priority_by_id: Dict[str, int],
+) -> Optional[float]:
+    if not pairwise_preferences:
+        return None
+
+    numerator = 0.0
+    denominator = 0.0
+    for pair in pairwise_preferences:
+        if not isinstance(pair, dict):
+            continue
+        higher_id = str(pair.get("higher_priority_demand_id", ""))
+        lower_id = str(pair.get("lower_priority_demand_id", ""))
+        higher_priority = gt_priority_by_id.get(higher_id)
+        lower_priority = gt_priority_by_id.get(lower_id)
+        gap = _safe_positive_int(pair.get("priority_gap"), default=1)
+        weight = float(gap)
+        if higher_priority is not None and int(higher_priority) <= URGENT_THRESHOLD:
+            weight += 1.0
+        if lower_priority is not None and int(lower_priority) <= URGENT_THRESHOLD:
+            weight += 0.5
+        denominator += weight
+        if _compare_pair(pred_map, higher_id, lower_id):
+            numerator += weight
+
+    if denominator <= 0.0:
+        return None
+    return numerator / denominator
+
+
 def _compare_pair(pred_map: Dict[str, Dict], higher_id: str, lower_id: str) -> bool:
     higher = pred_map.get(higher_id)
     lower = pred_map.get(lower_id)
@@ -100,14 +303,11 @@ def _compare_pair(pred_map: Dict[str, Dict], higher_id: str, lower_id: str) -> b
     lower_priority = lower.get("priority")
     if higher_priority is None or lower_priority is None:
         return False
-    if higher_priority != lower_priority:
-        return int(higher_priority) < int(lower_priority)
-
-    higher_rank = higher.get("window_rank")
-    lower_rank = lower.get("window_rank")
-    if higher_rank is None or lower_rank is None:
-        return False
-    return int(higher_rank) < int(lower_rank)
+    # Ground-truth pairwise preferences are only emitted when the two items have
+    # different gold priorities. Reward should therefore require a strict
+    # predicted priority separation; merely ordering two equal-priority
+    # predictions by rank is not enough.
+    return int(higher_priority) < int(lower_priority)
 
 
 def _ordered_prediction_ids(pred_labels: List[Dict]) -> List[str]:
@@ -147,30 +347,16 @@ def compute_score(data_source, solution_str, ground_truth, extra_info=None):
     if not gt_labels:
         return JSON_WEIGHT * json_score
 
-    priority_scores = []
-    for gt_label in gt_labels:
-        gt_priority = _normalize_priority(gt_label.get("priority"))
-        if gt_priority is None:
-            continue
-        pred_priority = pred_map.get(gt_label["demand_id"], {}).get("priority")
-        priority_scores.append(_priority_match_score(pred_priority, gt_priority))
-    priority_score = sum(priority_scores) / len(priority_scores) if priority_scores else 0.0
+    gt_priority_by_id = _priority_lookup(gt_labels)
+    balanced_priority_score = _balanced_priority_recall_score(pred_map, gt_labels)
+    exact_priority_score = _weighted_exact_priority_score(pred_map, gt_labels)
+    distance_priority_score = _weighted_distance_priority_score(pred_map, gt_labels)
+    distribution_score = _distribution_score(pred_map, gt_labels)
+    urgent_f1_score = _urgent_f1_score(pred_map, gt_labels)
+    priority1_recall_score = _priority1_recall_score(pred_map, gt_labels)
 
     pairwise_preferences = gt.get("pairwise_preferences", [])
-    if pairwise_preferences:
-        pairwise_hits = 0
-        for pair in pairwise_preferences:
-            if not isinstance(pair, dict):
-                continue
-            if _compare_pair(
-                pred_map,
-                str(pair.get("higher_priority_demand_id", "")),
-                str(pair.get("lower_priority_demand_id", "")),
-            ):
-                pairwise_hits += 1
-        pairwise_score = pairwise_hits / len(pairwise_preferences)
-    else:
-        pairwise_score = 1.0
+    pairwise_score = _weighted_pairwise_score(pred_map, pairwise_preferences, gt_priority_by_id)
 
     critical_topk_targets = [
         str(item)
@@ -182,12 +368,25 @@ def compute_score(data_source, solution_str, ground_truth, extra_info=None):
         overlap = len(set(predicted_topk) & set(critical_topk_targets))
         topk_score = overlap / len(critical_topk_targets)
     else:
-        topk_score = 1.0
+        topk_score = None
 
-    total_score = (
-        JSON_WEIGHT * json_score
-        + PRIORITY_WEIGHT * priority_score
-        + PAIRWISE_WEIGHT * pairwise_score
-        + TOPK_WEIGHT * topk_score
-    )
+    components = [
+        (JSON_WEIGHT, json_score),
+        (BALANCED_PRIORITY_WEIGHT, balanced_priority_score),
+        (EXACT_PRIORITY_WEIGHT, exact_priority_score),
+        (DISTANCE_PRIORITY_WEIGHT, distance_priority_score),
+        (PAIRWISE_WEIGHT, pairwise_score),
+        (TOPK_WEIGHT, topk_score),
+        (URGENT_F1_WEIGHT, urgent_f1_score),
+        (
+            PRIORITY1_RECALL_WEIGHT,
+            priority1_recall_score if any(priority == 1 for priority in gt_priority_by_id.values()) else None,
+        ),
+        (DISTRIBUTION_WEIGHT, distribution_score),
+    ]
+    active_components = [(weight, score) for weight, score in components if score is not None]
+    if not active_components:
+        return 0.0
+    total_weight = sum(weight for weight, _ in active_components)
+    total_score = sum(weight * float(score) for weight, score in active_components) / total_weight
     return max(0.0, min(1.0, float(total_score)))

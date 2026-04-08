@@ -44,3 +44,40 @@ def test_compute_score_penalizes_invalid_json():
     }
     score = reward.compute_score("llm3_priority_window", "not-json", ground_truth)
     assert score < 0.5
+
+
+def test_compute_score_prioritizes_exact_priority_matches_for_urgent_items():
+    reward = _load_reward_module()
+    ground_truth = {
+        "priority_labels": [
+            {"demand_id": "A", "priority": 1, "window_rank": 1},
+            {"demand_id": "B", "priority": 2, "window_rank": 2},
+            {"demand_id": "C", "priority": 4, "window_rank": 3},
+        ],
+        "pairwise_preferences": [
+            {"higher_priority_demand_id": "A", "lower_priority_demand_id": "B", "priority_gap": 1},
+            {"higher_priority_demand_id": "A", "lower_priority_demand_id": "C", "priority_gap": 3},
+            {"higher_priority_demand_id": "B", "lower_priority_demand_id": "C", "priority_gap": 2},
+        ],
+        "critical_topk_targets": ["A", "B"],
+    }
+    perfect = {
+        "priority_labels": [
+            {"demand_id": "A", "priority": 1, "window_rank": 1},
+            {"demand_id": "B", "priority": 2, "window_rank": 2},
+            {"demand_id": "C", "priority": 4, "window_rank": 3},
+        ]
+    }
+    collapsed = {
+        "priority_labels": [
+            {"demand_id": "A", "priority": 4, "window_rank": 1},
+            {"demand_id": "B", "priority": 4, "window_rank": 2},
+            {"demand_id": "C", "priority": 4, "window_rank": 3},
+        ]
+    }
+
+    perfect_score = reward.compute_score("llm3_priority_window", perfect, ground_truth)
+    collapsed_score = reward.compute_score("llm3_priority_window", collapsed, ground_truth)
+
+    assert perfect_score > collapsed_score
+    assert collapsed_score < 0.4
