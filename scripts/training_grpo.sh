@@ -3,10 +3,9 @@
 # 用法：
 #   bash scripts/training_grpo.sh
 # 先改下面「只改这里」：CONDA_ENV、GRPO parquet 路径、MODEL_PATH（必须是 HuggingFace 目录，含
-# config.json）、SFT_CKPT_DIR（FSDP SFT 检查点，用于自动 merge）等。
+# config.json）等。
 #
-# 模型路径：actor_rollout_ref.model.path 只接受 HF 格式。若 MODEL_PATH 下尚无 config.json 且
-# AUTO_MERGE_SFT_HF=1，会调用 scripts/export_sft_ckpt_to_hf.sh，把 SFT_CKPT_DIR merge 到 MODEL_PATH。
+# 模型路径：actor_rollout_ref.model.path 只接受 HF 格式。默认使用已合并好的 SFT 权重目录。
 #
 # 数据：若 GRPO_TRAIN_FILE / GRPO_VAL_FILE 不存在且 AUTO_EXPORT_GRPO=1，会按
 # GRPO_EXPORT_TRAIN_GLOB 与 GRPO_EXPORT_VAL_GLOB 分开导出 parquet；GRPO_EXPORT_TEST_GLOB 仅预留评估集。
@@ -26,33 +25,31 @@ cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # ---------- 只改这里 ----------
 CONDA_ENV="${CONDA_ENV:-verl}"
-GRPO_TRAIN_FILE="${GRPO_TRAIN_FILE:-data/train/verl/llm3_medium_5min_v1_grpo_train.parquet}"
-GRPO_VAL_FILE="${GRPO_VAL_FILE:-data/train/verl/llm3_medium_5min_v1_grpo_val.parquet}"
+GRPO_TRAIN_FILE="${GRPO_TRAIN_FILE:-data/train/verl/expB_grpo_hard_train.parquet}"
+GRPO_VAL_FILE="${GRPO_VAL_FILE:-data/train/verl/expB_grpo_hard_val.parquet}"
 # GRPO 的 actor_rollout_ref.model.path 必须是 HuggingFace 目录（含 config.json 等）
-# SFT 约 54 step；若你实际训练步数不同，只改 SFT_GLOBAL_STEP 即可。
-SFT_GLOBAL_STEP="${SFT_GLOBAL_STEP:-54}"
-MODEL_PATH="${MODEL_PATH:-data/checkpoints/llm3_sft_merged_hf_medium_v1/global_step_${SFT_GLOBAL_STEP}}"
-# 若上面目录尚不存在，从 VERL FSDP SFT 检查点自动 merge（调用 scripts/export_sft_ckpt_to_hf.sh）
-SFT_CKPT_DIR="${SFT_CKPT_DIR:-data/checkpoints/llm3_sft_medium_v1/global_step_${SFT_GLOBAL_STEP}}"
-AUTO_MERGE_SFT_HF="${AUTO_MERGE_SFT_HF:-1}"
+# Exp B 默认沿用 Exp A 的 SFT 最终 step，并直接使用已 merge 的 HF 权重目录。
+SFT_GLOBAL_STEP="${SFT_GLOBAL_STEP:-594}"
+MODEL_PATH="${MODEL_PATH:-data/checkpoints/expA_sft_baseline/global_step_${SFT_GLOBAL_STEP}/huggingface_lora_merged}"
+SFT_CKPT_DIR="${SFT_CKPT_DIR:-data/checkpoints/expA_sft_baseline/global_step_${SFT_GLOBAL_STEP}}"
 AUTO_EXPORT_GRPO="${AUTO_EXPORT_GRPO:-1}"
-FORCE_REEXPORT_GRPO="${FORCE_REEXPORT_GRPO:-0}"
-GRPO_EXPORT_TRAIN_GLOB="${GRPO_EXPORT_TRAIN_GLOB:-data/train/llm3_medium_5min_v1/seed_410[1-8]}"
-GRPO_EXPORT_VAL_GLOB="${GRPO_EXPORT_VAL_GLOB:-data/train/llm3_medium_5min_v1/seed_4109 data/train/llm3_medium_5min_v1/seed_4110}"
-GRPO_EXPORT_TEST_GLOB="${GRPO_EXPORT_TEST_GLOB:-data/train/llm3_medium_5min_v1/seed_4111 data/train/llm3_medium_5min_v1/seed_4112}"
+FORCE_REEXPORT_GRPO="${FORCE_REEXPORT_GRPO:-1}"
+GRPO_EXPORT_TRAIN_GLOB="${GRPO_EXPORT_TRAIN_GLOB:-data/train/llm3_medium_5min_v1/seed_410[1-8] data/train/llm3_5min_large_v1/seed_411[3-9] data/train/llm3_5min_large_v1/seed_4120 data/train/llm3_5min_large_v1/seed_412[5-9] data/train/llm3_5min_large_v1/seed_413[01]}"
+GRPO_EXPORT_VAL_GLOB="${GRPO_EXPORT_VAL_GLOB:-data/train/llm3_medium_5min_v1/seed_4109 data/train/llm3_medium_5min_v1/seed_4110 data/train/llm3_5min_large_v1/seed_4132 data/train/llm3_5min_large_v1/seed_4133}"
+GRPO_EXPORT_TEST_GLOB="${GRPO_EXPORT_TEST_GLOB:-data/train/llm3_medium_5min_v1/seed_4111 data/train/llm3_medium_5min_v1/seed_4112 data/train/llm3_5min_large_v1/seed_413[4-6]}"
 GRPO_EXPORT_SEED="${GRPO_EXPORT_SEED:-42}"
-CKPT_DIR="${CKPT_DIR:-data/checkpoints/llm3_grpo_medium_v1}"
+CKPT_DIR="${CKPT_DIR:-data/checkpoints/expB_grpo_hard}"
 HYDRA_ROOT="${HYDRA_ROOT:-data/hydra_outputs}"
 TRAINER_PROJECT_NAME="${TRAINER_PROJECT_NAME:-llm3-grpo}"
-TRAINER_EXPERIMENT_NAME="${TRAINER_EXPERIMENT_NAME:-qwen-grpo-llm3-medium-v1}"
+TRAINER_EXPERIMENT_NAME="${TRAINER_EXPERIMENT_NAME:-expB-grpo-hard}"
 TRAINER_LOGGERS="${TRAINER_LOGGERS:-[\"console\",\"tensorboard\"]}"
-FAIL_ON_EXISTING_CKPT_DIR="${FAIL_ON_EXISTING_CKPT_DIR:-1}"
-# llm3_medium_5min_v1 的 8-train seed 约 300+ 条 GRPO 样本；8 卡下取 train_batch=16，单 epoch 约 19 step。
-# rollout.n=2 时 real_batch=32，可被 8 整除；ppo mini 取 8，保证 train_batch >= mini_batch。
+FAIL_ON_EXISTING_CKPT_DIR="${FAIL_ON_EXISTING_CKPT_DIR:-0}"
+# Exp B hard 数据量更大：默认 train_batch=16、rollout.n=8、ppo mini=8，兼顾探索与稳定性。
+# 仍需满足 (train_batch * rollout_n) % N_GPUS == 0，且 train_batch >= ppo_mini_batch。
 GRPO_TRAIN_BATCH_SIZE="${GRPO_TRAIN_BATCH_SIZE:-16}"
 GRPO_PPO_MINI_BATCH_SIZE="${GRPO_PPO_MINI_BATCH_SIZE:-8}"
-GRPO_ROLLOUT_N="${GRPO_ROLLOUT_N:-2}"
-GRPO_ACTOR_LR="${GRPO_ACTOR_LR:-1e-6}"
+GRPO_ROLLOUT_N="${GRPO_ROLLOUT_N:-8}"
+GRPO_ACTOR_LR="${GRPO_ACTOR_LR:-5e-7}"
 # 默认不自动恢复，避免 CKPT_DIR 里旧实验与当前合并后 HF 权重不兼容。
 GRPO_RESUME_MODE="${GRPO_RESUME_MODE:-disable}"
 GRPO_MODEL_DTYPE="${GRPO_MODEL_DTYPE:-bfloat16}"
@@ -66,10 +63,10 @@ GRPO_MAX_NUM_BATCHED_TOKENS="${GRPO_MAX_NUM_BATCHED_TOKENS:-8192}"
 # 否则像 Qwen3 的 262144 会直接把 KV cache 撑爆（4 卡更容易）。
 GRPO_ROLLOUT_MAX_MODEL_LEN="${GRPO_ROLLOUT_MAX_MODEL_LEN:-4096}"
 GRPO_ROLLOUT_GPU_MEM_UTIL="${GRPO_ROLLOUT_GPU_MEM_UTIL:-0.5}"
-GRPO_KL_LOSS_COEF="${GRPO_KL_LOSS_COEF:-0.001}"
-GRPO_TOTAL_EPOCHS="${GRPO_TOTAL_EPOCHS:-1}"
-GRPO_SAVE_FREQ="${GRPO_SAVE_FREQ:-20}"
-GRPO_TEST_FREQ="${GRPO_TEST_FREQ:-10}"
+GRPO_KL_LOSS_COEF="${GRPO_KL_LOSS_COEF:-0.005}"
+GRPO_TOTAL_EPOCHS="${GRPO_TOTAL_EPOCHS:-3}"
+GRPO_SAVE_FREQ="${GRPO_SAVE_FREQ:-50}"
+GRPO_TEST_FREQ="${GRPO_TEST_FREQ:-25}"
 # CONDA_ENV 留空则用当前环境的 python
 
 if [[ -n "${CONDA_ENV}" ]]; then
@@ -79,20 +76,9 @@ else
 fi
 
 if [[ ! -f "${MODEL_PATH}/config.json" ]]; then
-  if [[ "${AUTO_MERGE_SFT_HF}" != 1 ]]; then
-    echo "GRPO 需要 HuggingFace 权重目录（缺少 ${MODEL_PATH}/config.json）。请先运行 scripts/export_sft_ckpt_to_hf.sh，或设 AUTO_MERGE_SFT_HF=1。" >&2
-    exit 1
-  fi
-  if [[ ! -d "${SFT_CKPT_DIR}" ]]; then
-    echo "用于 merge 的 SFT 检查点不存在: ${SFT_CKPT_DIR}" >&2
-    exit 1
-  fi
-  mkdir -p "$(dirname "${MODEL_PATH}")"
-  if [[ -n "${CONDA_ENV}" ]]; then
-    conda run --no-capture-output -n "${CONDA_ENV}" env PYTHONNOUSERSITE=1 bash scripts/export_sft_ckpt_to_hf.sh "${SFT_CKPT_DIR}" "${MODEL_PATH}"
-  else
-    env PYTHONNOUSERSITE=1 bash scripts/export_sft_ckpt_to_hf.sh "${SFT_CKPT_DIR}" "${MODEL_PATH}"
-  fi
+  echo "GRPO 需要 HuggingFace 权重目录（缺少 ${MODEL_PATH}/config.json）。当前脚本默认不自动 merge，请确认 MODEL_PATH 指向已合并目录。" >&2
+  echo "若要从 FSDP 检查点导出，可手动运行: bash scripts/export_sft_ckpt_to_hf.sh \"${SFT_CKPT_DIR}\" \"${MODEL_PATH}\"" >&2
+  exit 1
 fi
 
 if [[ -n "${CUDA_VISIBLE_DEVICES:-}" ]]; then
