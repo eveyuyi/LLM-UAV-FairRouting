@@ -49,3 +49,5 @@ dist/
 /=10.1
 /data/audits/
 /tensorboard_log/
+
+/data/test/**
