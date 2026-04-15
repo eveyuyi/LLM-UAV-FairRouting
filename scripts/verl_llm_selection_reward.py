@@ -36,7 +36,37 @@ def _str(value) -> str:
 
 
 def _safe_set(values: Iterable) -> Set[str]:
+    if values is None:
+        return set()
+    if isinstance(values, str):
+        single = _str(values)
+        return {single} if single else set()
+    if not isinstance(values, Iterable):
+        single = _str(values)
+        return {single} if single else set()
     return {_str(v) for v in values if _str(v)}
+
+
+def _extract_scene_type(value) -> str:
+    """Robustly parse scene_type from training_labels-like payload."""
+    if isinstance(value, dict):
+        return _str(value.get("scene_type"))
+    if isinstance(value, list):
+        # Some model outputs return training_labels as a list of objects/strings.
+        for item in value:
+            if isinstance(item, dict):
+                scene_type = _str(item.get("scene_type"))
+                if scene_type:
+                    return scene_type
+            else:
+                item_text = _str(item)
+                if item_text:
+                    return item_text
+    if isinstance(value, str):
+        parsed = _parse_json(value)
+        if parsed is not None and parsed is not value:
+            return _extract_scene_type(parsed)
+    return ""
 
 
 def _f1(pred: Set[str], truth: Set[str]) -> Optional[float]:
@@ -80,12 +110,12 @@ def compute_score(data_source, solution_str, ground_truth, extra_info=None):
     pred_solution_id = _str(pred.get("selected_solution_id"))
     pred_group_id = _str(pred.get("selected_group_id"))
     pred_reason_codes = _safe_set(pred.get("primary_reason_codes") or [])
-    pred_scene_type = _str((pred.get("training_labels") or {}).get("scene_type"))
+    pred_scene_type = _extract_scene_type(pred.get("training_labels"))
 
     gt_solution_id = _str(gt.get("selected_solution_id"))
     gt_group_id = _str(gt.get("selected_group_id"))
     gt_reason_codes = _safe_set(gt.get("primary_reason_codes") or [])
-    gt_scene_type = _str((gt.get("training_labels") or {}).get("scene_type"))
+    gt_scene_type = _extract_scene_type(gt.get("training_labels"))
     candidate_solution_ids = _safe_set(gt.get("candidate_solution_ids") or [])
 
     candidate_valid = 1.0

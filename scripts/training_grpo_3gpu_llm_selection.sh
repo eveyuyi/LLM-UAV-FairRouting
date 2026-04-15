@@ -9,17 +9,22 @@ cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # 默认流程：
 # 1) 从原始 llm_selection JSONL 生成 compact JSONL（4B short 配置）
 # 2) 将 train/val GRPO JSONL 转为 parquet
-# 3) 用自定义 reward 启动 GRPO 训练（3 GPUs）
+# 3) 默认读取最新 SFT merged HuggingFace 模型
+# 4) 用自定义 reward 启动 GRPO 训练（3 GPUs）
+# 5) 自动把最新 GRPO actor checkpoint merge 成 HuggingFace 目录
 
 # ---------- 只改这里 ----------
 CONDA_ENV="${CONDA_ENV:-verl}"
 CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0,1,2}"
-MODEL_PATH="${MODEL_PATH:-/path/to/sft-merged-hf-model}"
+MODEL_PATH="${MODEL_PATH:-}"
+SFT_CKPT_DIR="${SFT_CKPT_DIR:-data/checkpoints/llm_selection_sft_3gpu}"
+SFT_MERGED_DIR_NAME="${SFT_MERGED_DIR_NAME:-huggingface_lora_merged}"
 
 RAW_JSONL="${RAW_JSONL:-data/train/llm_selection_training_jsonl_1000_qs_v1_20260413/llm_selection_train_1000_qs_v1.jsonl}"
 COMPACT_DIR="${COMPACT_DIR:-data/train/llm_selection_training_jsonl_1000_qs_v1_20260413/compact_exports_4b_short}"
-KEEP_CANDIDATES_PER_GROUP="${KEEP_CANDIDATES_PER_GROUP:-4}"
-MAX_DEMAND_CARDS="${MAX_DEMAND_CARDS:-8}"
+# 与 SFT 保持一致，避免自动串联到 GRPO 时数据分布突然变化。
+KEEP_CANDIDATES_PER_GROUP="${KEEP_CANDIDATES_PER_GROUP:-3}"
+MAX_DEMAND_CARDS="${MAX_DEMAND_CARDS:-6}"
 DATA_VAL_RATIO="${DATA_VAL_RATIO:-0.1}"
 DATA_SEED="${DATA_SEED:-42}"
 MULTIGROUP_OVERSAMPLE="${MULTIGROUP_OVERSAMPLE:-3}"
@@ -39,6 +44,10 @@ TRAINER_EXPERIMENT_NAME="${TRAINER_EXPERIMENT_NAME:-llm-selection-grpo-3gpu}"
 TRAINER_LOGGERS="${TRAINER_LOGGERS:-[\"console\",\"tensorboard\"]}"
 GRPO_RESUME_MODE="${GRPO_RESUME_MODE:-disable}"
 FAIL_ON_EXISTING_CKPT_DIR="${FAIL_ON_EXISTING_CKPT_DIR:-0}"
+AUTO_MERGE_AFTER_GRPO="${AUTO_MERGE_AFTER_GRPO:-1}"
+GRPO_MERGED_DIR_NAME="${GRPO_MERGED_DIR_NAME:-huggingface_lora_merged}"
+GRPO_MERGED_MODEL_DIR="${GRPO_MERGED_MODEL_DIR:-}"
+FAIL_ON_EXISTING_MERGED_MODEL_DIR="${FAIL_ON_EXISTING_MERGED_MODEL_DIR:-0}"
 
 # 4B + 3 卡建议起点
 GRPO_TRAIN_BATCH_SIZE="${GRPO_TRAIN_BATCH_SIZE:-12}"
@@ -51,7 +60,7 @@ GRPO_DATALOADER_WORKERS="${GRPO_DATALOADER_WORKERS:-2}"
 GRPO_MAX_PROMPT_LENGTH="${GRPO_MAX_PROMPT_LENGTH:-4096}"
 GRPO_MAX_RESPONSE_LENGTH="${GRPO_MAX_RESPONSE_LENGTH:-384}"
 GRPO_MAX_NUM_BATCHED_TOKENS="${GRPO_MAX_NUM_BATCHED_TOKENS:-8192}"
-GRPO_ROLLOUT_MAX_MODEL_LEN="${GRPO_ROLLOUT_MAX_MODEL_LEN:-4096}"
+GRPO_ROLLOUT_MAX_MODEL_LEN="${GRPO_ROLLOUT_MAX_MODEL_LEN:-4608}"
 GRPO_ROLLOUT_GPU_MEM_UTIL="${GRPO_ROLLOUT_GPU_MEM_UTIL:-0.45}"
 GRPO_KL_LOSS_COEF="${GRPO_KL_LOSS_COEF:-0.01}"
 GRPO_TOTAL_EPOCHS="${GRPO_TOTAL_EPOCHS:-2}"
@@ -64,10 +73,84 @@ else
   _py=(env PYTHONNOUSERSITE=1 python)
 fi
 
-if [[ ! -f "${MODEL_PATH}/config.json" ]]; then
-  echo "MODEL_PATH 必须是 HuggingFace 模型目录（缺少 config.json）: ${MODEL_PATH}" >&2
+resolve_latest_step_dir() {
+  local ckpt_root="$1"
+  local latest_dir=""
+  local latest_step=-1
+  local step_dir=""
+  shopt -s nullglob
+  for step_dir in "${ckpt_root}"/global_step_*; do
+    local step_name
+    local step_num
+    step_name="$(basename "${step_dir}")"
+    step_num="${step_name#global_step_}"
+    [[ "${step_num}" =~ ^[0-9]+$ ]] || continue
+    if (( step_num > latest_step )); then
+      latest_step="${step_num}"
+      latest_dir="${step_dir}"
+    fi
+  done
+  shopt -u nullglob
+  if [[ -z "${latest_dir}" ]]; then
+    echo "未在 ${ckpt_root} 下找到 global_step_* checkpoint。" >&2
+    return 1
+  fi
+  printf '%s\n' "${latest_dir}"
+}
+
+resolve_model_path() {
+  if [[ -n "${MODEL_PATH}" ]]; then
+    printf '%s\n' "${MODEL_PATH}"
+    return 0
+  fi
+
+  local sft_step_dir
+  if [[ "$(basename "${SFT_CKPT_DIR}")" =~ ^global_step_[0-9]+$ ]]; then
+    sft_step_dir="${SFT_CKPT_DIR}"
+  else
+    sft_step_dir="$(resolve_latest_step_dir "${SFT_CKPT_DIR}")"
+  fi
+  printf '%s\n' "${sft_step_dir}/${SFT_MERGED_DIR_NAME}"
+}
+
+require_hf_model_dir() {
+  local model_dir="$1"
+  if [[ ! -f "${model_dir}/config.json" ]]; then
+    echo "MODEL_PATH 必须是 HuggingFace 模型目录（缺少 config.json）: ${model_dir}" >&2
+    return 1
+  fi
+  if [[ ! -f "${model_dir}/tokenizer.json" && ! -f "${model_dir}/tokenizer_config.json" ]]; then
+    echo "MODEL_PATH 缺少 tokenizer 文件: ${model_dir}" >&2
+    return 1
+  fi
+  shopt -s nullglob
+  local weight_files=(
+    "${model_dir}"/model.safetensors
+    "${model_dir}"/pytorch_model.bin
+    "${model_dir}"/model-*.safetensors
+    "${model_dir}"/pytorch_model-*.bin
+  )
+  shopt -u nullglob
+  if (( ${#weight_files[@]} == 0 )); then
+    echo "MODEL_PATH 缺少权重文件: ${model_dir}" >&2
+    return 1
+  fi
+}
+
+resolve_grpo_merged_model_path() {
+  local latest_step_dir="$1"
+  if [[ -n "${GRPO_MERGED_MODEL_DIR}" ]]; then
+    printf '%s\n' "${GRPO_MERGED_MODEL_DIR}"
+  else
+    printf '%s\n' "${latest_step_dir}/${GRPO_MERGED_DIR_NAME}"
+  fi
+}
+
+MODEL_PATH="$(resolve_model_path)"
+require_hf_model_dir "${MODEL_PATH}" || {
+  echo "若这是刚完成的 SFT，请先运行自动 merge 的 SFT 脚本，或手动指定 MODEL_PATH 为 merged HF 目录。" >&2
   exit 1
-fi
+}
 
 if [[ "${GRPO_RESUME_MODE}" == "disable" && "${FAIL_ON_EXISTING_CKPT_DIR}" == 1 && -d "${CKPT_DIR}" ]]; then
   echo "CKPT_DIR already exists with resume disabled: ${CKPT_DIR}" >&2
@@ -104,6 +187,11 @@ fi
 
 if (( GRPO_TRAIN_BATCH_SIZE < GRPO_PPO_MINI_BATCH_SIZE )); then
   echo "GRPO_TRAIN_BATCH_SIZE 必须 >= GRPO_PPO_MINI_BATCH_SIZE" >&2
+  exit 1
+fi
+if (( GRPO_MAX_PROMPT_LENGTH + GRPO_MAX_RESPONSE_LENGTH > GRPO_ROLLOUT_MAX_MODEL_LEN )); then
+  echo "GRPO_ROLLOUT_MAX_MODEL_LEN 必须 >= GRPO_MAX_PROMPT_LENGTH + GRPO_MAX_RESPONSE_LENGTH" >&2
+  echo "当前: prompt=${GRPO_MAX_PROMPT_LENGTH}, response=${GRPO_MAX_RESPONSE_LENGTH}, max_model_len=${GRPO_ROLLOUT_MAX_MODEL_LEN}" >&2
   exit 1
 fi
 if (( (GRPO_TRAIN_BATCH_SIZE * GRPO_ROLLOUT_N) % NPROC_PER_NODE != 0 )); then
@@ -165,3 +253,22 @@ CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES}" \
   trainer.save_freq="${GRPO_SAVE_FREQ}" \
   trainer.test_freq="${GRPO_TEST_FREQ}" \
   trainer.total_epochs="${GRPO_TOTAL_EPOCHS}"
+
+if [[ "${AUTO_MERGE_AFTER_GRPO}" == "1" ]]; then
+  LATEST_STEP_DIR="$(resolve_latest_step_dir "${CKPT_DIR}")"
+  GRPO_MERGED_MODEL_PATH="$(resolve_grpo_merged_model_path "${LATEST_STEP_DIR}")"
+
+  if [[ "${FAIL_ON_EXISTING_MERGED_MODEL_DIR}" == "1" && -d "${GRPO_MERGED_MODEL_PATH}" ]]; then
+    echo "Merged 输出目录已存在: ${GRPO_MERGED_MODEL_PATH}" >&2
+    exit 1
+  fi
+
+  echo "Merging latest GRPO checkpoint: ${LATEST_STEP_DIR} -> ${GRPO_MERGED_MODEL_PATH}"
+  "${_py[@]}" scripts/loRA_to_merged.py \
+    --ckpt-dir "${LATEST_STEP_DIR}" \
+    --base-path "${MODEL_PATH}" \
+    --output-path "${GRPO_MERGED_MODEL_PATH}"
+
+  require_hf_model_dir "${GRPO_MERGED_MODEL_PATH}"
+  echo "Merged HuggingFace model ready: ${GRPO_MERGED_MODEL_PATH}"
+fi

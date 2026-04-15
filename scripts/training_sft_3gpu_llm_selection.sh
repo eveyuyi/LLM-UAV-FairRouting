@@ -10,16 +10,23 @@ cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # 1) 从原始 llm_selection JSONL 生成 compact JSONL（4B short 配置）
 # 2) 将 train/val SFT JSONL 转为 parquet
 # 3) 启动 VERL SFT 训练（3 GPUs）
+# 4) 自动把最新 SFT checkpoint merge 成 HuggingFace 目录
+# 5) 可选地直接串行启动 GRPO
 
 # ---------- 只改这里 ----------
 CONDA_ENV="${CONDA_ENV:-verl}"
 CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0,1,2}"
-MODEL_PATH="${MODEL_PATH:-/path/to/your-4b-hf-model}"
+MODEL_PATH="${MODEL_PATH:-/mnt/shared-storage-gpfs2/gpfs2-shared-public/huggingface/zskj-hub/model--Qwen-Qwen3-4B-Instruct-2507}"
+# /mnt/shared-storage-gpfs2/gpfs2-shared-public/huggingface/zskj-hub/models-Qwen-Qwen3-1.7B
+# "/mnt/shared-storage-gpfs2/gpfs2-shared-public/huggingface/zskj-hub/model--Qwen-Qwen3-4B-Instruct-2507"
+# "/mnt/shared-storage-gpfs2/gpfs2-shared-public/huggingface/zskj-hub/models--Qwen--Qwen3.5-9B"
 
 RAW_JSONL="${RAW_JSONL:-data/train/llm_selection_training_jsonl_1000_qs_v1_20260413/llm_selection_train_1000_qs_v1.jsonl}"
 COMPACT_DIR="${COMPACT_DIR:-data/train/llm_selection_training_jsonl_1000_qs_v1_20260413/compact_exports_4b_short}"
-KEEP_CANDIDATES_PER_GROUP="${KEEP_CANDIDATES_PER_GROUP:-4}"
-MAX_DEMAND_CARDS="${MAX_DEMAND_CARDS:-8}"
+# 这份 llm_selection 任务的 prompt 很长；即便 short 配置也容易逼近上下文上限。
+# 默认进一步压缩到 3 候选 / 6 需求卡，优先保证关键差异特征存在且不被截断。
+KEEP_CANDIDATES_PER_GROUP="${KEEP_CANDIDATES_PER_GROUP:-3}"
+MAX_DEMAND_CARDS="${MAX_DEMAND_CARDS:-6}"
 DATA_VAL_RATIO="${DATA_VAL_RATIO:-0.1}"
 DATA_SEED="${DATA_SEED:-42}"
 MULTIGROUP_OVERSAMPLE="${MULTIGROUP_OVERSAMPLE:-3}"
@@ -39,11 +46,18 @@ TRAINER_EXPERIMENT_NAME="${TRAINER_EXPERIMENT_NAME:-llm-selection-sft-3gpu}"
 TRAINER_LOGGERS="${TRAINER_LOGGERS:-[\"console\",\"tensorboard\"]}"
 SFT_RESUME_MODE="${SFT_RESUME_MODE:-disable}"
 FAIL_ON_EXISTING_CKPT_DIR="${FAIL_ON_EXISTING_CKPT_DIR:-0}"
+AUTO_MERGE_AFTER_SFT="${AUTO_MERGE_AFTER_SFT:-1}"
+MERGED_MODEL_DIR_NAME="${MERGED_MODEL_DIR_NAME:-huggingface_lora_merged}"
+MERGED_MODEL_DIR="${MERGED_MODEL_DIR:-}"
+FAIL_ON_EXISTING_MERGED_MODEL_DIR="${FAIL_ON_EXISTING_MERGED_MODEL_DIR:-0}"
+AUTO_RUN_GRPO_AFTER_MERGE="${AUTO_RUN_GRPO_AFTER_MERGE:-0}"
+GRPO_SCRIPT="${GRPO_SCRIPT:-scripts/training_grpo_3gpu_llm_selection.sh}"
 
-# 4B + 3 卡建议起点（可按显存调整）
+# 这份数据是小规模、结构化 JSON 输出、且几乎全是 hard decision。
+# 用较保守的 epoch 避免过拟合规则标签；学习率保持中等，方便模型尽快学会格式和选择逻辑。
 SFT_GLOBAL_BATCH_SIZE="${SFT_GLOBAL_BATCH_SIZE:-24}"
 SFT_LR="${SFT_LR:-1e-5}"
-SFT_TOTAL_EPOCHS="${SFT_TOTAL_EPOCHS:-3}"
+SFT_TOTAL_EPOCHS="${SFT_TOTAL_EPOCHS:-2}"
 SFT_MODEL_DTYPE="${SFT_MODEL_DTYPE:-bfloat16}"
 SFT_TORCH_COMPILE="${SFT_TORCH_COMPILE:-false}"
 SFT_DATALOADER_WORKERS="${SFT_DATALOADER_WORKERS:-2}"
@@ -59,6 +73,11 @@ fi
 
 if [[ ! -f "${MODEL_PATH}/config.json" ]]; then
   echo "MODEL_PATH 必须是 HuggingFace 模型目录（缺少 config.json）: ${MODEL_PATH}" >&2
+  exit 1
+fi
+
+if [[ "${AUTO_RUN_GRPO_AFTER_MERGE}" == "1" && "${AUTO_MERGE_AFTER_SFT}" != "1" ]]; then
+  echo "AUTO_RUN_GRPO_AFTER_MERGE=1 需要 AUTO_MERGE_AFTER_SFT=1。" >&2
   exit 1
 fi
 
@@ -125,3 +144,92 @@ CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES}" \
   trainer.resume_mode="${SFT_RESUME_MODE}" \
   trainer.total_epochs="${SFT_TOTAL_EPOCHS}" \
   "hydra.run.dir=${HYDRA_ROOT}/"'${now:%Y-%m-%d}/${now:%H-%M-%S}'
+
+resolve_latest_step_dir() {
+  local ckpt_root="$1"
+  local latest_dir=""
+  local latest_step=-1
+  local step_dir=""
+  shopt -s nullglob
+  for step_dir in "${ckpt_root}"/global_step_*; do
+    local step_name
+    local step_num
+    step_name="$(basename "${step_dir}")"
+    step_num="${step_name#global_step_}"
+    [[ "${step_num}" =~ ^[0-9]+$ ]] || continue
+    if (( step_num > latest_step )); then
+      latest_step="${step_num}"
+      latest_dir="${step_dir}"
+    fi
+  done
+  shopt -u nullglob
+  if [[ -z "${latest_dir}" ]]; then
+    echo "未在 ${ckpt_root} 下找到 global_step_* checkpoint。" >&2
+    return 1
+  fi
+  printf '%s\n' "${latest_dir}"
+}
+
+require_hf_model_dir() {
+  local model_dir="$1"
+  if [[ ! -f "${model_dir}/config.json" ]]; then
+    echo "Merged 模型缺少 config.json: ${model_dir}" >&2
+    return 1
+  fi
+  if [[ ! -f "${model_dir}/tokenizer.json" && ! -f "${model_dir}/tokenizer_config.json" ]]; then
+    echo "Merged 模型缺少 tokenizer 文件: ${model_dir}" >&2
+    return 1
+  fi
+  shopt -s nullglob
+  local weight_files=(
+    "${model_dir}"/model.safetensors
+    "${model_dir}"/pytorch_model.bin
+    "${model_dir}"/model-*.safetensors
+    "${model_dir}"/pytorch_model-*.bin
+  )
+  shopt -u nullglob
+  if (( ${#weight_files[@]} == 0 )); then
+    echo "Merged 模型缺少权重文件: ${model_dir}" >&2
+    return 1
+  fi
+}
+
+if [[ "${AUTO_MERGE_AFTER_SFT}" == "1" ]]; then
+  LATEST_STEP_DIR="$(resolve_latest_step_dir "${CKPT_DIR}")"
+  if [[ -n "${MERGED_MODEL_DIR}" ]]; then
+    MERGED_MODEL_PATH="${MERGED_MODEL_DIR}"
+  else
+    MERGED_MODEL_PATH="${LATEST_STEP_DIR}/${MERGED_MODEL_DIR_NAME}"
+  fi
+
+  if [[ "${FAIL_ON_EXISTING_MERGED_MODEL_DIR}" == "1" && -d "${MERGED_MODEL_PATH}" ]]; then
+    echo "Merged 输出目录已存在: ${MERGED_MODEL_PATH}" >&2
+    exit 1
+  fi
+
+  echo "Merging latest SFT checkpoint: ${LATEST_STEP_DIR} -> ${MERGED_MODEL_PATH}"
+  "${_py[@]}" scripts/loRA_to_merged.py \
+    --ckpt-dir "${LATEST_STEP_DIR}" \
+    --base-path "${MODEL_PATH}" \
+    --output-path "${MERGED_MODEL_PATH}" \
+    --lora-rank "${SFT_LORA_RANK}" \
+    --lora-alpha "${SFT_LORA_ALPHA}"
+
+  require_hf_model_dir "${MERGED_MODEL_PATH}"
+  echo "Merged HuggingFace model ready: ${MERGED_MODEL_PATH}"
+
+  if [[ "${AUTO_RUN_GRPO_AFTER_MERGE}" == "1" ]]; then
+    echo "Starting GRPO from merged model: ${MERGED_MODEL_PATH}"
+    CONDA_ENV="${CONDA_ENV}" \
+    CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES}" \
+    MODEL_PATH="${MERGED_MODEL_PATH}" \
+    RAW_JSONL="${RAW_JSONL}" \
+    COMPACT_DIR="${COMPACT_DIR}" \
+    KEEP_CANDIDATES_PER_GROUP="${KEEP_CANDIDATES_PER_GROUP}" \
+    MAX_DEMAND_CARDS="${MAX_DEMAND_CARDS}" \
+    DATA_VAL_RATIO="${DATA_VAL_RATIO}" \
+    DATA_SEED="${DATA_SEED}" \
+    MULTIGROUP_OVERSAMPLE="${MULTIGROUP_OVERSAMPLE}" \
+    bash "${GRPO_SCRIPT}"
+  fi
+fi

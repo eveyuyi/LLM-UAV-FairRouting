@@ -8,11 +8,11 @@ OPENAI_API_KEY="${OPENAI_API_KEY:-dummy_api_key}"
 PRIORITY_MODE="${PRIORITY_MODE:-hybrid}"
 RANK_ONLY_MODE="${RANK_ONLY_MODE:-llm3_only}"
 
-# Reserved default port segment for hybrid 4GPU runs.
+# Reserved default port segment for hybrid 3GPU runs.
 # Optional override: set PORT_BASE manually per job.
 PORT_BASE="${PORT_BASE:-8600}"
-GPUS=(${GPUS_OVERRIDE:-0 1 2 3})
-PORTS=("${PORT_BASE}" "$((PORT_BASE + 1))" "$((PORT_BASE + 2))" "$((PORT_BASE + 3))")
+GPUS=(${GPUS_OVERRIDE:-0 1 2})
+PORTS=("${PORT_BASE}" "$((PORT_BASE + 1))" "$((PORT_BASE + 2))")
 CLEAN_PORTS_BEFORE_START="${CLEAN_PORTS_BEFORE_START:-1}"
 
 HARD_SEEDS=(5101 5102 5103 5104 5105 5106)
@@ -36,11 +36,12 @@ MODELS=(
   "qwen3_4b_2507|qwen3-4b-instruct-2507|/mnt/shared-storage-gpfs2/gpfs2-shared-public/huggingface/zskj-hub/model--Qwen-Qwen3-4B-Instruct-2507"
 )
 
-# 14 models -> 4 rounds (4+4+4+2)
+# 14 models -> 5 rounds (3+3+3+3+2)
 ROUNDS=(
-  "0 1 2 3"
-  "4 5 6 7"
-  "8 9 10 11"
+  "0 1 2"
+  "3 4 5"
+  "6 7 8"
+  "9 10 11"
   "12 13"
 )
 
@@ -119,13 +120,24 @@ kill_port_listeners() {
 ensure_ports_clean() {
   local port
   for port in "${PORTS[@]}"; do
-    if port_is_busy "${port}"; then
+    if port_is_busy "${port}" && [[ "${CLEAN_PORTS_BEFORE_START}" == "1" ]]; then
+      kill_port_listeners "${port}"
+    fi
+
+    # vLLM workers may take a moment to exit after kill.
+    local _i
+    for _i in $(seq 1 8); do
+      if ! port_is_busy "${port}"; then
+        break
+      fi
+      sleep 1
       if [[ "${CLEAN_PORTS_BEFORE_START}" == "1" ]]; then
         kill_port_listeners "${port}"
       fi
-    fi
+    done
+
     if port_is_busy "${port}"; then
-      fail "port still in use after cleanup: ${port} (set another PORT_BASE)"
+      fail "port still in use after cleanup retries: ${port} (set another PORT_BASE)"
     fi
   done
 }

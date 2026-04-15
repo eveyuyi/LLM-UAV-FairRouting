@@ -119,13 +119,24 @@ kill_port_listeners() {
 ensure_ports_clean() {
   local port
   for port in "${PORTS[@]}"; do
-    if port_is_busy "${port}"; then
+    if port_is_busy "${port}" && [[ "${CLEAN_PORTS_BEFORE_START}" == "1" ]]; then
+      kill_port_listeners "${port}"
+    fi
+
+    # vLLM workers may take a moment to exit after kill.
+    local _i
+    for _i in $(seq 1 8); do
+      if ! port_is_busy "${port}"; then
+        break
+      fi
+      sleep 1
       if [[ "${CLEAN_PORTS_BEFORE_START}" == "1" ]]; then
         kill_port_listeners "${port}"
       fi
-    fi
+    done
+
     if port_is_busy "${port}"; then
-      fail "port still in use after cleanup: ${port} (set another PORT_BASE)"
+      fail "port still in use after cleanup retries: ${port} (set another PORT_BASE)"
     fi
   done
 }
