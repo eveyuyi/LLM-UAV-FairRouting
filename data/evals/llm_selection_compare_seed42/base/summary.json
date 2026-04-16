@@ -1,0 +1,201 @@
+{
+  "test_jsonl": "/data/code/LLM-UAV-FairRouting/data/train/llm_selection_training_jsonl_1000_qs_v1_20260413/compact_exports_4b_short/test_sft_overlap_100_seed42.jsonl",
+  "dataset_profile": {
+    "count": 100,
+    "scene_type_counts": {
+      "medical_urgent": 40,
+      "medical_quiet": 25,
+      "elderly_sensitive": 18,
+      "quiet_night": 11,
+      "routine_balanced": 6
+    },
+    "selection_mode_counts": {
+      "objective_tie_break": 85,
+      "group_ranking_then_tie_break": 10,
+      "single_candidate": 1,
+      "group_ranking": 4
+    },
+    "decision_difficulty_counts": {
+      "hard": 98,
+      "easy": 1,
+      "medium": 1
+    }
+  },
+  "settings": {
+    "keep_candidates_per_group": 3,
+    "max_demand_cards": 6,
+    "max_samples": 0,
+    "backend": "vllm",
+    "prompt_overflow_strategy": "truncate",
+    "dtype": "bfloat16",
+    "tensor_parallel_size": 1,
+    "gpu_memory_utilization": 0.75,
+    "max_model_len": 4096,
+    "max_new_tokens": 256,
+    "temperature": 0.0,
+    "seed": 42
+  },
+  "results": {
+    "base": {
+      "resolved_model_path": "/mnt/shared-storage-gpfs2/gpfs2-shared-public/huggingface/zskj-hub/model--Qwen-Qwen3-4B-Instruct-2507",
+      "backend": "vllm",
+      "prompt_stats": {
+        "effective_max_prompt_tokens": 3840,
+        "overflow_count": 27,
+        "truncated_count": 27,
+        "skipped_count": 0,
+        "max_original_prompt_tokens": 7815,
+        "kept_count": 100
+      },
+      "metrics": {
+        "count": 100,
+        "truncated_prompt_rate": 0.27,
+        "json_valid_rate": 0.78,
+        "candidate_valid_rate": 0.76,
+        "group_accuracy": 0.76,
+        "solution_accuracy": 0.75,
+        "scene_accuracy": 0.11,
+        "reason_f1": 0.0,
+        "avg_reward": 0.6215
+      },
+      "by_scene_type": {
+        "elderly_sensitive": {
+          "count": 18,
+          "truncated_prompt_rate": 0.2777777777777778,
+          "json_valid_rate": 0.7777777777777778,
+          "candidate_valid_rate": 0.7777777777777778,
+          "group_accuracy": 0.7777777777777778,
+          "solution_accuracy": 0.7777777777777778,
+          "scene_accuracy": 0.6111111111111112,
+          "reason_f1": 0.0,
+          "avg_reward": 0.6444444444444445
+        },
+        "medical_quiet": {
+          "count": 25,
+          "truncated_prompt_rate": 0.36,
+          "json_valid_rate": 0.68,
+          "candidate_valid_rate": 0.64,
+          "group_accuracy": 0.64,
+          "solution_accuracy": 0.64,
+          "scene_accuracy": 0.0,
+          "reason_f1": 0.0,
+          "avg_reward": 0.544
+        },
+        "medical_urgent": {
+          "count": 40,
+          "truncated_prompt_rate": 0.2,
+          "json_valid_rate": 0.875,
+          "candidate_valid_rate": 0.85,
+          "group_accuracy": 0.85,
+          "solution_accuracy": 0.825,
+          "scene_accuracy": 0.0,
+          "reason_f1": 0.0,
+          "avg_reward": 0.6687500000000001
+        },
+        "quiet_night": {
+          "count": 11,
+          "truncated_prompt_rate": 0.2727272727272727,
+          "json_valid_rate": 0.7272727272727273,
+          "candidate_valid_rate": 0.7272727272727273,
+          "group_accuracy": 0.7272727272727273,
+          "solution_accuracy": 0.7272727272727273,
+          "scene_accuracy": 0.0,
+          "reason_f1": 0.0,
+          "avg_reward": 0.6181818181818183
+        },
+        "routine_balanced": {
+          "count": 6,
+          "truncated_prompt_rate": 0.3333333333333333,
+          "json_valid_rate": 0.6666666666666666,
+          "candidate_valid_rate": 0.6666666666666666,
+          "group_accuracy": 0.6666666666666666,
+          "solution_accuracy": 0.6666666666666666,
+          "scene_accuracy": 0.0,
+          "reason_f1": 0.0,
+          "avg_reward": 0.5666666666666668
+        }
+      },
+      "by_selection_mode": {
+        "group_ranking": {
+          "count": 4,
+          "truncated_prompt_rate": 1.0,
+          "json_valid_rate": 0.0,
+          "candidate_valid_rate": 0.0,
+          "group_accuracy": 0.0,
+          "solution_accuracy": 0.0,
+          "scene_accuracy": 0.0,
+          "reason_f1": 0.0,
+          "avg_reward": 0.0
+        },
+        "group_ranking_then_tie_break": {
+          "count": 10,
+          "truncated_prompt_rate": 1.0,
+          "json_valid_rate": 0.2,
+          "candidate_valid_rate": 0.0,
+          "group_accuracy": 0.0,
+          "solution_accuracy": 0.0,
+          "scene_accuracy": 0.0,
+          "reason_f1": 0.0,
+          "avg_reward": 0.0
+        },
+        "objective_tie_break": {
+          "count": 85,
+          "truncated_prompt_rate": 0.15294117647058825,
+          "json_valid_rate": 0.8823529411764706,
+          "candidate_valid_rate": 0.8823529411764706,
+          "group_accuracy": 0.8823529411764706,
+          "solution_accuracy": 0.8705882352941177,
+          "scene_accuracy": 0.12941176470588237,
+          "reason_f1": 0.0,
+          "avg_reward": 0.7211764705882353
+        },
+        "single_candidate": {
+          "count": 1,
+          "truncated_prompt_rate": 0.0,
+          "json_valid_rate": 1.0,
+          "candidate_valid_rate": 1.0,
+          "group_accuracy": 1.0,
+          "solution_accuracy": 1.0,
+          "scene_accuracy": 0.0,
+          "reason_f1": 0.0,
+          "avg_reward": 0.8500000000000001
+        }
+      },
+      "by_decision_difficulty": {
+        "easy": {
+          "count": 1,
+          "truncated_prompt_rate": 0.0,
+          "json_valid_rate": 1.0,
+          "candidate_valid_rate": 1.0,
+          "group_accuracy": 1.0,
+          "solution_accuracy": 1.0,
+          "scene_accuracy": 0.0,
+          "reason_f1": 0.0,
+          "avg_reward": 0.8500000000000001
+        },
+        "hard": {
+          "count": 98,
+          "truncated_prompt_rate": 0.2653061224489796,
+          "json_valid_rate": 0.7857142857142857,
+          "candidate_valid_rate": 0.7653061224489796,
+          "group_accuracy": 0.7653061224489796,
+          "solution_accuracy": 0.7551020408163265,
+          "scene_accuracy": 0.11224489795918367,
+          "reason_f1": 0.0,
+          "avg_reward": 0.6255102040816327
+        },
+        "medium": {
+          "count": 1,
+          "truncated_prompt_rate": 1.0,
+          "json_valid_rate": 0.0,
+          "candidate_valid_rate": 0.0,
+          "group_accuracy": 0.0,
+          "solution_accuracy": 0.0,
+          "scene_accuracy": 0.0,
+          "reason_f1": 0.0,
+          "avg_reward": 0.0
+        }
+      }
+    }
+  }
+}
