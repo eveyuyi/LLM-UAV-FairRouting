@@ -31,6 +31,8 @@ ANSWER_LEAK_KEYS = {
     "priority_labels",
     "pairwise_preferences",
     "critical_topk_targets",
+    "demand_tier",
+    "urgency",
 }
 
 SYSTEM_PROMPT = (

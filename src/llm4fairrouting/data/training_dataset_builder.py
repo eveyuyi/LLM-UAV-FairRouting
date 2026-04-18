@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from llm4fairrouting.config.runtime_env import env_text, prepare_env_file
+from llm4fairrouting.data.event_data import load_event_records
 from llm4fairrouting.data.demand_event_generation import generate_daily_demand_dataset
 from llm4fairrouting.data.event_semantics import DIALOGUE_STYLE_VARIANTS
 from llm4fairrouting.data.event_structuring import build_gold_structured_demand
@@ -36,6 +37,7 @@ from llm4fairrouting.llm.demand_extraction import extract_all_demands, extract_d
 from llm4fairrouting.llm.dialogue_generation import (
     generate_dialogues_offline,
     generate_dialogues_online,
+    load_dialogues_from_file,
     load_stations,
     save_dialogues,
 )
@@ -487,28 +489,47 @@ def build_priority_training_dataset(
     dialogue_output_path = str(output_paths["dialogues"]) if output_paths else None
 
     if event_records is None:
-        event_records = generate_daily_demand_dataset(
-            building_file=building_file,
-            manifest_file=event_manifest_path,
-            **event_generation_kwargs,
-        )
+        if event_manifest_path and Path(event_manifest_path).exists():
+            event_records = load_event_records(event_manifest_path)
+            print(
+                f"[Dataset Builder] Reusing existing event manifest: "
+                f"{event_manifest_path} ({len(event_records)} records)"
+            )
+        else:
+            event_records = generate_daily_demand_dataset(
+                building_file=building_file,
+                manifest_file=event_manifest_path,
+                **event_generation_kwargs,
+            )
+            if event_manifest_path:
+                print(f"[Dataset Builder] Saved event manifest early to {event_manifest_path}")
 
     stations = load_stations(stations_path) if stations_path else []
     client = None if offline else create_openai_client(api_base, api_key)
-    if offline:
-        dialogues = generate_dialogues_offline(event_records, stations, base_date=base_date, styles=styles)
-    else:
-        dialogues = generate_dialogues_online(
-            event_records,
-            stations,
-            client=client,
-            model=model,
-            base_date=base_date,
-            temperature=temperature,
-            batch_size=batch_size,
-            styles=styles,
-            max_concurrency=dialogue_concurrency,
+    if dialogue_output_path and Path(dialogue_output_path).exists():
+        dialogues = load_dialogues_from_file(dialogue_output_path)
+        print(
+            f"[Dataset Builder] Reusing existing dialogues: "
+            f"{dialogue_output_path} ({len(dialogues)} records)"
         )
+    else:
+        if offline:
+            dialogues = generate_dialogues_offline(event_records, stations, base_date=base_date, styles=styles)
+        else:
+            dialogues = generate_dialogues_online(
+                event_records,
+                stations,
+                client=client,
+                model=model,
+                base_date=base_date,
+                temperature=temperature,
+                batch_size=batch_size,
+                styles=styles,
+                max_concurrency=dialogue_concurrency,
+            )
+        if dialogue_output_path:
+            save_dialogues(dialogues, dialogue_output_path)
+            print(f"[Dataset Builder] Saved dialogues early to {dialogue_output_path}")
     accepted_dialogues = filter_accepted_dialogues(dialogues)
 
     clean_windows = _build_clean_structured_windows(

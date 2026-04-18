@@ -4,6 +4,7 @@ import argparse
 import json
 import re
 import sys
+import traceback
 from datetime import datetime
 from pathlib import Path
 
@@ -280,6 +281,8 @@ def run_workflow(
         except Exception:
             pass
 
+        continue_on_window_error = env_bool("LLM4FAIRROUTING_CONTINUE_ON_WINDOW_ERROR", False)
+
         weight_configs_dir = run_dir / "weight_configs"
         weight_configs_dir.mkdir(exist_ok=True)
 
@@ -312,6 +315,7 @@ def run_workflow(
             "nsga3_n_generations": nsga3_n_generations,
             "nsga3_seed": nsga3_seed,
             "nsga3_save_all_candidate_results": nsga3_save_all_candidate_results,
+            "continue_on_window_error": continue_on_window_error,
         }
         with open(run_dir / "run_meta.json", "w", encoding="utf-8") as f:
             json.dump(run_meta, f, ensure_ascii=False, indent=2)
@@ -390,6 +394,7 @@ def run_workflow(
         all_solutions = []
         windows_to_solve = []
         weight_configs_by_window: Dict[str, Dict] = {}
+        failed_windows: list[Dict[str, object]] = []
 
         for w_idx, window in enumerate(window_results):
             tw = window.get("time_window", f"window_{w_idx}")
@@ -402,16 +407,36 @@ def run_workflow(
             print(f"\n  ---- Window {tw}: {len(demands)} demands ----")
 
             # 3a: 权重调整
-            if resolved_priority_mode == "rule-only":
-                weight_config = adjust_weights_offline(demands)
-            else:
-                weight_config = adjust_weights(
-                    demands,
-                    client,
-                    model,
-                    temperature=temperature,
-                    mode=resolved_priority_mode,
+            try:
+                if resolved_priority_mode == "rule-only":
+                    weight_config = adjust_weights_offline(demands)
+                else:
+                    weight_config = adjust_weights(
+                        demands,
+                        client,
+                        model,
+                        temperature=temperature,
+                        mode=resolved_priority_mode,
+                    )
+            except Exception as exc:
+                if not continue_on_window_error:
+                    raise
+                print(
+                    "  [warn] Window failed in Module 3a; skip and continue. "
+                    f"time_window={tw}, error={exc}"
                 )
+                print("  [warn] Traceback:")
+                print(traceback.format_exc())
+                failed_windows.append(
+                    {
+                        "time_window": tw,
+                        "window_index": w_idx,
+                        "error_type": type(exc).__name__,
+                        "error_message": str(exc),
+                        "n_demands": len(demands),
+                    }
+                )
+                continue
 
             weight_config["time_window"] = tw
 
@@ -549,6 +574,10 @@ def run_workflow(
             search_summary_path = run_dir / search_results_filename
             with open(search_summary_path, "w", encoding="utf-8") as f:
                 json.dump(search_payload, f, ensure_ascii=False, indent=2)
+        if failed_windows:
+            failed_windows_path = run_dir / "failed_windows.json"
+            with open(failed_windows_path, "w", encoding="utf-8") as f:
+                json.dump(failed_windows, f, ensure_ascii=False, indent=2)
         drone_paths = _extract_drone_path_details(workflow_results_payload)
         drone_paths_path = run_dir / "drone_path_results.json"
         legacy_drone_paths_path = run_dir / "drone_paths.json"
@@ -573,6 +602,8 @@ def run_workflow(
                     print(f"  Search runtime  : {float(runtime_s):.3f}s total, {float(avg_runtime_s):.3f}s/candidate")
                 else:
                     print(f"  Search runtime  : {float(runtime_s):.3f}s total")
+        if failed_windows:
+            print(f"  Failed windows  : {len(failed_windows)} (see {run_dir / 'failed_windows.json'})")
         if drone_paths:
             print(f"  Drone paths     : {drone_paths_path}")
         analytics_dir = run_dir / "solver_analytics"

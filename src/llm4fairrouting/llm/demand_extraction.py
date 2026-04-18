@@ -605,15 +605,42 @@ def extract_demands_for_window(
     def _is_json_parse_error(exc: Exception) -> bool:
         return "json_parse_failed" in str(exc).lower()
 
+    def _is_content_filter_error(exc: Exception) -> bool:
+        text = str(exc).lower()
+        return "content_filter" in text or "content management policy" in text
+
     def _extract_with_split(window_dialogues: List[Dict], label: str) -> List[Dict]:
         try:
             return list(_extract_once(window_dialogues, label).get("demands", []))
         except RuntimeError as exc:
-            should_split = _is_context_length_error(exc) or _is_json_parse_error(exc)
-            if len(window_dialogues) <= 1 or not should_split:
+            is_content_filter = _is_content_filter_error(exc)
+            should_split = (
+                _is_context_length_error(exc)
+                or _is_json_parse_error(exc)
+                or is_content_filter
+            )
+            if len(window_dialogues) <= 1:
+                if is_content_filter:
+                    print(
+                        f"  [Module 2] Window {label}: content filter triggered on single dialogue, "
+                        "falling back to heuristic extraction"
+                    )
+                    return list(
+                        _normalize_extracted_window(
+                            {"time_window": label, "demands": []},
+                            window_dialogues,
+                        ).get("demands", [])
+                    )
+                raise
+            if not should_split:
                 raise
             mid = len(window_dialogues) // 2
-            reason = "context too long" if _is_context_length_error(exc) else "invalid JSON responses"
+            if _is_context_length_error(exc):
+                reason = "context too long"
+            elif _is_json_parse_error(exc):
+                reason = "invalid JSON responses"
+            else:
+                reason = "content filtering"
             print(
                 f"  [Module 2] Window {label}: {reason}, splitting "
                 f"{len(window_dialogues)} -> {mid}+{len(window_dialogues)-mid}"

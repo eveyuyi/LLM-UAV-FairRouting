@@ -91,7 +91,8 @@ def test_compact_ranking_demand_omits_heavy_and_answer_leak_fields():
     compact = compact_ranking_demand(_sample_demand())
 
     assert compact["demand_id"] == "REQ001"
-    assert compact["tier"] == "regular"
+    assert "tier" not in compact
+    assert "demand_tier" not in compact
     assert compact["cargo"] == "daily supplies"
     assert compact["dest"] == "residential_area"
     assert "labels" not in compact
