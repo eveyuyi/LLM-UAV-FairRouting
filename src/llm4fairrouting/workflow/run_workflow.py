@@ -323,8 +323,9 @@ def run_workflow(
 
         client = None
 
+        _OFFLINE_SAFE_PRIORITY_MODES = {"rule-only", "random", "uniform"}
         needs_llm_client = (not offline) and (
-            extracted_demands_path is None or resolved_priority_mode != "rule-only"
+            extracted_demands_path is None or resolved_priority_mode not in _OFFLINE_SAFE_PRIORITY_MODES
         )
         if needs_llm_client:
             client = create_openai_client(api_base, api_key)
@@ -408,8 +409,9 @@ def run_workflow(
 
             # 3a: 权重调整
             try:
-                if resolved_priority_mode == "rule-only":
-                    weight_config = adjust_weights_offline(demands)
+                _OFFLINE_SAFE_MODES = {"rule-only", "random", "uniform"}
+                if resolved_priority_mode in _OFFLINE_SAFE_MODES:
+                    weight_config = adjust_weights_offline(demands, mode=resolved_priority_mode)
                 else:
                     weight_config = adjust_weights(
                         demands,

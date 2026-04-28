@@ -116,9 +116,12 @@ if [[ "${AUTO_TIMESTAMP_OUTPUT_ROOT}" != "0" && "${AUTO_TIMESTAMP_OUTPUT_ROOT}" 
   exit 1
 fi
 
+VALID_MODES=("rule-only" "llm-only" "hybrid" "random" "uniform")
 for mode in "${PRE_PRIORITY_MODE}" "${POST_PRIORITY_MODE}"; do
-  if [[ "${mode}" != "rule-only" && "${mode}" != "llm-only" && "${mode}" != "hybrid" ]]; then
-    echo "Unsupported priority mode: ${mode}. Expected one of: rule-only, llm-only, hybrid" >&2
+  valid=0
+  for vm in "${VALID_MODES[@]}"; do [[ "$mode" == "$vm" ]] && valid=1 && break; done
+  if [[ $valid -eq 0 ]]; then
+    echo "Unsupported priority mode: ${mode}. Expected one of: ${VALID_MODES[*]}" >&2
     exit 1
   fi
 done

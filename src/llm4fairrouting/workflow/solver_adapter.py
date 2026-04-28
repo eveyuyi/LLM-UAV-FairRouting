@@ -99,7 +99,7 @@ def demands_to_solver_inputs(
         ))
 
         cargo = demand.get("cargo", {})
-        demand_weights.append(float(cargo.get("weight_kg", 2.0)))
+        demand_weights.append(_safe_weight(cargo, default=2.0))
 
         if origin_fid and origin_fid in supply_order:
             demand_required_supply.append(supply_order[origin_fid])
@@ -234,6 +234,15 @@ def _resolve_request_datetime(demand: Dict, window_start: datetime) -> datetime:
     return window_start
 
 
+def _safe_weight(cargo: Dict, default: float = 0.0) -> float:
+    """Return cargo weight as float, treating None/'unknown'/non-numeric as default."""
+    v = cargo.get("weight_kg")
+    try:
+        return float(v) if v is not None else default
+    except (ValueError, TypeError):
+        return default
+
+
 def _point_key(fid: object, coords: List[float], fallback: str) -> str:
     fid_text = str(fid).strip() if fid is not None else ""
     if fid_text:
@@ -267,11 +276,13 @@ def _build_window_payloads(
         feasible_demands = [
             copy.deepcopy(demand)
             for demand in demands
-            if demand.get("cargo", {}).get("weight_kg", 0.0) <= max_payload
+            if _safe_weight(demand.get("cargo", {})) <= max_payload
+            and len(demand.get("origin", {}).get("coords", [])) >= 2
+            and len(demand.get("destination", {}).get("coords", [])) >= 2
         ]
         skipped = len(demands) - len(feasible_demands)
         if skipped:
-            print(f"  窗口 {time_window}: 跳过 {skipped} 条超载需求 (>{max_payload}kg)")
+            print(f"  窗口 {time_window}: 跳过 {skipped} 条无效需求 (超载或坐标缺失)")
 
         feasible_ids = {demand["demand_id"] for demand in feasible_demands}
         window_weight_config["demand_configs"] = [
@@ -495,7 +506,7 @@ def solve_windows_dynamically(
                 "request_dt": _resolve_request_datetime(
                     demand, payload["window_start_dt"]
                 ),
-                "weight": float(demand.get("cargo", {}).get("weight_kg", 0.0)),
+                "weight": _safe_weight(demand.get("cargo", {})),
                 "priority": int(cfg.get("priority", 3)),
                 "deadline_minutes": deadline_minutes,
                 "required_supply_idx": supply_key_to_idx[origin_key],
@@ -1102,7 +1113,7 @@ def serialize_workflow_results(all_solutions: List[Dict]) -> List[Dict]:
                     for node_idx in assignment.get("demand_indices", [])
                 ]
                 total_weight = sum(
-                    feasible_demands[local_idx].get("cargo", {}).get("weight_kg", 0.0)
+                    _safe_weight(feasible_demands[local_idx].get("cargo", {}))
                     for local_idx in local_idxs
                     if 0 <= local_idx < len(feasible_demands)
                 )
