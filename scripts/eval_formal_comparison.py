@@ -1,12 +1,27 @@
 """
-Formal experiment evaluation: M0a / M0b / M0c / M1_pre / M1_ft
+Formal experiment evaluation: M0a / M0b / M0c / M1_pre / M1_sft / M1_ft / M1_gemini
 Computes operational and fairness metrics, prints a markdown table,
 and saves detailed JSON to evals/results/.
 
 Usage:
+  # Legacy 3-UAV continuous simulation (old baseline, ~262 min mean latency):
   PYTHONPATH=src python scripts/eval_formal_comparison.py \
-      --seed 4111 --split norm_eval \
-      --output evals/results/formal_comparison_seed4111.json
+      --seed 4111 --config legacy
+
+  # Route A: continuous simulation, 7 UAVs:
+  PYTHONPATH=src python scripts/eval_formal_comparison.py \
+      --seed 4111 --config routeA_7uav \
+      --output evals/results/routeA_7uav_seed4111.json
+
+  # Route A: continuous simulation, 10 UAVs:
+  PYTHONPATH=src python scripts/eval_formal_comparison.py \
+      --seed 4111 --config routeA_10uav \
+      --output evals/results/routeA_10uav_seed4111.json
+
+  # Route B: independent windows, 3 UAVs, single-batch solve:
+  PYTHONPATH=src python scripts/eval_formal_comparison.py \
+      --seed 4111 --config routeB_3uav \
+      --output evals/results/routeB_3uav_seed4111.json
 """
 
 from __future__ import annotations
@@ -22,14 +37,42 @@ ROOT = Path(__file__).resolve().parent.parent
 DATA_ROOT = ROOT / "data"
 EVAL_ROOT = ROOT / "evals" / "results"
 
-METHODS: List[Tuple[str, str]] = [
-    ("M0a",      "formal_m0a_seed{seed}"),
-    ("M0b",      "formal_m0b_seed{seed}"),
-    ("M0c",      "formal_m0c_seed{seed}"),
-    ("M1_pre",   "formal_m1_pre_p2_seed{seed}"),
-    ("M1_ft",    "formal_m1_ft_p2_seed{seed}"),
-    ("M1_gemini","formal_m1_gemini_seed{seed}"),
+_M1_ALL = [
+    ("M1_pre",    "{pfx}m1_pre{sfx}_seed{{seed}}"),
+    ("M1_sft",    "{pfx}m1_sft{sfx}_seed{{seed}}"),
+    ("M1_ft",     "{pfx}m1_ft{sfx}_seed{{seed}}"),
+    ("M1_gemini", "{pfx}m1_gemini{sfx}_seed{{seed}}"),
 ]
+_M0_ALL = [
+    ("M0a", "{pfx}m0a{sfx}_seed{{seed}}"),
+    ("M0b", "{pfx}m0b{sfx}_seed{{seed}}"),
+    ("M0c", "{pfx}m0c{sfx}_seed{{seed}}"),
+]
+
+def _method_list(pfx: str, sfx: str = "") -> List[Tuple[str, str]]:
+    rows = _M0_ALL + _M1_ALL
+    return [(label, tpl.format(pfx=pfx, sfx=sfx)) for label, tpl in rows]
+
+CONFIGS: Dict[str, List[Tuple[str, str]]] = {
+    # Legacy 3-UAV continuous simulation (original formal runs)
+    "legacy": [
+        ("M0a",      "formal_m0a_seed{seed}"),
+        ("M0b",      "formal_m0b_seed{seed}"),
+        ("M0c",      "formal_m0c_seed{seed}"),
+        ("M1_pre",   "formal_m1_pre_p2_seed{seed}"),
+        ("M1_ft",    "formal_m1_ft_p2_seed{seed}"),
+        ("M1_gemini","formal_m1_gemini_seed{seed}"),
+    ],
+    # Route A: continuous simulation, 7 UAVs
+    "routeA_7uav":  _method_list(pfx="routeA_7uav_"),
+    # Route A: continuous simulation, 10 UAVs
+    "routeA_10uav": _method_list(pfx="routeA_10uav_"),
+    # Route B: independent windows, 3 UAVs, single-batch solve
+    "routeB_3uav":  _method_list(pfx="routeB_3uav_"),
+}
+
+# Default config kept for backward compatibility
+METHODS: List[Tuple[str, str]] = CONFIGS["legacy"]
 
 PRIORITY_WEIGHTS = {1: 4.0, 2: 3.0, 3: 2.0, 4: 1.0}
 
@@ -287,9 +330,17 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Evaluate formal M0/M1 comparison.")
     parser.add_argument("--seed", default="4111")
     parser.add_argument("--split", default="norm_eval")
-    parser.add_argument("--output", default="evals/results/formal_comparison_seed{seed}.json")
+    parser.add_argument(
+        "--config",
+        default="legacy",
+        choices=list(CONFIGS.keys()),
+        help="Experiment configuration: legacy | routeA_7uav | routeA_10uav | routeB_3uav",
+    )
+    parser.add_argument("--output", default="evals/results/formal_comparison_{config}_seed{seed}.json")
     args = parser.parse_args()
     seed = args.seed
+
+    methods_list = CONFIGS[args.config]
 
     dataset_dir = DATA_ROOT / "test" / "test_seeds" / args.split / f"seed_{seed}"
     manifest_path = dataset_dir / "events_manifest.jsonl"
@@ -300,7 +351,7 @@ def main() -> None:
     print(f"  {len(manifest)} events loaded\n")
 
     all_methods: Dict[str, dict] = {}
-    for label, dir_tpl in METHODS:
+    for label, dir_tpl in methods_list:
         dir_name = dir_tpl.format(seed=seed)
         run_dir = find_latest_run(eval_dir / dir_name)
         if run_dir is None:
@@ -318,11 +369,11 @@ def main() -> None:
               f"service_rate={metrics['overall']['service_rate']}, "
               f"on_time_rate={metrics['overall']['on_time_rate']}")
 
-    summary = {"seed": seed, "split": args.split, "methods": all_methods}
+    summary = {"seed": seed, "split": args.split, "config": args.config, "methods": all_methods}
 
     print_markdown_table(summary)
 
-    output_path = Path(args.output.format(seed=seed))
+    output_path = Path(args.output.format(seed=seed, config=args.config))
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(summary, f, ensure_ascii=False, indent=2)

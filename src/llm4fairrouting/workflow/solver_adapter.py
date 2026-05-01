@@ -613,13 +613,11 @@ def solve_windows_dynamically(
                 })
                 continue
 
-            window_base_dt = payload["window_start_dt"]
             window_demand_events = []
             for record in window_records:
-                event_time_h = max(
-                    0.0,
-                    (record["request_dt"] - window_base_dt).total_seconds() / 3600.0,
-                )
+                # All demands set to t=0 so the simulator sees the full window at
+                # once and issues a single batch-optimal solve call.
+                event_time_h = 0.0
                 record["event_time_h"] = event_time_h
                 window_demand_events.append(
                     _DemandEvent(
