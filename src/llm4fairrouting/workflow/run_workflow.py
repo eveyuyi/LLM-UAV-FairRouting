@@ -238,6 +238,7 @@ def run_workflow(
     max_range: float = 200000.0,
     max_solver_stations: Optional[int] = 1,
     skip_solver: bool = False,
+    load_weight_configs: Optional[str] = None,
     noise_weight: float = 0.5,
     drone_activation_cost: float = 1000.0,
     building_path: Optional[str] = None,
@@ -323,8 +324,9 @@ def run_workflow(
 
         client = None
 
-        needs_llm_client = (not offline) and (
-            extracted_demands_path is None or resolved_priority_mode != "rule-only"
+        _OFFLINE_SAFE_PRIORITY_MODES = {"rule-only", "random", "uniform"}
+        needs_llm_client = (load_weight_configs is None) and (not offline) and (
+            extracted_demands_path is None or resolved_priority_mode not in _OFFLINE_SAFE_PRIORITY_MODES
         )
         if needs_llm_client:
             client = create_openai_client(api_base, api_key)
@@ -408,16 +410,27 @@ def run_workflow(
 
             # 3a: 权重调整
             try:
-                if resolved_priority_mode == "rule-only":
-                    weight_config = adjust_weights_offline(demands)
+                if load_weight_configs is not None:
+                    wc_load_path = Path(load_weight_configs) / f"weight_config_window{w_idx}.json"
+                    if not wc_load_path.exists():
+                        raise FileNotFoundError(
+                            f"Weight config not found for window {w_idx}: {wc_load_path}"
+                        )
+                    with open(wc_load_path, encoding="utf-8") as _f:
+                        weight_config = json.load(_f)
+                    print(f"  [Module 3a] Loaded weight config from {wc_load_path.name}")
                 else:
-                    weight_config = adjust_weights(
-                        demands,
-                        client,
-                        model,
-                        temperature=temperature,
-                        mode=resolved_priority_mode,
-                    )
+                    _OFFLINE_SAFE_MODES = {"rule-only", "random", "uniform"}
+                    if resolved_priority_mode in _OFFLINE_SAFE_MODES:
+                        weight_config = adjust_weights_offline(demands, mode=resolved_priority_mode)
+                    else:
+                        weight_config = adjust_weights(
+                            demands,
+                            client,
+                            model,
+                            temperature=temperature,
+                            mode=resolved_priority_mode,
+                        )
             except Exception as exc:
                 if not continue_on_window_error:
                     raise
@@ -692,6 +705,13 @@ def main():
         help="Skip the solver stage",
     )
     parser.add_argument(
+        "--load-weight-configs",
+        type=str,
+        default=None,
+        metavar="DIR",
+        help="Load pre-computed weight configs from DIR (Phase 2: solver-only run)",
+    )
+    parser.add_argument(
         "--api-base",
         type=str,
         default=env_text("OPENAI_BASE_URL"),
@@ -831,6 +851,7 @@ def main():
         max_range=args.max_range,
         max_solver_stations=args.max_solver_stations,
         skip_solver=args.skip_solver,
+        load_weight_configs=args.load_weight_configs,
         noise_weight=args.noise_weight,
         drone_activation_cost=args.drone_activation_cost,
         building_path=args.building_data,

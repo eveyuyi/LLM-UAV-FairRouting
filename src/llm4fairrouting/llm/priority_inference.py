@@ -77,7 +77,7 @@ _EMERGENCY_ROLES = {"emergency_doctor", "paramedic", "triage_nurse"}
 _CRITICAL_ROLES = {"icu_nurse", "clinical_pharmacist", "ward_coordinator"}
 _LIFE_CARGO = {"aed", "blood_product", "cardiac_drug", "thrombolytic"}
 _CRITICAL_CARGO = {"ventilator", "icu_drug"}
-PRIORITY_MODES = ("rule-only", "llm-only", "hybrid")
+PRIORITY_MODES = ("rule-only", "llm-only", "hybrid", "random", "uniform")
 
 
 def _get_tier(demand: Dict) -> str:
@@ -98,8 +98,11 @@ def resolve_priority_mode(priority_mode: Optional[str], *, offline: bool = False
             f"Unsupported priority mode: {priority_mode}. "
             f"Expected one of: {', '.join(PRIORITY_MODES)}"
         )
-    if offline and raw_mode != "rule-only":
-        raise ValueError("Offline mode only supports priority_mode='rule-only'")
+    _OFFLINE_SAFE_MODES = {"rule-only", "random", "uniform"}
+    if offline and raw_mode not in _OFFLINE_SAFE_MODES:
+        raise ValueError(
+            f"Offline mode only supports priority modes: {', '.join(sorted(_OFFLINE_SAFE_MODES))}"
+        )
     return raw_mode
 
 
@@ -305,6 +308,45 @@ def _build_rule_weight_config(demands: List[Dict]) -> Dict:
         "global_weights": {"w_distance": 1.0, "w_time": 1.0, "w_risk": 1.0},
         "demand_configs": demand_configs,
         "supplementary_constraints": _build_supplementary_constraints(demands),
+    }
+
+
+def _build_random_weight_config(demands: List[Dict], seed: int = 42) -> Dict:
+    import random
+    rng = random.Random(seed)
+    demand_ids = sorted(d["demand_id"] for d in demands)
+    rng.shuffle(demand_ids)
+    id_to_priority = {did: rng.randint(1, 4) for did in demand_ids}
+    demand_configs = []
+    for rank, demand_id in enumerate(demand_ids, start=1):
+        demand_configs.append({
+            "demand_id": demand_id,
+            "priority": id_to_priority[demand_id],
+            "window_rank": rank,
+            "reasoning": "Random priority baseline (seed=42)",
+        })
+    return {
+        "global_weights": {"w_distance": 1.0, "w_time": 1.0, "w_risk": 1.0},
+        "demand_configs": demand_configs,
+        "supplementary_constraints": [],
+    }
+
+
+def _build_uniform_weight_config(demands: List[Dict]) -> Dict:
+    demand_configs = []
+    for rank, demand in enumerate(
+        sorted(demands, key=lambda d: d["demand_id"]), start=1
+    ):
+        demand_configs.append({
+            "demand_id": demand["demand_id"],
+            "priority": 2,
+            "window_rank": rank,
+            "reasoning": "Uniform priority baseline (all demands equal, priority=2)",
+        })
+    return {
+        "global_weights": {"w_distance": 1.0, "w_time": 1.0, "w_risk": 1.0},
+        "demand_configs": demand_configs,
+        "supplementary_constraints": [],
     }
 
 
@@ -535,8 +577,18 @@ def adjust_weights(
     temperature: float = 0.0,
     mode: str = "hybrid",
 ) -> Dict:
-    """Run Module 3a in rule-only, llm-only, or hybrid mode."""
+    """Run Module 3a in rule-only, llm-only, hybrid, random, or uniform mode."""
     resolved_mode = resolve_priority_mode(mode, offline=False)
+    if resolved_mode == "random":
+        print(f"  [Module 3a] Ranking {len(demands)} demands with random priorities (seed=42)")
+        result = _build_random_weight_config(demands)
+        print(f"  [Module 3a] Produced {len(result['demand_configs'])} demand configs")
+        return result
+    if resolved_mode == "uniform":
+        print(f"  [Module 3a] Ranking {len(demands)} demands with uniform priorities")
+        result = _build_uniform_weight_config(demands)
+        print(f"  [Module 3a] Produced {len(result['demand_configs'])} demand configs")
+        return result
     if resolved_mode == "rule-only":
         print(f"  [Module 3a] Ranking {len(demands)} demands with evidence scorer only")
         result = _build_rule_weight_config(demands)
@@ -570,8 +622,12 @@ def adjust_weights(
     return result
 
 
-def adjust_weights_offline(demands: List[Dict]) -> Dict:
-    """Offline Module 3a path using deterministic evidence scoring."""
+def adjust_weights_offline(demands: List[Dict], mode: str = "rule-only") -> Dict:
+    """Offline Module 3a: rule-only, random, or uniform."""
+    if mode == "random":
+        return _build_random_weight_config(demands)
+    if mode == "uniform":
+        return _build_uniform_weight_config(demands)
     return _build_rule_weight_config(demands)
 
 

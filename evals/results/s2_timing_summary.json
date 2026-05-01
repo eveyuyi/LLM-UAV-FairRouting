@@ -1,0 +1,57 @@
+{
+  "n_run_dirs": 5,
+  "nsga3_per_window_all": {
+    "count": 480,
+    "mean_s": 0.815,
+    "std_s": 9.441,
+    "min_s": 0.0,
+    "max_s": 206.433
+  },
+  "per_method": {
+    "M0a": {
+      "count": 96,
+      "mean_s": 2.58,
+      "std_s": 21.044,
+      "min_s": 0.0,
+      "max_s": 206.433,
+      "p90_s": 1.659,
+      "median_s": 0.001
+    },
+    "M0b": {
+      "count": 96,
+      "mean_s": 0.392,
+      "std_s": 0.734,
+      "min_s": 0.0,
+      "max_s": 3.353,
+      "p90_s": 1.355,
+      "median_s": 0.002
+    },
+    "M0c": {
+      "count": 96,
+      "mean_s": 0.373,
+      "std_s": 0.795,
+      "min_s": 0.0,
+      "max_s": 3.703,
+      "p90_s": 1.145,
+      "median_s": 0.001
+    },
+    "M1_pre": {
+      "count": 96,
+      "mean_s": 0.318,
+      "std_s": 0.633,
+      "min_s": 0.0,
+      "max_s": 2.95,
+      "p90_s": 0.968,
+      "median_s": 0.002
+    },
+    "M1_ft": {
+      "count": 96,
+      "mean_s": 0.414,
+      "std_s": 1.042,
+      "min_s": 0.0,
+      "max_s": 6.91,
+      "p90_s": 1.264,
+      "median_s": 0.001
+    }
+  }
+}

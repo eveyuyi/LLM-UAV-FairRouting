@@ -4,8 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
+import json
 import math
+import os
 import random
+import tempfile
+from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
@@ -13,6 +17,10 @@ import pandas as pd
 from scipy.spatial import cKDTree
 
 from llm4fairrouting.routing.domain import Point
+
+# Shared disk cache for RRT paths (deterministic per from_id/to_id pair).
+# Set to None to disable disk caching.
+_DEFAULT_PATH_CACHE_DIR: Optional[Path] = Path("data/path_cache")
 
 NOISE_SOURCE_LEVEL = 75.0
 NOISE_THRESHOLD = 45.0
@@ -392,11 +400,16 @@ class LazySymmetricMatrix:
 class LazyPathCostCache:
     """Cache distance/noise pairs so the dynamic solver only plans paths it actually uses."""
 
-    def __init__(self, context: _PathPlanningContext):
+    def __init__(self, context: _PathPlanningContext, cache_dir: Optional[Path] = None):
         self._context = context
         self._pair_costs: Dict[Tuple[int, int], Tuple[float, int]] = {}
         self._pair_paths: Dict[Tuple[int, int], Dict[str, object]] = {}
         self._compute_count = 0
+        self._disk_cache_dir: Optional[Path] = (
+            cache_dir if cache_dir is not None else _DEFAULT_PATH_CACHE_DIR
+        )
+        if self._disk_cache_dir is not None:
+            self._disk_cache_dir.mkdir(parents=True, exist_ok=True)
 
     @property
     def size(self) -> int:
@@ -415,18 +428,78 @@ class LazyPathCostCache:
             self._pair_costs[key] = self._compute_pair(*key)
         return self._pair_costs[key]
 
+    def _disk_cache_path(self, from_id: str, to_id: str) -> Optional[Path]:
+        if self._disk_cache_dir is None:
+            return None
+        a, b = (from_id, to_id) if from_id <= to_id else (to_id, from_id)
+        key = f"{a}__{b}"
+        digest = hashlib.sha256(key.encode()).hexdigest()
+        subdir = self._disk_cache_dir / digest[:2]
+        return subdir / f"{digest}.json"
+
+    def _load_from_disk(self, from_id: str, to_id: str, i: int, j: int) -> bool:
+        cache_path = self._disk_cache_path(from_id, to_id)
+        if cache_path is None or not cache_path.exists():
+            return False
+        try:
+            with open(cache_path) as f:
+                data = json.load(f)
+            length = float(data["path_length_m"])
+            num_affected = int(data["noise_impact"])
+            self._pair_costs[(i, j)] = (length, num_affected)
+            self._pair_paths[(i, j)] = {
+                "from_index": i,
+                "to_index": j,
+                "from_id": from_id,
+                "to_id": to_id,
+                "path_xyz": data["path_xyz"],
+                "n_waypoints": data["n_waypoints"],
+                "path_length_m": length,
+                "noise_impact": num_affected,
+            }
+            return True
+        except Exception:
+            return False
+
+    def _save_to_disk(self, from_id: str, to_id: str, length: float, num_affected: int, path: list) -> None:
+        cache_path = self._disk_cache_path(from_id, to_id)
+        if cache_path is None:
+            return
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "from_id": from_id,
+            "to_id": to_id,
+            "path_xyz": [[round(float(p[0]), 3), round(float(p[1]), 3), round(float(p[2]), 3)] for p in path],
+            "n_waypoints": len(path),
+            "path_length_m": round(float(length), 3),
+            "noise_impact": int(num_affected),
+        }
+        try:
+            fd, tmp = tempfile.mkstemp(dir=cache_path.parent, suffix=".tmp")
+            with os.fdopen(fd, "w") as f:
+                json.dump(payload, f)
+            os.replace(tmp, cache_path)
+        except Exception:
+            pass
+
     def _compute_pair(self, i: int, j: int) -> Tuple[float, int]:
-        self._compute_count += 1
         start = self._context.task_points[i]
         goal = self._context.task_points[j]
+
+        if self._load_from_disk(start.id, goal.id, i, j):
+            cached = self._pair_costs[(i, j)]
+            print(f"\n[Path Cache] (disk) {start.id} -> {goal.id}: {cached[0]:.1f} m")
+            return cached
+
+        self._compute_count += 1
         print(f"\n[Path Cache {self._compute_count}] computing {start.id} -> {goal.id} ...")
 
         length, num_affected, path = _compute_pair_metrics(self._context, i, j)
         self._pair_paths[(i, j)] = {
             "from_index": i,
             "to_index": j,
-            "from_id": self._context.task_points[i].id,
-            "to_id": self._context.task_points[j].id,
+            "from_id": start.id,
+            "to_id": goal.id,
             "path_xyz": [[round(float(p[0]), 3), round(float(p[1]), 3), round(float(p[2]), 3)] for p in path],
             "n_waypoints": len(path),
             "path_length_m": round(float(length), 3),
@@ -434,6 +507,7 @@ class LazyPathCostCache:
         }
         print(f"  path length: {length:.1f} m | waypoints: {len(path)}")
         print(f"  affected buildings: {num_affected}")
+        self._save_to_disk(start.id, goal.id, length, num_affected, path)
         return length, num_affected
 
     def get_pair_path(self, i: int, j: int) -> Optional[Dict[str, object]]:
@@ -561,6 +635,7 @@ def build_lazy_distance_and_noise_matrices(
     grid_cell_size: float = 100.0,
     noise_threshold: float = NOISE_THRESHOLD,
     search_radius: float = 400.0,
+    cache_dir: Optional[Path] = None,
 ) -> Tuple[LazySymmetricMatrix, LazySymmetricMatrix]:
     del obstacle_radius
 
@@ -584,7 +659,9 @@ def build_lazy_distance_and_noise_matrices(
         noise_threshold=noise_threshold,
         search_radius=search_radius,
     )
-    print("路径将在首次访问对应节点对时计算，并跨窗口复用缓存")
+    resolved_cache_dir = cache_dir if cache_dir is not None else _DEFAULT_PATH_CACHE_DIR
+    print(f"磁盘路径缓存: {resolved_cache_dir}")
+    print("路径将在首次访问对应节点对时计算，并跨运行复用磁盘缓存")
 
-    cache = LazyPathCostCache(context)
+    cache = LazyPathCostCache(context, cache_dir=resolved_cache_dir)
     return LazySymmetricMatrix(cache, "distance"), LazySymmetricMatrix(cache, "noise")

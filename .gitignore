@@ -9,6 +9,10 @@ venv/
 .env
 .cursor/
 .idea/
+_hf_tmp
+_hf_dl_tmp
+data/path_cache
+slurm
 
 *.log
 
