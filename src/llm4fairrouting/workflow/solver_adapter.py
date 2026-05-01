@@ -741,7 +741,8 @@ def solve_windows_dynamically(
                 "n_demands_total": payload["n_demands_total"],
                 "n_demands_filtered": payload["n_demands_filtered"],
                 "solution": {
-                    "solve_mode": "independent_window",
+                    "solve_mode": "dynamic_periodic",
+                    "simulation_mode": "independent_window",
                     "solve_status": "completed" if window_sim.is_complete() else "max_time_limit",
                     "solve_time_s": solve_time_w,
                     "drone_speed_ms": drone_speed,
