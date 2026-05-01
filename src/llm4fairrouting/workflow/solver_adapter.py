@@ -917,7 +917,7 @@ def serialize_workflow_results(all_solutions: List[Dict]) -> List[Dict]:
                     dest = demand.get("destination", {})
                     vuln = demand.get("priority_evaluation_signals", {}).get(
                         "population_vulnerability", {}
-                    )
+                    ) or {}
                     delivery_time_s = outcome.get("served_time_s")
                     delivery_latency_s = outcome.get("delivery_latency_s")
                     deadline_minutes = demand.get("time_constraint", {}).get("deadline_minutes")
