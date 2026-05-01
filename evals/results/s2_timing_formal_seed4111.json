@@ -1,0 +1,17 @@
+{
+  "n_run_dirs": 15,
+  "module2_extraction": {
+    "count": 0,
+    "mean_s": null,
+    "std_s": null,
+    "min_s": null,
+    "max_s": null
+  },
+  "nsga3_per_window": {
+    "count": 480,
+    "mean_s": 0.815,
+    "std_s": 9.441,
+    "min_s": 0.0,
+    "max_s": 206.433
+  }
+}

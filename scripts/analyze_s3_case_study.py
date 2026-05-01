@@ -33,24 +33,44 @@ def _load_weight_configs(weights_dir: Path) -> dict[str, dict]:
 
 
 def _build_gt_map(events_manifest: Path) -> dict[str, int]:
+    """Returns {event_id: latent_priority} from events_manifest.jsonl."""
     gt = {}
     for item in _load_jsonl(events_manifest):
-        for demand in item.get("demands", []) or [item]:
-            did = demand.get("demand_id") or demand.get("event_id")
-            pri = demand.get("priority") or demand.get("latent_priority")
-            if did and pri:
-                gt[str(did)] = int(pri)
+        # top-level event record
+        eid = item.get("event_id")
+        pri = item.get("latent_priority") or item.get("priority")
+        if eid and pri:
+            gt[str(eid)] = int(pri)
     return gt
 
 
 def _build_dialogue_map(dialogues_path: Path) -> dict[str, str]:
+    """Returns {event_id: conversation_text} from dialogues.jsonl."""
     diag_map = {}
     for item in _load_jsonl(dialogues_path):
-        did = item.get("demand_id") or item.get("event_id")
-        text = item.get("dialogue") or item.get("transcript") or str(item.get("messages", ""))
-        if did:
-            diag_map[str(did)] = str(text)[:500]
+        # dialogues.jsonl: event_id lives in metadata.event_id
+        eid = (item.get("metadata") or {}).get("event_id") or item.get("event_id")
+        conv = item.get("conversation") or item.get("dialogue") or item.get("transcript") or ""
+        if isinstance(conv, list):
+            # list of {"role":..., "content":...} turns
+            conv = "\n".join(
+                f"{t.get('role','?')}: {t.get('content','')}" for t in conv
+            )
+        if eid:
+            diag_map[str(eid)] = str(conv)[:800]
     return diag_map
+
+
+def _build_event_map(demands_path: Path) -> dict[str, str]:
+    """Returns {demand_id: source_event_id} from llm3_sft_pipeline.jsonl."""
+    ev_map = {}
+    for win in _load_jsonl(demands_path):
+        for d in win.get("demands", []):
+            did = d.get("demand_id")
+            eid = d.get("source_event_id") or did
+            if did:
+                ev_map[str(did)] = str(eid)
+    return ev_map
 
 
 def main():
@@ -64,37 +84,48 @@ def main():
     parser.add_argument("--priority-gap", type=int, default=2,
                         help="Minimum |llm_pred - gt| vs |rule_pred - gt| gap to select a case")
     parser.add_argument("--top-n", type=int, default=3, help="Max cases to report")
+    parser.add_argument("--urgent-gt", type=int, default=None,
+                        help="If set, only include cases with gt_priority <= this value (e.g. 2 for urgent)")
     args = parser.parse_args()
 
     rule_configs = _load_weight_configs(Path(args.rule_weights))
     llm_configs = _load_weight_configs(Path(args.llm_weights))
     gt_map = _build_gt_map(Path(args.ground_truth))
     diag_map = _build_dialogue_map(Path(args.dialogues))
+    ev_map = _build_event_map(Path(args.demands))
 
     cases = []
     common_windows = set(rule_configs) & set(llm_configs)
     for tw in sorted(common_windows):
         rule_preds = rule_configs[tw]
         llm_preds = llm_configs[tw]
-        for demand_id in set(rule_preds) & set(llm_preds) & set(gt_map):
-            gt_pri = gt_map[demand_id]
-            rule_err = abs(rule_preds[demand_id] - gt_pri)
-            llm_err = abs(llm_preds[demand_id] - gt_pri)
+        for demand_id in set(rule_preds) & set(llm_preds):
+            event_id = ev_map.get(demand_id, demand_id)
+            gt_pri = gt_map.get(event_id) or gt_map.get(demand_id)
+            if gt_pri is None:
+                continue
+            gt_pri = int(gt_pri)
+            rule_p = int(rule_preds[demand_id])
+            llm_p  = int(llm_preds[demand_id])
+            rule_err = abs(rule_p - gt_pri)
+            llm_err = abs(llm_p - gt_pri)
             gain = rule_err - llm_err
-            if gain >= args.priority_gap:
+            if gain >= args.priority_gap and (args.urgent_gt is None or gt_pri <= args.urgent_gt):
                 cases.append({
                     "time_window": tw,
                     "demand_id": demand_id,
+                    "event_id": event_id,
                     "gt_priority": gt_pri,
-                    "rule_pred": rule_preds[demand_id],
-                    "llm_pred": llm_preds[demand_id],
+                    "rule_pred": rule_p,
+                    "llm_pred": llm_p,
                     "rule_error": rule_err,
                     "llm_error": llm_err,
                     "gain": gain,
-                    "dialogue_snippet": diag_map.get(demand_id, "(no dialogue found)"),
+                    "dialogue_snippet": diag_map.get(event_id, diag_map.get(demand_id, "(no dialogue found)")),
                 })
 
-    cases.sort(key=lambda c: -c["gain"])
+    # Prefer cases where rule UNDER-estimated urgency (GT high, rule low, LLM correct)
+    cases.sort(key=lambda c: (-c["gain"], c["gt_priority"]))
     selected = cases[: args.top_n]
 
     out = Path(args.output)
@@ -111,6 +142,7 @@ def main():
         lines.append(f"| Rule-based prediction | P{c['rule_pred']} (error={c['rule_error']}) |")
         lines.append(f"| LLM prediction        | P{c['llm_pred']} (error={c['llm_error']}) |")
         lines.append(f"| Priority gain         | {c['gain']} levels |")
+        lines.append(f"| Event ID              | `{c['event_id']}` |")
         lines.append("")
         lines.append("**Dialogue snippet:**")
         lines.append(f"```\n{c['dialogue_snippet']}\n```\n")
