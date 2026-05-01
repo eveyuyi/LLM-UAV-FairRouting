@@ -251,6 +251,7 @@ def run_workflow(
     nsga3_n_generations: int = 10,
     nsga3_seed: int = 42,
     nsga3_save_all_candidate_results: bool = False,
+    independent_windows: bool = False,
 ):
     """Run the workflow from a canonical dialogue dataset through ranking and solving.
 
@@ -316,6 +317,7 @@ def run_workflow(
             "nsga3_n_generations": nsga3_n_generations,
             "nsga3_seed": nsga3_seed,
             "nsga3_save_all_candidate_results": nsga3_save_all_candidate_results,
+            "independent_windows": independent_windows,
             "continue_on_window_error": continue_on_window_error,
         }
         with open(run_dir / "run_meta.json", "w", encoding="utf-8") as f:
@@ -527,6 +529,7 @@ def run_workflow(
                     save_all_candidate_results=nsga3_save_all_candidate_results,
                     enable_conflict_refiner=enable_conflict_refiner,
                     problem_id=run_dir.name,
+                    independent_windows=independent_windows,
                 )
                 search_results_filename = "nsga3_heuristic_results.json"
             else:
@@ -831,6 +834,13 @@ def main():
         default=env_bool("LLM4FAIRROUTING_NSGA3_SAVE_ALL_RESULTS", False),
         help="Persist per-candidate workflow results for NSGA-III",
     )
+    parser.add_argument(
+        "--independent-windows",
+        action=argparse.BooleanOptionalAction,
+        default=env_bool("LLM4FAIRROUTING_INDEPENDENT_WINDOWS", False),
+        help="Solve each dispatch window independently with UAVs reset to station; "
+             "prevents demand queuing across windows and gives realistic per-window latency",
+    )
     args = parser.parse_args()
 
     run_workflow(
@@ -864,6 +874,7 @@ def main():
         nsga3_n_generations=args.nsga3_n_generations,
         nsga3_seed=args.nsga3_seed,
         nsga3_save_all_candidate_results=args.nsga3_save_all_candidate_results,
+        independent_windows=args.independent_windows,
     )
 
 

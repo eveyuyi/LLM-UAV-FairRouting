@@ -367,8 +367,15 @@ def solve_windows_dynamically(
     analytics_output_dir: Optional[str] = None,
     enable_conflict_refiner: bool = False,
     assignment_solver_factory=None,
+    independent_windows: bool = False,
 ) -> List[Dict]:
-    """Use the shared routing core to solve the full window sequence."""
+    """Solve windows either as a continuous simulation or as independent per-window experiments.
+
+    When ``independent_windows=True`` each window starts with UAVs reset to their
+    stations and only the demands that belong to that window are injected.  Delivery
+    latency is measured from the window-local t=0, giving realistic sub-hour figures
+    that are comparable across windows without cross-window queuing artefacts.
+    """
     window_payloads = _build_window_payloads(
         windows=windows,
         weight_configs=weight_configs,
@@ -580,9 +587,186 @@ def solve_windows_dynamically(
         flight_height=_FLIGHT_HEIGHT,
     )
 
+    n_supply = len(supply_points)
+
+    # ── Independent-window mode ────────────────────────────────────────────────
+    # Each window gets a fresh simulator with UAVs reset to station; no demand
+    # carries over across window boundaries.
+    if independent_windows:
+        tw_to_records: Dict[str, List[Dict]] = {}
+        for record in event_records:
+            tw_to_records.setdefault(record["time_window"], []).append(record)
+
+        ind_results: List[Dict] = []
+        for payload in window_payloads:
+            tw = payload["time_window"]
+            window_records = tw_to_records.get(tw, [])
+            if not window_records:
+                ind_results.append({
+                    "time_window": tw,
+                    "weight_config": payload["weight_config"],
+                    "feasible_demands": payload["feasible_demands"],
+                    "n_demands_total": payload["n_demands_total"],
+                    "n_demands_filtered": payload["n_demands_filtered"],
+                    "solution": None,
+                    "n_supply": n_supply,
+                })
+                continue
+
+            window_base_dt = payload["window_start_dt"]
+            window_demand_events = []
+            for record in window_records:
+                event_time_h = max(
+                    0.0,
+                    (record["request_dt"] - window_base_dt).total_seconds() / 3600.0,
+                )
+                record["event_time_h"] = event_time_h
+                window_demand_events.append(
+                    _DemandEvent(
+                        time=event_time_h,
+                        node_idx=n_supply + record["demand_point_idx"],
+                        weight=record["weight"],
+                        unique_id=record["event_id"],
+                        priority=record["priority"],
+                        required_supply_idx=record["required_supply_idx"],
+                        demand_point_id=record["demand_point_id"],
+                    )
+                )
+
+            fresh_drones = create_drones(
+                station_cplex_points,
+                drones_per_station=max_drones_per_station,
+                max_payload=max_payload,
+                max_range=max_range,
+                speed=drone_speed,
+            )
+            fresh_solver = None
+            if assignment_solver_factory is not None:
+                fresh_solver = assignment_solver_factory(
+                    drones=fresh_drones,
+                    supply_indices=list(range(n_supply)),
+                    station_indices=list(range(
+                        n_supply + len(demand_points),
+                        n_supply + len(demand_points) + len(station_cplex_points),
+                    )),
+                    dist_matrix=dist_matrix,
+                    all_points=all_points,
+                    noise_cost_matrix=noise_cost_matrix,
+                    noise_weight=noise_weight,
+                    drone_activation_cost=drone_activation_cost,
+                    time_limit=time_limit,
+                    analytics_output_dir=None,
+                    enable_conflict_refiner=enable_conflict_refiner,
+                )
+
+            window_sim = _FinalDroneSimulator(
+                supply_points=supply_points,
+                demand_points=demand_points,
+                station_points=station_cplex_points,
+                drones_static=fresh_drones,
+                dist_matrix=dist_matrix,
+                demand_events=window_demand_events,
+                noise_cost_matrix=noise_cost_matrix,
+                noise_weight=noise_weight,
+                drone_activation_cost=drone_activation_cost,
+                time_step=0.001,
+                solve_interval=0.05,
+                time_limit=time_limit,
+                objective_weight_schedule=None,
+                analytics_output_dir=None,
+                enable_conflict_refiner=enable_conflict_refiner,
+                assignment_solver=fresh_solver,
+            )
+
+            step_started_at = _time.time()
+            # 2-hour cap per window; enough for any UAV round-trip
+            window_sim.run_until_complete(2.0)
+            solve_time_w = round(_time.time() - step_started_at, 3)
+
+            window_drone_paths = window_sim.get_drone_path_details()
+            window_analytics = window_sim.get_solver_analytics()
+            window_run_summary = window_analytics.get("run_summary", {})
+
+            rrt_edges = []
+            for dp in window_drone_paths:
+                ni = [int(i) for i in dp.get("path_node_indices", [])]
+                rrt_edges.extend((ni[p], ni[p + 1]) for p in range(len(ni) - 1))
+            window_run_summary["n_rrt_paths_used"] = len(
+                export_rrt_paths_for_edges(dist_matrix, rrt_edges)
+            )
+
+            ev_by_id = {ev.unique_id: ev for ev in window_demand_events}
+            rec_by_id = {rec["event_id"]: rec for rec in window_records}
+
+            demand_event_results: Dict[str, Dict] = {}
+            for demand in payload["feasible_demands"]:
+                event_id = demand["solver_event_id"]
+                ev = ev_by_id.get(event_id)
+                rec = rec_by_id.get(event_id, {})
+                if ev is None:
+                    continue
+                srv_s = round(ev.served_time * 3600.0, 1) if ev.served_time is not None else None
+                lat_h = (
+                    max(0.0, float(ev.served_time) - float(ev.time))
+                    if ev.served_time is not None else None
+                )
+                lat_s = round(lat_h * 3600.0, 1) if lat_h is not None else None
+                demand_event_results[event_id] = {
+                    "event_id": event_id,
+                    "source_event_id": rec.get("source_event_id") or demand.get("source_event_id"),
+                    "assigned_drone": ev.assigned_drone,
+                    "assigned_time_h": ev.assigned_time,
+                    "request_time_h": ev.time,
+                    "served_time_h": ev.served_time,
+                    "served_time_s": srv_s,
+                    "delivery_latency_h": lat_h,
+                    "delivery_latency_s": lat_s,
+                    "delivery_latency_min": round(lat_s / 60, 2) if lat_s is not None else None,
+                    "deadline_minutes": rec.get("deadline_minutes"),
+                    "required_supply_idx": ev.required_supply_idx,
+                    "supply_node": ev.supply_node,
+                    "demand_point_id": ev.demand_point_id,
+                    "is_assigned_by_snapshot": ev.assigned_drone is not None,
+                    "is_served_by_snapshot": ev.served_time is not None,
+                    "is_served_eventually": ev.served_time is not None,
+                }
+
+            served_ids = [ev.unique_id for ev in window_demand_events if ev.served_time is not None]
+            assigned_ids = [ev.unique_id for ev in window_demand_events if ev.assigned_drone is not None]
+            pending_ids = [ev.unique_id for ev in window_demand_events if ev.served_time is None]
+            ind_results.append({
+                "time_window": tw,
+                "weight_config": payload["weight_config"],
+                "feasible_demands": payload["feasible_demands"],
+                "n_demands_total": payload["n_demands_total"],
+                "n_demands_filtered": payload["n_demands_filtered"],
+                "solution": {
+                    "solve_mode": "independent_window",
+                    "solve_status": "completed" if window_sim.is_complete() else "max_time_limit",
+                    "solve_time_s": solve_time_w,
+                    "drone_speed_ms": drone_speed,
+                    "snapshot_time_h": window_sim.current_time,
+                    "snapshot_time_window_end": payload["window_end_dt"].isoformat(),
+                    "snapshot_served_ids": served_ids,
+                    "snapshot_assigned_ids": assigned_ids,
+                    "snapshot_pending_ids": pending_ids,
+                    "busy_drones": [],
+                    "total_distance": window_sim.total_distance,
+                    "total_noise_impact": window_sim.total_noise_impact,
+                    "objective_value": None,
+                    "demand_event_results": demand_event_results,
+                    "drone_path_details": window_drone_paths,
+                    "run_summary": window_run_summary,
+                    "analytics_artifacts": {},
+                },
+                "n_supply": n_supply,
+            })
+
+        return ind_results
+    # ── end independent-window mode ────────────────────────────────────────────
+
     base_dt = min(record["request_dt"] for record in event_records)
     objective_weight_schedule = _build_objective_weight_schedule(window_payloads, base_dt)
-    n_supply = len(supply_points)
     demand_events: List = []
     for record in event_records:
         event_time_h = max(

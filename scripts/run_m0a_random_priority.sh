@@ -46,6 +46,7 @@ if [[ -n "${CONDA_ENV}" ]]; then
     --extracted-demands "${EXTRACTED_DEMANDS}" \
     --nsga3-pop-size "${NSGA3_POP_SIZE}" \
     --nsga3-n-generations "${NSGA3_N_GENERATIONS}" \
+    --independent-windows \
     "$@"
 else
   PYTHONPATH=src python -u \
@@ -58,5 +59,6 @@ else
     --extracted-demands "${EXTRACTED_DEMANDS}" \
     --nsga3-pop-size "${NSGA3_POP_SIZE}" \
     --nsga3-n-generations "${NSGA3_N_GENERATIONS}" \
+    --independent-windows \
     "$@"
 fi

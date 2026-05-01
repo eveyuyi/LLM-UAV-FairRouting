@@ -60,6 +60,7 @@ def run_nsga3_heuristic_search(
     save_all_candidate_results: bool = False,
     enable_conflict_refiner: bool = False,
     problem_id: Optional[str] = None,
+    independent_windows: bool = False,
 ) -> Dict[str, object]:
     try:
         from pymoo.algorithms.moo.nsga3 import NSGA3
@@ -127,6 +128,7 @@ def run_nsga3_heuristic_search(
             analytics_output_dir=str(candidate_dir / "analytics") if save_all_candidate_results else None,
             enable_conflict_refiner=enable_conflict_refiner,
             assignment_solver_factory=HeuristicAssignmentSolver,
+            independent_windows=independent_windows,
         )
         run_summary = _first_run_summary(results)
         objectives = _candidate_objectives(run_summary)

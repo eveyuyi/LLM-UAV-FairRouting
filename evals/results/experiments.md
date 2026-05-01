@@ -4,7 +4,7 @@
 
 ## 5.1 Experimental Setup
 
-**Scenario.** Experiments are conducted on a simulated urban UAV logistics network spanning one full day. The evaluation set comprises 96 five-minute dispatch windows (time slots 0–47), 722 delivery demands, and 4,340 demand records across 576 windows for extraction quality analysis. All experiments use seed 4111.
+**Scenario.** Experiments are conducted on a simulated urban UAV logistics network. The routing evaluation set comprises 96 five-minute dispatch windows (time slots 0–47, covering the first 4 hours of the simulated day), 722 delivery demands, and 4,340 demand records across 576 windows for extraction quality analysis. All experiments use seed 4111. Each dispatch window is solved **independently**: UAVs reset to their home station at the start of each window, so delivery latency reflects within-window service time only and is not inflated by cross-window queuing artefacts. *(Note: the current results in §5.3–5.5 were produced under the legacy continuous-simulation mode and will be re-run with independent windows.)*
 
 **Compared methods.** Six configurations vary the priority assignment strategy while holding the NSGA-III multi-objective solver constant:
 
