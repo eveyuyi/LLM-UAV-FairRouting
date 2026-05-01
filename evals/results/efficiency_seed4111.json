@@ -1,0 +1,98 @@
+{
+  "M0a": {
+    "run_dir": "/scratch/yy6120/code/LLM-UAV-FairRouting/data/eval_runs/formal_m0a_seed4111/run_20260430_155133_gpt-4o-mini_noise0.5",
+    "solver": {
+      "n_windows": 96,
+      "avg_solve_time_s": 2.58,
+      "median_solve_time_s": 0.0,
+      "p90_solve_time_s": 1.66,
+      "total_solve_min": 4.1,
+      "avg_demands_per_window": 7.52,
+      "avg_drones_used": 2.81,
+      "total_distance_km": 121095.4
+    },
+    "cache": {
+      "cache_hits": 1367161,
+      "cache_misses": 1055,
+      "cache_total": 1368216,
+      "hit_rate_pct": 99.9
+    }
+  },
+  "M0b": {
+    "run_dir": "/scratch/yy6120/code/LLM-UAV-FairRouting/data/eval_runs/formal_m0b_seed4111/run_20260430_155133_gpt-4o-mini_noise0.5",
+    "solver": {
+      "n_windows": 96,
+      "avg_solve_time_s": 0.39,
+      "median_solve_time_s": 0.0,
+      "p90_solve_time_s": 1.35,
+      "total_solve_min": 0.6,
+      "avg_demands_per_window": 7.52,
+      "avg_drones_used": 2.75,
+      "total_distance_km": 116125.0
+    },
+    "cache": {
+      "cache_hits": 1306647,
+      "cache_misses": 839,
+      "cache_total": 1307486,
+      "hit_rate_pct": 99.9
+    }
+  },
+  "M0c": {
+    "run_dir": "/scratch/yy6120/code/LLM-UAV-FairRouting/data/eval_runs/formal_m0c_seed4111/run_20260430_155133_gpt-4o-mini_noise0.5",
+    "solver": {
+      "n_windows": 96,
+      "avg_solve_time_s": 0.37,
+      "median_solve_time_s": 0.0,
+      "p90_solve_time_s": 1.15,
+      "total_solve_min": 0.6,
+      "avg_demands_per_window": 7.52,
+      "avg_drones_used": 2.76,
+      "total_distance_km": 120636.3
+    },
+    "cache": {
+      "cache_hits": 1470477,
+      "cache_misses": 656,
+      "cache_total": 1471133,
+      "hit_rate_pct": 100.0
+    }
+  },
+  "M1_pre": {
+    "run_dir": "/scratch/yy6120/code/LLM-UAV-FairRouting/data/eval_runs/formal_m1_pre_p2_seed4111/run_20260430_155133_qwen3-base_noise0.5",
+    "solver": {
+      "n_windows": 96,
+      "avg_solve_time_s": 0.32,
+      "median_solve_time_s": 0.0,
+      "p90_solve_time_s": 0.97,
+      "total_solve_min": 0.5,
+      "avg_demands_per_window": 7.52,
+      "avg_drones_used": 2.81,
+      "total_distance_km": 118662.9
+    },
+    "cache": {
+      "cache_hits": 1515306,
+      "cache_misses": 455,
+      "cache_total": 1515761,
+      "hit_rate_pct": 100.0
+    }
+  },
+  "M1_ft": {
+    "run_dir": "/scratch/yy6120/code/LLM-UAV-FairRouting/data/eval_runs/formal_m1_ft_p2_seed4111/run_20260430_155133_qwen3-finetuned_noise0.5",
+    "solver": {
+      "n_windows": 96,
+      "avg_solve_time_s": 0.41,
+      "median_solve_time_s": 0.0,
+      "p90_solve_time_s": 1.26,
+      "total_solve_min": 0.7,
+      "avg_demands_per_window": 7.52,
+      "avg_drones_used": 2.78,
+      "total_distance_km": 121124.4
+    },
+    "cache": {
+      "cache_hits": 1449534,
+      "cache_misses": 316,
+      "cache_total": 1449850,
+      "hit_rate_pct": 100.0
+    }
+  },
+  "path_cache_total_entries": 122070
+}

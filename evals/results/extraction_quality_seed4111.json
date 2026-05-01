@@ -1,0 +1,41 @@
+{
+  "seed": "4111",
+  "n_demands": 4340,
+  "per_field_accuracy": {
+    "origin_fid": 100.0,
+    "dest_fid": 100.0,
+    "dest_type": 51.0,
+    "cargo_type": 95.9,
+    "weight_kg": 99.0,
+    "temperature_sensitive": 75.1,
+    "deadline_minutes": 99.9,
+    "demand_tier": 47.7,
+    "requester_role": 78.2,
+    "elderly_involved": 61.1,
+    "children_involved": 86.4,
+    "vulnerable_community": 50.1,
+    "special_handling_match": 83.0
+  },
+  "critical_signal_recall": 28.5,
+  "schema_validity_rate": 100.0,
+  "priority_chain_consistency": 42.1,
+  "raw_counts": {
+    "total": 4340,
+    "origin_fid": 4340,
+    "dest_fid": 4340,
+    "dest_type": 2215,
+    "cargo_type": 4164,
+    "weight_kg": 4295,
+    "temp_sensitive": 3261,
+    "deadline_minutes": 4337,
+    "demand_tier": 2070,
+    "requester_role": 3392,
+    "elderly_involved": 2651,
+    "children_involved": 3748,
+    "vulnerable_community": 2173,
+    "special_handling_empty_match": 3604,
+    "all_critical_correct": 1239,
+    "schema_valid": 4338,
+    "priority_chain_full_consistent": 1825
+  }
+}
