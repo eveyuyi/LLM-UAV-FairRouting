@@ -210,6 +210,9 @@ def _parse_window_bounds(time_window: str) -> Tuple[datetime, datetime]:
     temporal bounds used by the dynamic solver.
     """
     normalized_window = str(time_window).strip().split("::", 1)[0]
+    if "T" not in normalized_window:
+        ref = datetime(2024, 3, 15, 0, 0)
+        return ref, ref + timedelta(minutes=5)
     date_part, span = normalized_window.split("T", 1)
     start_str, end_str = span.split("-", 1)
     start_dt = datetime.fromisoformat(f"{date_part}T{start_str}")

@@ -36,6 +36,8 @@ METHOD_SPECS: List[Tuple[str, str, str]] = [
                "data/eval_runs/formal_m1_pre_seed{seed}/run_*/extracted_demands.json"),
     ("M1_ft",  "data/eval_runs/formal_m1_ft_seed{seed}/run_*/weight_configs",
                "data/eval_runs/formal_m1_ft_seed{seed}/run_*/extracted_demands.json"),
+    ("M1_gemini", "data/eval_runs/formal_m1_gemini_seed{seed}/run_*/weight_configs",
+               "data/eval_runs/formal_m1_gemini_seed{seed}/run_*/extracted_demands.json"),
 ]
 
 # For multi-seed alignment, also try the full 576-window runs

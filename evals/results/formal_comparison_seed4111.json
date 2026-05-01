@@ -406,6 +406,87 @@
       },
       "run_dir": "/scratch/yy6120/code/LLM-UAV-FairRouting/data/eval_runs/formal_m1_ft_p2_seed4111/run_20260430_155133_qwen3-finetuned_noise0.5",
       "n_demands": 722
+    },
+    "M1_gemini": {
+      "overall": {
+        "count": 722,
+        "served": 722,
+        "service_rate": 1.0,
+        "on_time_rate": 0.331,
+        "avg_latency_min": 260.79,
+        "p90_latency_min": 585.76
+      },
+      "by_priority": {
+        "1": {
+          "count": 88,
+          "served": 88,
+          "service_rate": 1.0,
+          "on_time_rate": 0.6705,
+          "avg_latency_min": 13.62,
+          "p90_latency_min": 22.33
+        },
+        "2": {
+          "count": 100,
+          "served": 100,
+          "service_rate": 1.0,
+          "on_time_rate": 0.67,
+          "avg_latency_min": 47.17,
+          "p90_latency_min": 133.87
+        },
+        "3": {
+          "count": 88,
+          "served": 88,
+          "service_rate": 1.0,
+          "on_time_rate": 0.5,
+          "avg_latency_min": 142.98,
+          "p90_latency_min": 322.92
+        },
+        "4": {
+          "count": 446,
+          "served": 446,
+          "service_rate": 1.0,
+          "on_time_rate": 0.1547,
+          "avg_latency_min": 380.7,
+          "p90_latency_min": 623.97
+        }
+      },
+      "urgent": {
+        "count": 188,
+        "served": 188,
+        "service_rate": 1.0,
+        "on_time_rate": 0.6702,
+        "avg_latency_min": 31.46,
+        "p90_latency_min": 83.53
+      },
+      "priority_weighted_service_score": 1.0,
+      "priority_weighted_on_time_score": 0.4662,
+      "gini_latency": 0.4928,
+      "jain_fairness_by_tier": 0.4608,
+      "latency_gap_p1_vs_p4_min": 367.08,
+      "elderly_involved": {
+        "count": 322,
+        "served": 322,
+        "service_rate": 1.0,
+        "on_time_rate": 0.3727,
+        "avg_latency_min": 224.24,
+        "p90_latency_min": 527.83
+      },
+      "vulnerable_community": {
+        "count": 477,
+        "served": 477,
+        "service_rate": 1.0,
+        "on_time_rate": 0.3396,
+        "avg_latency_min": 244.71,
+        "p90_latency_min": 568.05
+      },
+      "window_aggregate": {
+        "n_windows": 96,
+        "total_distance_km": 122906.19,
+        "total_noise_impact": 100212.0,
+        "avg_solve_time_s": 0.44
+      },
+      "run_dir": "/scratch/yy6120/code/LLM-UAV-FairRouting/data/eval_runs/formal_m1_gemini_seed4111/run_20260501_075939_@vertexai-gemini-3.1-flash-lite-preview_noise0.5",
+      "n_demands": 722
     }
   }
 }
