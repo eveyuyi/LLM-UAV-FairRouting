@@ -1,0 +1,574 @@
+{
+  "seed": "4111",
+  "split": "norm_eval",
+  "config": "routeB_3uav",
+  "methods": {
+    "M0a": {
+      "overall": {
+        "count": 722,
+        "served": 722,
+        "service_rate": 1.0,
+        "on_time_rate": 0.9986,
+        "avg_latency_min": 9.31,
+        "p90_latency_min": 13.07
+      },
+      "by_priority": {
+        "1": {
+          "count": 88,
+          "served": 88,
+          "service_rate": 1.0,
+          "on_time_rate": 0.9886,
+          "avg_latency_min": 8.5,
+          "p90_latency_min": 11.58
+        },
+        "2": {
+          "count": 100,
+          "served": 100,
+          "service_rate": 1.0,
+          "on_time_rate": 1.0,
+          "avg_latency_min": 9.02,
+          "p90_latency_min": 11.6
+        },
+        "3": {
+          "count": 88,
+          "served": 88,
+          "service_rate": 1.0,
+          "on_time_rate": 1.0,
+          "avg_latency_min": 8.92,
+          "p90_latency_min": 11.46
+        },
+        "4": {
+          "count": 446,
+          "served": 446,
+          "service_rate": 1.0,
+          "on_time_rate": 1.0,
+          "avg_latency_min": 9.62,
+          "p90_latency_min": 13.5
+        }
+      },
+      "urgent": {
+        "count": 188,
+        "served": 188,
+        "service_rate": 1.0,
+        "on_time_rate": 0.9947,
+        "avg_latency_min": 8.77,
+        "p90_latency_min": 11.58
+      },
+      "priority_weighted_service_score": 1.0,
+      "priority_weighted_on_time_score": 0.9969,
+      "gini_latency": 0.1515,
+      "jain_fairness_by_tier": 0.9981,
+      "latency_gap_p1_vs_p4_min": 1.12,
+      "elderly_involved": {
+        "count": 322,
+        "served": 322,
+        "service_rate": 1.0,
+        "on_time_rate": 1.0,
+        "avg_latency_min": 9.34,
+        "p90_latency_min": 12.8
+      },
+      "vulnerable_community": {
+        "count": 477,
+        "served": 477,
+        "service_rate": 1.0,
+        "on_time_rate": 1.0,
+        "avg_latency_min": 9.31,
+        "p90_latency_min": 12.84
+      },
+      "window_aggregate": {
+        "n_windows": 96,
+        "total_distance_km": 11698.29,
+        "total_noise_impact": 9078.0,
+        "avg_solve_time_s": 0.08
+      },
+      "run_dir": "/scratch/yy6120/code/LLM-UAV-FairRouting/data/eval_runs/routeB_3uav_m0a_seed4111/run_20260501_143144_gpt-4o-mini_noise0.5",
+      "n_demands": 722
+    },
+    "M0b": {
+      "overall": {
+        "count": 722,
+        "served": 722,
+        "service_rate": 1.0,
+        "on_time_rate": 0.9986,
+        "avg_latency_min": 8.97,
+        "p90_latency_min": 11.82
+      },
+      "by_priority": {
+        "1": {
+          "count": 88,
+          "served": 88,
+          "service_rate": 1.0,
+          "on_time_rate": 0.9886,
+          "avg_latency_min": 8.31,
+          "p90_latency_min": 11.1
+        },
+        "2": {
+          "count": 100,
+          "served": 100,
+          "service_rate": 1.0,
+          "on_time_rate": 1.0,
+          "avg_latency_min": 8.4,
+          "p90_latency_min": 11.3
+        },
+        "3": {
+          "count": 88,
+          "served": 88,
+          "service_rate": 1.0,
+          "on_time_rate": 1.0,
+          "avg_latency_min": 8.3,
+          "p90_latency_min": 10.5
+        },
+        "4": {
+          "count": 446,
+          "served": 446,
+          "service_rate": 1.0,
+          "on_time_rate": 1.0,
+          "avg_latency_min": 9.35,
+          "p90_latency_min": 12.33
+        }
+      },
+      "urgent": {
+        "count": 188,
+        "served": 188,
+        "service_rate": 1.0,
+        "on_time_rate": 0.9947,
+        "avg_latency_min": 8.36,
+        "p90_latency_min": 11.28
+      },
+      "priority_weighted_service_score": 1.0,
+      "priority_weighted_on_time_score": 0.9969,
+      "gini_latency": 0.1339,
+      "jain_fairness_by_tier": 0.9977,
+      "latency_gap_p1_vs_p4_min": 1.04,
+      "elderly_involved": {
+        "count": 322,
+        "served": 322,
+        "service_rate": 1.0,
+        "on_time_rate": 1.0,
+        "avg_latency_min": 8.76,
+        "p90_latency_min": 11.1
+      },
+      "vulnerable_community": {
+        "count": 477,
+        "served": 477,
+        "service_rate": 1.0,
+        "on_time_rate": 1.0,
+        "avg_latency_min": 8.85,
+        "p90_latency_min": 11.36
+      },
+      "window_aggregate": {
+        "n_windows": 96,
+        "total_distance_km": 11385.87,
+        "total_noise_impact": 9084.0,
+        "avg_solve_time_s": 0.09
+      },
+      "run_dir": "/scratch/yy6120/code/LLM-UAV-FairRouting/data/eval_runs/routeB_3uav_m0b_seed4111/run_20260501_143144_gpt-4o-mini_noise0.5",
+      "n_demands": 722
+    },
+    "M0c": {
+      "overall": {
+        "count": 722,
+        "served": 722,
+        "service_rate": 1.0,
+        "on_time_rate": 0.9986,
+        "avg_latency_min": 8.98,
+        "p90_latency_min": 12.36
+      },
+      "by_priority": {
+        "1": {
+          "count": 88,
+          "served": 88,
+          "service_rate": 1.0,
+          "on_time_rate": 0.9886,
+          "avg_latency_min": 8.39,
+          "p90_latency_min": 11.58
+        },
+        "2": {
+          "count": 100,
+          "served": 100,
+          "service_rate": 1.0,
+          "on_time_rate": 1.0,
+          "avg_latency_min": 8.43,
+          "p90_latency_min": 11.54
+        },
+        "3": {
+          "count": 88,
+          "served": 88,
+          "service_rate": 1.0,
+          "on_time_rate": 1.0,
+          "avg_latency_min": 8.63,
+          "p90_latency_min": 11.21
+        },
+        "4": {
+          "count": 446,
+          "served": 446,
+          "service_rate": 1.0,
+          "on_time_rate": 1.0,
+          "avg_latency_min": 9.28,
+          "p90_latency_min": 12.72
+        }
+      },
+      "urgent": {
+        "count": 188,
+        "served": 188,
+        "service_rate": 1.0,
+        "on_time_rate": 0.9947,
+        "avg_latency_min": 8.41,
+        "p90_latency_min": 11.58
+      },
+      "priority_weighted_service_score": 1.0,
+      "priority_weighted_on_time_score": 0.9969,
+      "gini_latency": 0.154,
+      "jain_fairness_by_tier": 0.9984,
+      "latency_gap_p1_vs_p4_min": 0.89,
+      "elderly_involved": {
+        "count": 322,
+        "served": 322,
+        "service_rate": 1.0,
+        "on_time_rate": 1.0,
+        "avg_latency_min": 8.86,
+        "p90_latency_min": 12.32
+      },
+      "vulnerable_community": {
+        "count": 477,
+        "served": 477,
+        "service_rate": 1.0,
+        "on_time_rate": 1.0,
+        "avg_latency_min": 8.94,
+        "p90_latency_min": 12.38
+      },
+      "window_aggregate": {
+        "n_windows": 96,
+        "total_distance_km": 11375.43,
+        "total_noise_impact": 9372.0,
+        "avg_solve_time_s": 0.08
+      },
+      "run_dir": "/scratch/yy6120/code/LLM-UAV-FairRouting/data/eval_runs/routeB_3uav_m0c_seed4111/run_20260501_143144_gpt-4o-mini_noise0.5",
+      "n_demands": 722
+    },
+    "M1_pre": {
+      "overall": {
+        "count": 722,
+        "served": 722,
+        "service_rate": 1.0,
+        "on_time_rate": 0.9986,
+        "avg_latency_min": 8.96,
+        "p90_latency_min": 12.17
+      },
+      "by_priority": {
+        "1": {
+          "count": 88,
+          "served": 88,
+          "service_rate": 1.0,
+          "on_time_rate": 0.9886,
+          "avg_latency_min": 8.55,
+          "p90_latency_min": 11.4
+        },
+        "2": {
+          "count": 100,
+          "served": 100,
+          "service_rate": 1.0,
+          "on_time_rate": 1.0,
+          "avg_latency_min": 8.31,
+          "p90_latency_min": 11.3
+        },
+        "3": {
+          "count": 88,
+          "served": 88,
+          "service_rate": 1.0,
+          "on_time_rate": 1.0,
+          "avg_latency_min": 8.56,
+          "p90_latency_min": 11.46
+        },
+        "4": {
+          "count": 446,
+          "served": 446,
+          "service_rate": 1.0,
+          "on_time_rate": 1.0,
+          "avg_latency_min": 9.27,
+          "p90_latency_min": 12.54
+        }
+      },
+      "urgent": {
+        "count": 188,
+        "served": 188,
+        "service_rate": 1.0,
+        "on_time_rate": 0.9947,
+        "avg_latency_min": 8.42,
+        "p90_latency_min": 11.4
+      },
+      "priority_weighted_service_score": 1.0,
+      "priority_weighted_on_time_score": 0.9969,
+      "gini_latency": 0.1508,
+      "jain_fairness_by_tier": 0.9984,
+      "latency_gap_p1_vs_p4_min": 0.72,
+      "elderly_involved": {
+        "count": 322,
+        "served": 322,
+        "service_rate": 1.0,
+        "on_time_rate": 1.0,
+        "avg_latency_min": 8.81,
+        "p90_latency_min": 11.82
+      },
+      "vulnerable_community": {
+        "count": 477,
+        "served": 477,
+        "service_rate": 1.0,
+        "on_time_rate": 1.0,
+        "avg_latency_min": 8.91,
+        "p90_latency_min": 12.12
+      },
+      "window_aggregate": {
+        "n_windows": 96,
+        "total_distance_km": 11333.7,
+        "total_noise_impact": 8559.0,
+        "avg_solve_time_s": 0.06
+      },
+      "run_dir": "/scratch/yy6120/code/LLM-UAV-FairRouting/data/eval_runs/routeB_3uav_m1_pre_seed4111/run_20260501_144429_gpt-4o-mini_noise0.5",
+      "n_demands": 722
+    },
+    "M1_sft": {
+      "overall": {
+        "count": 722,
+        "served": 722,
+        "service_rate": 1.0,
+        "on_time_rate": 0.9986,
+        "avg_latency_min": 9.0,
+        "p90_latency_min": 12.36
+      },
+      "by_priority": {
+        "1": {
+          "count": 88,
+          "served": 88,
+          "service_rate": 1.0,
+          "on_time_rate": 0.9886,
+          "avg_latency_min": 8.53,
+          "p90_latency_min": 11.58
+        },
+        "2": {
+          "count": 100,
+          "served": 100,
+          "service_rate": 1.0,
+          "on_time_rate": 1.0,
+          "avg_latency_min": 8.39,
+          "p90_latency_min": 11.52
+        },
+        "3": {
+          "count": 88,
+          "served": 88,
+          "service_rate": 1.0,
+          "on_time_rate": 1.0,
+          "avg_latency_min": 8.31,
+          "p90_latency_min": 10.55
+        },
+        "4": {
+          "count": 446,
+          "served": 446,
+          "service_rate": 1.0,
+          "on_time_rate": 1.0,
+          "avg_latency_min": 9.37,
+          "p90_latency_min": 13.35
+        }
+      },
+      "urgent": {
+        "count": 188,
+        "served": 188,
+        "service_rate": 1.0,
+        "on_time_rate": 0.9947,
+        "avg_latency_min": 8.46,
+        "p90_latency_min": 11.54
+      },
+      "priority_weighted_service_score": 1.0,
+      "priority_weighted_on_time_score": 0.9969,
+      "gini_latency": 0.1567,
+      "jain_fairness_by_tier": 0.9978,
+      "latency_gap_p1_vs_p4_min": 0.84,
+      "elderly_involved": {
+        "count": 322,
+        "served": 322,
+        "service_rate": 1.0,
+        "on_time_rate": 1.0,
+        "avg_latency_min": 8.92,
+        "p90_latency_min": 12.34
+      },
+      "vulnerable_community": {
+        "count": 477,
+        "served": 477,
+        "service_rate": 1.0,
+        "on_time_rate": 1.0,
+        "avg_latency_min": 8.99,
+        "p90_latency_min": 12.38
+      },
+      "window_aggregate": {
+        "n_windows": 96,
+        "total_distance_km": 11452.54,
+        "total_noise_impact": 9181.0,
+        "avg_solve_time_s": 0.06
+      },
+      "run_dir": "/scratch/yy6120/code/LLM-UAV-FairRouting/data/eval_runs/routeB_3uav_m1_sft_seed4111/run_20260501_144429_gpt-4o-mini_noise0.5",
+      "n_demands": 722
+    },
+    "M1_ft": {
+      "overall": {
+        "count": 722,
+        "served": 722,
+        "service_rate": 1.0,
+        "on_time_rate": 0.9986,
+        "avg_latency_min": 8.95,
+        "p90_latency_min": 12.24
+      },
+      "by_priority": {
+        "1": {
+          "count": 88,
+          "served": 88,
+          "service_rate": 1.0,
+          "on_time_rate": 0.9886,
+          "avg_latency_min": 8.36,
+          "p90_latency_min": 11.23
+        },
+        "2": {
+          "count": 100,
+          "served": 100,
+          "service_rate": 1.0,
+          "on_time_rate": 1.0,
+          "avg_latency_min": 8.46,
+          "p90_latency_min": 11.89
+        },
+        "3": {
+          "count": 88,
+          "served": 88,
+          "service_rate": 1.0,
+          "on_time_rate": 1.0,
+          "avg_latency_min": 8.29,
+          "p90_latency_min": 10.68
+        },
+        "4": {
+          "count": 446,
+          "served": 446,
+          "service_rate": 1.0,
+          "on_time_rate": 1.0,
+          "avg_latency_min": 9.31,
+          "p90_latency_min": 13.05
+        }
+      },
+      "urgent": {
+        "count": 188,
+        "served": 188,
+        "service_rate": 1.0,
+        "on_time_rate": 0.9947,
+        "avg_latency_min": 8.42,
+        "p90_latency_min": 11.52
+      },
+      "priority_weighted_service_score": 1.0,
+      "priority_weighted_on_time_score": 0.9969,
+      "gini_latency": 0.1551,
+      "jain_fairness_by_tier": 0.9979,
+      "latency_gap_p1_vs_p4_min": 0.95,
+      "elderly_involved": {
+        "count": 322,
+        "served": 322,
+        "service_rate": 1.0,
+        "on_time_rate": 1.0,
+        "avg_latency_min": 8.91,
+        "p90_latency_min": 12.35
+      },
+      "vulnerable_community": {
+        "count": 477,
+        "served": 477,
+        "service_rate": 1.0,
+        "on_time_rate": 1.0,
+        "avg_latency_min": 8.96,
+        "p90_latency_min": 12.32
+      },
+      "window_aggregate": {
+        "n_windows": 96,
+        "total_distance_km": 11408.38,
+        "total_noise_impact": 9278.0,
+        "avg_solve_time_s": 0.06
+      },
+      "run_dir": "/scratch/yy6120/code/LLM-UAV-FairRouting/data/eval_runs/routeB_3uav_m1_ft_seed4111/run_20260501_144429_gpt-4o-mini_noise0.5",
+      "n_demands": 722
+    },
+    "M1_gemini": {
+      "overall": {
+        "count": 722,
+        "served": 722,
+        "service_rate": 1.0,
+        "on_time_rate": 0.9986,
+        "avg_latency_min": 9.01,
+        "p90_latency_min": 12.29
+      },
+      "by_priority": {
+        "1": {
+          "count": 88,
+          "served": 88,
+          "service_rate": 1.0,
+          "on_time_rate": 0.9886,
+          "avg_latency_min": 8.44,
+          "p90_latency_min": 11.58
+        },
+        "2": {
+          "count": 100,
+          "served": 100,
+          "service_rate": 1.0,
+          "on_time_rate": 1.0,
+          "avg_latency_min": 8.53,
+          "p90_latency_min": 11.78
+        },
+        "3": {
+          "count": 88,
+          "served": 88,
+          "service_rate": 1.0,
+          "on_time_rate": 1.0,
+          "avg_latency_min": 8.54,
+          "p90_latency_min": 11.03
+        },
+        "4": {
+          "count": 446,
+          "served": 446,
+          "service_rate": 1.0,
+          "on_time_rate": 1.0,
+          "avg_latency_min": 9.33,
+          "p90_latency_min": 12.84
+        }
+      },
+      "urgent": {
+        "count": 188,
+        "served": 188,
+        "service_rate": 1.0,
+        "on_time_rate": 0.9947,
+        "avg_latency_min": 8.49,
+        "p90_latency_min": 11.63
+      },
+      "priority_weighted_service_score": 1.0,
+      "priority_weighted_on_time_score": 0.9969,
+      "gini_latency": 0.153,
+      "jain_fairness_by_tier": 0.9984,
+      "latency_gap_p1_vs_p4_min": 0.89,
+      "elderly_involved": {
+        "count": 322,
+        "served": 322,
+        "service_rate": 1.0,
+        "on_time_rate": 1.0,
+        "avg_latency_min": 8.88,
+        "p90_latency_min": 11.74
+      },
+      "vulnerable_community": {
+        "count": 477,
+        "served": 477,
+        "service_rate": 1.0,
+        "on_time_rate": 1.0,
+        "avg_latency_min": 9.01,
+        "p90_latency_min": 12.23
+      },
+      "window_aggregate": {
+        "n_windows": 96,
+        "total_distance_km": 11369.46,
+        "total_noise_impact": 8727.0,
+        "avg_solve_time_s": 0.06
+      },
+      "run_dir": "/scratch/yy6120/code/LLM-UAV-FairRouting/data/eval_runs/routeB_3uav_m1_gemini_seed4111/run_20260501_144429_gpt-4o-mini_noise0.5",
+      "n_demands": 722
+    }
+  }
+}

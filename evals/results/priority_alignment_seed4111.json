@@ -2,172 +2,24 @@
   "formal": {
     "M0c": {
       "n": 722,
-      "accuracy": 1.0,
-      "macro_f1": 1.0,
-      "weighted_f1": 1.0,
-      "per_priority": {
-        "1": {
-          "precision": 1.0,
-          "recall": 1.0,
-          "f1": 1.0,
-          "support": 57
-        },
-        "2": {
-          "precision": 1.0,
-          "recall": 1.0,
-          "f1": 1.0,
-          "support": 224
-        },
-        "3": {
-          "precision": 1.0,
-          "recall": 1.0,
-          "f1": 1.0,
-          "support": 197
-        },
-        "4": {
-          "precision": 1.0,
-          "recall": 1.0,
-          "f1": 1.0,
-          "support": 244
-        }
-      },
-      "urgent_recall": 1.0,
-      "urgent_precision": 1.0,
-      "urgent_f1": 1.0,
-      "p1_recall": 1.0,
-      "p1_precision": 1.0,
-      "p1_f1": 1.0,
-      "spearman_r": 1.0,
-      "kendall_tau": 1.0,
       "pairwise_accuracy": 1.0,
       "seed": "4111",
       "wc_dir": "/scratch/yy6120/code/LLM-UAV-FairRouting/data/eval_runs/formal_m0c_seed4111/run_20260430_155133_gpt-4o-mini_noise0.5/weight_configs"
     },
     "M1_pre": {
       "n": 661,
-      "accuracy": 0.4569,
-      "macro_f1": 0.4018,
-      "weighted_f1": 0.4275,
-      "per_priority": {
-        "1": {
-          "precision": 0.27,
-          "recall": 0.5,
-          "f1": 0.3506,
-          "support": 54
-        },
-        "2": {
-          "precision": 0.6,
-          "recall": 0.2885,
-          "f1": 0.3896,
-          "support": 208
-        },
-        "3": {
-          "precision": 0.3238,
-          "recall": 0.1954,
-          "f1": 0.2437,
-          "support": 174
-        },
-        "4": {
-          "precision": 0.5084,
-          "recall": 0.8044,
-          "f1": 0.6231,
-          "support": 225
-        }
-      },
-      "urgent_recall": 0.6336,
-      "urgent_precision": 0.83,
-      "urgent_f1": 0.7186,
-      "p1_recall": 0.5,
-      "p1_precision": 0.27,
-      "p1_f1": 0.3506,
-      "spearman_r": 0.5894,
-      "kendall_tau": 0.5169,
       "pairwise_accuracy": 0.7448,
       "seed": "4111",
       "wc_dir": "/scratch/yy6120/code/LLM-UAV-FairRouting/data/eval_runs/formal_m1_pre_seed4111/run_20260429_132824_qwen3-base_noise0.5/weight_configs"
     },
     "M1_ft": {
       "n": 722,
-      "accuracy": 0.6191,
-      "macro_f1": 0.6201,
-      "weighted_f1": 0.6238,
-      "per_priority": {
-        "1": {
-          "precision": 0.5233,
-          "recall": 0.7895,
-          "f1": 0.6294,
-          "support": 57
-        },
-        "2": {
-          "precision": 0.8343,
-          "recall": 0.6295,
-          "f1": 0.7176,
-          "support": 224
-        },
-        "3": {
-          "precision": 0.467,
-          "recall": 0.5025,
-          "f1": 0.4841,
-          "support": 197
-        },
-        "4": {
-          "precision": 0.6353,
-          "recall": 0.6639,
-          "f1": 0.6493,
-          "support": 244
-        }
-      },
-      "urgent_recall": 0.8505,
-      "urgent_precision": 0.9373,
-      "urgent_f1": 0.8918,
-      "p1_recall": 0.7895,
-      "p1_precision": 0.5233,
-      "p1_f1": 0.6294,
-      "spearman_r": 0.77,
-      "kendall_tau": 0.6953,
       "pairwise_accuracy": 0.8438,
       "seed": "4111",
       "wc_dir": "/scratch/yy6120/code/LLM-UAV-FairRouting/data/eval_runs/formal_m1_ft_seed4111/run_20260429_132824_qwen3-finetuned_noise0.5/weight_configs"
     },
     "M1_gemini": {
       "n": 722,
-      "accuracy": 0.4889,
-      "macro_f1": 0.4727,
-      "weighted_f1": 0.4851,
-      "per_priority": {
-        "1": {
-          "precision": 0.3,
-          "recall": 0.8947,
-          "f1": 0.4493,
-          "support": 57
-        },
-        "2": {
-          "precision": 0.5816,
-          "recall": 0.3661,
-          "f1": 0.4493,
-          "support": 224
-        },
-        "3": {
-          "precision": 0.4437,
-          "recall": 0.3401,
-          "f1": 0.3851,
-          "support": 197
-        },
-        "4": {
-          "precision": 0.5885,
-          "recall": 0.627,
-          "f1": 0.6071,
-          "support": 244
-        }
-      },
-      "urgent_recall": 0.9004,
-      "urgent_precision": 0.8135,
-      "urgent_f1": 0.8547,
-      "p1_recall": 0.8947,
-      "p1_precision": 0.3,
-      "p1_f1": 0.4493,
-      "spearman_r": 0.7247,
-      "kendall_tau": 0.6332,
       "pairwise_accuracy": 0.8631,
       "seed": "4111",
       "wc_dir": "/scratch/yy6120/code/LLM-UAV-FairRouting/data/eval_runs/formal_m1_gemini_seed4111/run_20260501_075939_@vertexai-gemini-3.1-flash-lite-preview_noise0.5/weight_configs"
